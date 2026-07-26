@@ -1,0 +1,22 @@
+{
+  "name": "dronelab-simulator",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Classroom drone engineering simulator - build & fly quad/hexa/octocopters, with real component decision logic and failure modelling.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "lucide-react": "^0.454.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.3",
+    "vite": "^5.4.10"
+  }
+}
