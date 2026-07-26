@@ -52,7 +52,7 @@ the theory the students are taught is confirmed by the physics they are watching
 
 ---
 
-## The five modules
+## The three modules
 
 Each module reproduces the objective, component list, task chain and failure
 simulations from the course notes. Tasks tick themselves only when the student
@@ -62,11 +62,9 @@ genuinely satisfies them — never on a button press.
 |---|---|---|---|
 | 1 | Basic Drone Build | Build your first drone and make it hover | Frame, battery, FC, ESC x4, motor x4, prop x4 |
 | 2 | Controlled Flight | Control the drone using a transmitter | Transmitter, receiver, GPS |
-| 3 | Complete Electronics | Build and configure a complete drone | PDB, IMU, compass, barometer — **airframe choice unlocks here** |
-| 4 | Flight Physics & Environment | Understand how conditions affect flight | Wind, payload, temperature, altitude controls |
-| 5 | Complete Engineering Simulator | Build, test, troubleshoot, fly missions | Random failure injection, diagnose, repair, crash report |
+| 3 | Complete Electronics | Build and configure a complete drone | PDB, IMU, compass, barometer, telemetry radio, buzzer — **airframe choice unlocks here** |
 
-Modules 1 and 2 are locked to a quadcopter, as the notes specify. Module 1 has no
+Module 3 is the final module. Modules 1 and 2 are locked to a quadcopter, as the notes specify. Module 1 has no
 radio yet, so it runs as a **bench hover test** — this is stated explicitly in the
 pre-flight panel rather than quietly faked.
 
@@ -88,6 +86,57 @@ which question answered "no". That is the whole teaching loop.
 ESC, motor and propeller trees are **per-motor** — tabs let you inspect M1…M8
 individually, which is how you find the one backwards motor on an octocopter.
 
+
+---
+
+## Wiring: drag the wire, not a checkbox
+
+Wiring is done in a dialog, pin to pin. The student picks a wire colour from the
+legend, then drags from a pin on one component onto a pin on another. A connection
+is accepted only when **both the pin pair and the wire colour are right** — because
+on a real drone, putting the red wire where the black one belongs is not a near miss.
+
+Wrong attempts explain themselves rather than just going red:
+
+- *Wrong colour* — "Right pins, wrong wire. You picked Black (Ground) but this is a
+  Red wire — + (Positive / Power)."
+- *Wrong pin* — "GPS Module TX does not go to Flight Controller TX. It belongs on
+  Flight Controller RX. TX talks, RX listens — wire TX to TX and both ends shout
+  while neither hears a thing."
+
+Click a finished wire to pull it out again.
+
+The loom is grouped into harnesses, and scales with the airframe:
+
+| Harness | Quad | Hexa | Octo |
+|---|---|---|---|
+| Battery to PDB | 2 | 2 | 2 |
+| PDB to ESCs | 8 | 12 | 16 |
+| PDB BEC to FC | 2 | 2 | 2 |
+| FC MAIN OUT to ESC signals | 4 | 6 | 8 |
+| ESCs to motors (3-phase) | 4 | 6 | 8 |
+| Receiver to FC (SBUS) | 3 | 3 | 3 |
+| GPS to FC *(optional)* | 4 | 4 | 4 |
+| Telemetry to FC *(optional)* | 4 | 4 | 4 |
+| Buzzer to FC *(optional)* | 2 | 2 | 2 |
+| **Required total** | **23** | **31** | **39** |
+
+### Two corrections to the reference diagram
+
+The supplied connection notes flag two genuine labelling errors in the source
+image, and the simulator teaches the **correct** wiring rather than reproducing the
+mistake. Each is explained in the dialog itself, so students see the discrepancy
+rather than being quietly steered around it:
+
+1. **GPS port.** The image shows GPS TX landing on a pin marked "5V", GPS RX on
+   "GND" and GPS GND on "RX". A real Pixhawk GPS port is VCC / TX / RX / GND, and a
+   serial link crosses over: **GPS TX to FC RX, GPS RX to FC TX**.
+2. **TELEM port.** The image labels one row "TX" twice — the row carrying the red
+   wire should read "5V" — and its wire colours contradict its own legend. We follow
+   the legend: green TX, blue RX.
+
+There is still an "auto-wire everything" button for teachers who want to skip ahead.
+
 ---
 
 ## Physics model
@@ -107,8 +156,10 @@ measure themselves:
 | ESC thermal | 5% of throughput as heat, airspeed cooling | ~50 °C hover, 90 °C limit per the ESC tree |
 | Wind | `F = ½·rho·v²·Cd·A`, drone leans to hold | lean angle and drift both shown live |
 
-Module 4's sliders feed straight into this — change the temperature and the
-predicted flight time moves, because the same code runs the aircraft.
+These models still run the aircraft even though the environment sliders were
+removed with Modules 4 and 5 — the simulator flies at standard conditions
+(no wind, 25 degC, sea level). Re-exposing the controls is a one-component change
+if you want that lesson back.
 
 ---
 
@@ -120,8 +171,8 @@ src/
     airframes.js     quad/hexa/octo geometry, motor order & direction, failure model
     parts.js         bill of materials with the real specs from the parts chart
     logicTrees.js    the 13 decision trees + the Complete Flight Logic diagram
-    wiring.js        every connection from the wiring diagram, generalised to N motors
-    curriculum.js    the 5 modules: objectives, task chains, failure simulations
+    wiring.js        pin-level connections + harness grouping, generalised to N motors
+    curriculum.js    the 3 modules: objectives, task chains, failure simulations
   sim/
     mixer.js         motor mixing algorithm + control-authority analysis
     physics.js       atmosphere, propeller, battery, ESC thermal models
@@ -132,7 +183,9 @@ src/
     materials.js     procedural textures and the shared material set
     partMeshes.js    one mesh builder per component
     droneScene.js    assembly bay, slot system, drag & drop, flight field
-  components/        the React workbench UI
+  components/
+    WiringDialog.jsx the drag-a-wire-between-pins interface
+    ...              the rest of the React workbench UI
 ```
 
 ---
@@ -142,8 +195,9 @@ src/
 **Assembly** — drag from the parts tray onto the glowing ring (it turns green when
 you are close enough to drop). Left-drag the background to orbit, wheel to zoom.
 
-**Flight** — `W`/`S` forward and back, `A`/`D` yaw, `Q`/`E` roll left and right,
-`Space` climb, `Shift` descend. `ARM` and `RTH` are in the top bar.
+**Flight** — `W`/`S` forward and back, **`A`/`D` (or the left/right arrows) turn
+left and right**, `Q`/`E` slide sideways, `Space` climb, `Shift` descend.
+`ARM` and `RTH` are in the top bar.
 
 ---
 
@@ -151,10 +205,10 @@ you are close enough to drop). Left-drag the background to orbit, wheel to zoom.
 
 The **Failures** panel on the right is the most useful control in the room. Pick a
 fault, inject it, and send students to the logic trees to find it — the affected
-tree is already showing the failing branch. "Inject random fault" does it blind,
-which is what Module 5 is built around.
+tree is already showing the failing branch. "Inject random fault" does it blind, so
+the class has to diagnose from symptoms alone.
 
-Suggested comparison for Module 3 onward: build the same mission on a quad, then a
-hexa, then an octo, and kill one motor on each. The Health panel will show three
+Suggested comparison in Module 3: build the same aircraft as a quad, then a hexa,
+then an octo, and kill one motor on each. The Health panel will show three
 different verdicts for the same fault, and the students can explain why from the
 mixer rank alone.

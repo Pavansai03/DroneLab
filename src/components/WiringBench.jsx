@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import {
-  buildWiringSpec,
+  wiringStatus,
   WIRE_COLORS,
   CONNECTION_SUMMARY,
   PREFLIGHT_NOTES,
@@ -8,128 +8,110 @@ import {
 import { Check } from "./Icons.jsx";
 
 /**
- * The wiring bench. Every link from the course wiring diagram, generalised to the
- * chosen airframe. Clicking a row makes or breaks that connection, and the note
- * explains what happens on a real drone if you get it wrong.
+ * The wiring bench lists the looms this build needs. Opening one launches the
+ * wiring dialog, where the student picks a wire colour and drags it pin to pin.
  */
 export default function WiringBench({
   frame,
   links,
   placed,
   componentSet,
-  onToggle,
+  onOpenHarness,
   onConnectAll,
 }) {
-  const [openId, setOpenId] = useState(null);
-  const spec = useMemo(
-    () => buildWiringSpec(frame, { components: componentSet }),
-    [frame, componentSet]
+  const status = useMemo(
+    () => wiringStatus(frame, componentSet, links),
+    [frame, componentSet, links]
   );
 
+  /** A harness can only be wired once every component it touches is fitted. */
+  const missingParts = (h) => {
+    const cards = [...h.leftCards, ...h.rightCards];
+    const needed = new Set(cards.map((c) => c.part));
+    return [...needed].filter((p) => !(placed[p]?.length > 0));
+  };
+
   const groups = useMemo(() => {
-    const order = ["power", "propulsion", "control", "navigation"];
     const labels = {
       power: "Power path — battery to everything",
       propulsion: "Propulsion — ESC to motor phases",
-      control: "Control — flight controller signals",
-      navigation: "Navigation — optional but needed for GPS modes",
+      control: "Control — signals and radio",
+      navigation: "Navigation — optional, needed for GPS modes",
     };
-    return order
+    return ["power", "propulsion", "control", "navigation"]
       .map((g) => ({
         id: g,
         label: labels[g],
-        // Hide links whose components this module has not introduced yet.
-        rows: spec.filter((l) => l.group === g && l.available !== false),
+        rows: status.harnesses.filter((h) => h.group === g),
       }))
       .filter((g) => g.rows.length);
-  }, [spec]);
-
-  /** A link can only be made if both ends are actually fitted. */
-  const endpointsPresent = (link) => {
-    const partFor = (node) => {
-      if (node.startsWith("esc")) return "esc";
-      if (node.startsWith("motor")) return "motor";
-      return node;
-    };
-    const ok = (node) => {
-      const p = partFor(node);
-      if (p === "pdb" && !placed.pdb?.length) {
-        // Modules 1-2 have no PDB; treat the battery lead as the distribution point
-        return Boolean(placed.battery?.length);
-      }
-      return Boolean(placed[p]?.length);
-    };
-    return ok(link.from) && ok(link.to);
-  };
-
-  const requiredDone = spec.filter((l) => l.required && links.has(l.id)).length;
-  const requiredTotal = spec.filter((l) => l.required).length;
+  }, [status]);
 
   return (
     <div>
       <div className="panel-head" style={{ borderTop: "1px solid var(--border)" }}>
-        <h3>Loom {requiredDone}/{requiredTotal} required</h3>
+        <h3>
+          Loom {status.requiredDone}/{status.requiredTotal} required
+        </h3>
         <div className="progress-track">
           <div
-            className={`progress-fill ${requiredDone === requiredTotal ? "done" : ""}`}
-            style={{ width: `${(requiredDone / Math.max(1, requiredTotal)) * 100}%` }}
+            className={`progress-fill ${status.allRequiredDone ? "done" : ""}`}
+            style={{
+              width: `${(status.requiredDone / Math.max(1, status.requiredTotal)) * 100}%`,
+            }}
           />
         </div>
       </div>
 
       <div className="sect-note">
-        Follow the connection summary: {CONNECTION_SUMMARY[0]}. Tap a row to solder or
-        unsolder it.
+        Open a loom to wire it. You pick the wire colour, then drag from a pin on one
+        component to the matching pin on the other — the same way you would with a real
+        loom on the bench.
       </div>
 
-      <div className="wire-bench">
-        {groups.map((g) => (
-          <div className="wire-group" key={g.id}>
-            <div className="wire-group-title">{g.label}</div>
-            {g.rows.map((link) => {
-              const connected = links.has(link.id);
-              const canWire = endpointsPresent(link);
-              const missing = link.required && !connected;
-              return (
-                <div key={link.id}>
-                  <div
-                    className={`wire-row ${connected ? "connected" : ""} ${
-                      missing ? "required-missing" : ""
-                    }`}
-                    style={{ opacity: canWire ? 1 : 0.45 }}
-                    onClick={() => {
-                      if (!canWire) return;
-                      onToggle(link.id);
-                      setOpenId(openId === link.id ? null : link.id);
-                    }}
-                    title={canWire ? link.note : "Fit both components first"}
-                  >
-                    <span
-                      className="wire-swatch"
-                      style={{ background: WIRE_COLORS[link.color].hex }}
-                    />
-                    <div className="wire-main">
-                      <div className="wire-path">
-                        {label(link.from)} &rarr; {label(link.to)}
-                      </div>
-                      <div className="wire-ports">
-                        {link.fromPort} &middot; {link.toPort}
-                        {!link.required && <span className="opt-flag"> OPTIONAL</span>}
-                      </div>
-                      {openId === link.id && <div className="wire-note">{link.note}</div>}
-                    </div>
-                    <span className="wire-check">
-                      <Check size={12} />
-                    </span>
+      {groups.map((g) => (
+        <div key={g.id} style={{ marginBottom: 10 }}>
+          <div className="cat-row">{g.label}</div>
+          {g.rows.map((h) => {
+            const missing = missingParts(h);
+            const blocked = missing.length > 0;
+            return (
+              <div
+                key={h.id}
+                className={`harness-row ${h.complete ? "complete" : ""} ${
+                  blocked ? "blocked" : ""
+                }`}
+                onClick={() => !blocked && onOpenHarness(h.id)}
+                title={
+                  blocked
+                    ? `Fit the ${missing.join(", ")} first`
+                    : "Open this loom and wire it"
+                }
+              >
+                <span className="wire-check" style={{ opacity: h.complete ? 1 : 0.35 }}>
+                  <Check size={12} />
+                </span>
+                <div className="harness-main">
+                  <div className="harness-title">
+                    {h.title}
+                    {!h.required && <span className="opt-flag"> OPTIONAL</span>}
+                  </div>
+                  <div className="harness-sub">
+                    {blocked ? `Fit the ${missing.join(", ")} first` : h.subtitle}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        ))}
+                <span className="harness-count">
+                  {h.done}/{h.total}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
 
+      <div style={{ padding: "0 8px 10px" }}>
         <button className="btn wide" onClick={onConnectAll}>
-          Auto-wire the whole loom (teacher shortcut)
+          Auto-wire everything (teacher shortcut)
         </button>
       </div>
 
@@ -143,15 +125,34 @@ export default function WiringBench({
         ))}
       </div>
 
+      <div className="cat-row">Connection summary</div>
+      <div style={{ padding: "8px 12px" }}>
+        {CONNECTION_SUMMARY.map((c) => (
+          <div
+            key={c}
+            style={{
+              fontSize: 11,
+              color: "var(--dim)",
+              lineHeight: 1.65,
+              display: "flex",
+              gap: 7,
+            }}
+          >
+            <span style={{ color: "var(--ok)" }}>&#10003;</span>
+            {c}
+          </div>
+        ))}
+      </div>
+
       <div className="cat-row">Notes before every flight</div>
-      <div style={{ padding: "8px 12px 14px" }}>
+      <div style={{ padding: "8px 12px 16px" }}>
         {PREFLIGHT_NOTES.map((n) => (
           <div
             key={n}
             style={{
               fontSize: 11,
               color: "var(--dim)",
-              lineHeight: 1.6,
+              lineHeight: 1.65,
               display: "flex",
               gap: 7,
             }}
@@ -163,18 +164,4 @@ export default function WiringBench({
       </div>
     </div>
   );
-}
-
-function label(node) {
-  if (node.startsWith("esc")) return `ESC ${Number(node.slice(3)) + 1}`;
-  if (node.startsWith("motor")) return `M${Number(node.slice(5)) + 1}`;
-  const map = {
-    battery: "BATT",
-    pdb: "PDB",
-    fc: "FC",
-    receiver: "RX",
-    gps: "GPS",
-    compass: "MAG",
-  };
-  return map[node] || node.toUpperCase();
 }

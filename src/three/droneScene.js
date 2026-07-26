@@ -445,14 +445,23 @@ export class DroneScene {
     const escR = R * 0.58;
 
     const slots = {};
-    const polar = (r, y, a) => new THREE.Vector3(Math.cos(deg(a)) * r, y, Math.sin(deg(a)) * r);
+    /* Motor angles are measured CLOCKWISE FROM THE NOSE, and the mixer treats
+       cos(angle) as the FORWARD component and sin(angle) as the RIGHT component.
+       World axes here are +Z forward and +X right, so it must be
+       x = sin(angle), z = cos(angle). Swapping these two mirrors the whole
+       airframe about its diagonal, which silently puts M2 at the front-left when
+       the mixer believes it is at the rear-right. */
+    const polar = (r, y, a) =>
+      new THREE.Vector3(Math.sin(deg(a)) * r, y, Math.cos(deg(a)) * r);
 
     slots.frame = [{ slot: 0, pos: new THREE.Vector3(0, H.hub, 0), rot: 0, size: 0.95 }];
 
     slots.esc = f.motors.map((m) => ({
       slot: m.index,
       pos: polar(escR, H.esc, m.angle),
-      rot: deg(m.angle),
+      // Same convention as the arms: a part laid along +X is rotated by
+      // (angle - 90 degrees) about Y to point down its arm.
+      rot: deg(m.angle) - Math.PI / 2,
       size: 0.34,
       label: `ESC ${m.index + 1}`,
     }));
@@ -495,6 +504,12 @@ export class DroneScene {
     slots.receiver = [
       { slot: 0, pos: new THREE.Vector3(0.3, H.receiver, 0.2), rot: 0, size: 0.3 },
     ];
+    slots.telemetry = [
+      { slot: 0, pos: new THREE.Vector3(-0.32, H.receiver, 0.18), rot: 0, size: 0.3 },
+    ];
+    slots.buzzer = [
+      { slot: 0, pos: new THREE.Vector3(-0.3, H.pdb + 0.04, -0.26), rot: 0, size: 0.22 },
+    ];
     slots.battery = [
       { slot: 0, pos: new THREE.Vector3(0, H.battery, 0), rot: 0, size: 0.85 },
     ];
@@ -526,7 +541,9 @@ export class DroneScene {
     this.armsGroup.visible = false;
     this.frame.motors.forEach((m) => {
       const arm = buildArm(this.mats, this.frame);
-      arm.rotation.y = -deg(m.angle);
+      // buildArm lays the arm along +X. Rotating by (angle - 90) about Y swings it
+      // to (sin angle, 0, cos angle) — the same place buildSlots() puts the motor.
+      arm.rotation.y = deg(m.angle) - Math.PI / 2;
       this.armsGroup.add(arm);
     });
     this.aircraft.add(this.armsGroup);
@@ -841,6 +858,20 @@ export class DroneScene {
     this.telemetry = t;
   }
 
+  /**
+   * Hand the scene the flight simulator so it can step the physics inside its own
+   * render loop and read the aircraft's state directly.
+   *
+   * Previously the physics ran in a separate React loop and the pose reached the
+   * scene through React state at 20 Hz, so the drone visibly stepped between
+   * snapshots while everything around it rendered at 60. Driving both from one
+   * loop removes that judder entirely.
+   */
+  attachSim(sim) {
+    this.sim = sim;
+    this.simAccumulator = 0;
+  }
+
   setEnvironment(env) {
     this.env = env;
   }
@@ -915,6 +946,9 @@ export class DroneScene {
   /** Propeller spin, ESC heat LEDs, GPS lock LED, FC status LED, compass needle. */
   updateLiveIndicators(dt) {
     const t = this.telemetry;
+    // Propeller speed comes straight off the simulator when one is attached, so
+    // the blades track the motors frame-for-frame instead of stepping.
+    const liveRpm = this.mode === "flight" && this.sim ? this.sim.motorRpmArr : null;
 
     this.meshBySlot.forEach((mesh, key) => {
       const [partId, slotStr] = key.split(":");
@@ -923,7 +957,8 @@ export class DroneScene {
       if (partId === "propeller") {
         const spin = mesh.userData.spin ?? 1;
         let rpm = 0;
-        if (t?.motorRpm?.[slot] != null) rpm = t.motorRpm[slot];
+        if (liveRpm?.[slot] != null) rpm = liveRpm[slot];
+        else if (t?.motorRpm?.[slot] != null) rpm = t.motorRpm[slot];
         else if (this.mode === "assembly" && this.idleSpin) rpm = 1200;
         // Scale RPM down heavily — real RPM would be a strobing blur
         mesh.rotation.y += spin * (rpm / 6000) * dt * 22;
@@ -981,15 +1016,47 @@ export class DroneScene {
   }
 
   updateFlight(dt) {
-    const t = this.telemetry;
+    const sim = this.sim;
+
+    /* Step the physics here, in the render loop, at a fixed 240 Hz. Reading the
+       aircraft's pose straight out of the simulator on the same frame it is
+       rendered is what makes the motion smooth — no snapshot quantisation. */
+    if (sim) {
+      this.simAccumulator = Math.min((this.simAccumulator || 0) + dt, 0.25);
+      const STEP = 1 / 240;
+      let guard = 0;
+      while (this.simAccumulator >= STEP && guard++ < 60) {
+        sim.step(STEP);
+        this.simAccumulator -= STEP;
+      }
+    }
+
+    // Prefer the live simulator; fall back to the last React snapshot.
+    const t = sim
+      ? {
+          position: sim.pos,
+          pitch: sim.pitch,
+          yaw: sim.yaw,
+          roll: sim.roll,
+          gatesPassed: sim.gatesPassed.size,
+        }
+      : this.telemetry
+        ? {
+            position: this.telemetry.position,
+            pitch: (this.telemetry.pitchDeg * Math.PI) / 180,
+            yaw: (this.telemetry.heading * Math.PI) / 180,
+            roll: (this.telemetry.rollDeg * Math.PI) / 180,
+            gatesPassed: this.telemetry.gatesPassed ?? 0,
+          }
+        : null;
     if (!t) return;
 
     this.aircraft.position.set(t.position.x, t.position.y, t.position.z);
     this.aircraft.rotation.order = "YXZ";
-    this.aircraft.rotation.set(t.pitchDeg * (Math.PI / 180), (t.heading * Math.PI) / 180, t.rollDeg * (Math.PI / 180));
+    this.aircraft.rotation.set(t.pitch, t.yaw, t.roll);
 
     /* Chase camera */
-    const yaw = (t.heading * Math.PI) / 180;
+    const yaw = t.yaw;
     const desired = new THREE.Vector3(
       t.position.x - Math.sin(yaw) * 6.5,
       t.position.y + 2.4,

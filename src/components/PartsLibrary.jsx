@@ -70,7 +70,9 @@ export default function PartsLibrary({
               const have = placed[id]?.length || 0;
               const remaining = need - have;
               const isDone = remaining <= 0;
-              const isActive = id === activePart;
+              // Optional extras can be fitted whenever the student likes; everything
+              // else must wait its turn in the build order.
+              const isActive = !isDone && (id === activePart || def.optional);
 
               return (
                 <div

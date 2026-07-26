@@ -8,14 +8,17 @@
  */
 
 import { PARTS, requiredQty } from "../data/parts.js";
-import { buildWiringSpec } from "../data/wiring.js";
+import { wiringStatus } from "../data/wiring.js";
 import { MODULE_BY_ID } from "../data/curriculum.js";
 
 export function buildProgressApi({ build, frame, telemetry, diagnostics, completedModules }) {
   const links = build.links instanceof Set ? build.links : new Set(build.links || []);
   const flags = build.flags || {};
   const placed = build.placed || {};
-  const spec = buildWiringSpec(frame, { components: build.componentSet });
+  // Reuse the diagnostics engine's wiring view when we have it, so a task can
+  // never disagree with the health panel about whether something is connected.
+  const wiring =
+    diagnostics?.wiring || wiringStatus(frame, build.componentSet, links);
 
   const countOf = (id) => placed[id]?.length || 0;
 
@@ -31,22 +34,21 @@ export function buildProgressApi({ build, frame, telemetry, diagnostics, complet
 
     /* ---- wiring ---- */
     wired: (linkId) => links.has(linkId),
+    /** Is a whole loom finished? e.g. harnessDone("gps-fc") */
+    harnessDone: (id) => wiring.isDone(id),
     groupWired: (group) =>
-      spec.filter((l) => l.group === group).every((l) => links.has(l.id)),
+      wiring.harnesses.filter((h) => h.group === group).every((h) => h.complete),
     motorSignalsWired: () => {
-      for (let i = 0; i < frame.motorCount; i++) {
-        if (!links.has(`fc->esc${i}`)) return false;
-      }
+      for (let i = 0; i < frame.motorCount; i++) if (!wiring.escSignal(i)) return false;
       return true;
     },
     escPowerWired: () => {
-      for (let i = 0; i < frame.motorCount; i++) {
-        if (!links.has(`pdb->esc${i}`)) return false;
-      }
+      for (let i = 0; i < frame.motorCount; i++) if (!wiring.escPowered(i)) return false;
       return true;
     },
-    allRequiredWired: () =>
-      spec.filter((l) => l.required).every((l) => links.has(l.id)),
+    batteryConnected: () => wiring.batteryToPower,
+    fcPowered: () => wiring.fcPowered,
+    allRequiredWired: () => wiring.allRequiredDone,
 
     /* ---- configuration ---- */
     flag: (name) => Boolean(flags[name]),

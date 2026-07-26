@@ -1254,6 +1254,331 @@ input[type="range"]::-moz-range-thumb {
   flex-shrink: 0;
 }
 
+/* ------------------------------------------------------ wiring dialog */
+.wd {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: min(1080px, 96vw);
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.wd-head {
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.wd-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.wd-head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--dim);
+}
+.wd-progress {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--amber);
+}
+
+.wd-correction {
+  margin: 10px 20px 0;
+  padding: 9px 12px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  background: rgba(255, 171, 74, 0.1);
+  border: 1px solid rgba(255, 171, 74, 0.3);
+  color: #f0d5ac;
+}
+.wd-correction b {
+  color: var(--amber);
+}
+
+.wd-palette {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 12px 20px 0;
+}
+.wd-palette-label {
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.wd-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--panel2);
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.wd-swatch:hover {
+  border-color: var(--cyan);
+}
+.wd-swatch.on {
+  border-color: var(--cyan);
+  color: var(--text);
+  background: rgba(70, 230, 207, 0.1);
+}
+.wd-swatch i {
+  width: 15px;
+  height: 4px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.wd-hint {
+  padding: 7px 20px 0;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.wd-surface {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 260px;
+  overflow: auto;
+  margin: 12px 20px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #0c1016;
+  border: 1px solid var(--border);
+  display: flex;
+  gap: 70px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.wd-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 190px;
+  position: relative;
+  z-index: 2;
+}
+/* Four or more cards wrap into two sub-columns so nothing scrolls out of reach. */
+.wd-col.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(170px, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+.wd-col.grid .wd-card {
+  min-width: 0;
+}
+.wd-wires {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+  overflow: visible;
+}
+.wd-wires path {
+  pointer-events: stroke;
+}
+
+.wd-card {
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--panel2);
+  overflow: hidden;
+  min-width: 190px;
+}
+.wd-card-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel3);
+}
+.wd-card-icon {
+  color: var(--cyan);
+  display: flex;
+}
+.wd-card-head b {
+  display: block;
+  font-size: 12px;
+}
+.wd-card-head small {
+  display: block;
+  font-size: 9.5px;
+  color: var(--dim);
+  margin-top: 1px;
+}
+.wd-pins {
+  padding: 5px 0;
+}
+.wd-pin {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 11px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.wd-pin:hover {
+  background: rgba(70, 230, 207, 0.08);
+}
+.wd-pin:active {
+  cursor: grabbing;
+}
+.wd-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #39424f;
+  border: 2px solid #556074;
+  flex-shrink: 0;
+  transition: transform 0.12s;
+}
+.wd-pin:hover .wd-dot {
+  transform: scale(1.3);
+  border-color: var(--cyan);
+}
+.wd-pin.done .wd-dot {
+  border-color: rgba(255, 255, 255, 0.55);
+}
+.wd-pin-label {
+  font-size: 11px;
+  font-family: "JetBrains Mono", monospace;
+  color: var(--dim);
+}
+.wd-pin.done .wd-pin-label {
+  color: var(--text);
+}
+
+.wd-feedback {
+  margin: 0 20px;
+  padding: 9px 13px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  border: 1px solid var(--border);
+  background: var(--panel2);
+  /* Fixed height on purpose: if this panel grew with the message, every pin above
+     it would shift under the student's cursor after each attempt. */
+  height: 62px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.wd-feedback b {
+  font-size: 12px;
+}
+.wd-feedback span {
+  color: var(--dim);
+}
+.wd-feedback.idle {
+  color: var(--faint);
+}
+.wd-feedback.ok {
+  border-color: rgba(57, 217, 138, 0.45);
+  background: rgba(57, 217, 138, 0.09);
+}
+.wd-feedback.ok b {
+  color: var(--ok);
+}
+.wd-feedback.bad {
+  border-color: rgba(255, 92, 98, 0.45);
+  background: rgba(255, 92, 98, 0.09);
+}
+.wd-feedback.bad b {
+  color: var(--bad);
+}
+.wd-feedback.warn,
+.wd-feedback.miss {
+  border-color: rgba(255, 171, 74, 0.45);
+  background: rgba(255, 171, 74, 0.08);
+}
+.wd-feedback.warn b,
+.wd-feedback.miss b {
+  color: var(--warn);
+}
+
+.wd-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 20px;
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+}
+
+/* --------------------------------------------------- harness list rows */
+.harness-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel2);
+  margin: 0 8px 6px;
+  cursor: pointer;
+  transition: border-color 0.14s;
+}
+.harness-row:hover {
+  border-color: var(--cyan);
+}
+.harness-row.complete {
+  border-color: rgba(57, 217, 138, 0.45);
+  background: rgba(57, 217, 138, 0.07);
+}
+.harness-row.blocked {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.harness-main {
+  flex: 1;
+  min-width: 0;
+}
+.harness-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+.harness-sub {
+  font-size: 10.5px;
+  color: var(--dim);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+.harness-count {
+  font-size: 11px;
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+  color: var(--amber);
+  flex-shrink: 0;
+}
+.harness-row.complete .harness-count {
+  color: var(--ok);
+}
+
 /* --------------------------------------------------------------- flow */
 .flow {
   padding: 14px;

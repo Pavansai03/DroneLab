@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { AIRFRAMES } from "./data/airframes.js";
 import { PARTS, requiredQty, defaultVariant } from "./data/parts.js";
-import { buildWiringSpec } from "./data/wiring.js";
+import { allWireIds, wiringStatus, buildHarnesses } from "./data/wiring.js";
 import {
   MODULES,
   MODULE_BY_ID,
@@ -20,7 +20,7 @@ import TaskChecklist from "./components/TaskChecklist.jsx";
 import WiringBench from "./components/WiringBench.jsx";
 import LogicTreeViewer from "./components/LogicTreeViewer.jsx";
 import DiagnosticsPanel from "./components/DiagnosticsPanel.jsx";
-import EnvironmentPanel from "./components/EnvironmentPanel.jsx";
+import WiringDialog from "./components/WiringDialog.jsx";
 import FaultPanel from "./components/FaultPanel.jsx";
 import SystemFlow from "./components/SystemFlow.jsx";
 import FramePicker from "./components/FramePicker.jsx";
@@ -40,6 +40,8 @@ const BUILD_ORDER = [
   "motor",
   "receiver",
   "transmitter",
+  "telemetry",
+  "buzzer",
   "gps",
   "compass",
   "battery",
@@ -122,7 +124,6 @@ export default function App() {
   const sceneRef = useRef(null);
   const simRef = useRef(null);
   const keysRef = useRef({});
-  const rafRef = useRef(0);
 
   /* Module 1-2 are locked to a quadcopter, per the course notes. */
   useEffect(() => {
@@ -159,7 +160,11 @@ export default function App() {
      for us, but it only runs in the flight field — so on the bench we run the same
      acquisition here. Without this the instruction tells students to wait for
      something that would never arrive. */
-  const gpsWired = Boolean(placed.gps?.length) && links.has("gps->fc");
+  const wiring = useMemo(
+    () => wiringStatus(frame, componentSet, links),
+    [frame, componentSet, links]
+  );
+  const gpsWired = Boolean(placed.gps?.length) && wiring.gpsToFc;
   const [baySatellites, setBaySatellites] = useState(0);
 
   useEffect(() => {
@@ -228,11 +233,16 @@ export default function App() {
     return s;
   }, [placed]);
 
+  /**
+   * The one part the build order currently calls for. Optional extras (telemetry,
+   * buzzer) are skipped here so they never block the chain — the parts tray lets
+   * them be fitted at any time instead.
+   */
   const activePart = useMemo(() => {
     for (const id of BUILD_ORDER) {
       if (!componentSet.includes(id)) continue;
       const def = PARTS[id];
-      if (!def) continue;
+      if (!def || def.optional) continue;
       if ((placed[id]?.length || 0) < requiredQty(def, frame)) return id;
     }
     return null;
@@ -242,7 +252,6 @@ export default function App() {
   useEffect(() => {
     simRef.current = new FlightSim();
     return () => {
-      cancelAnimationFrame(rafRef.current);
       simRef.current = null;
     };
   }, []);
@@ -250,12 +259,9 @@ export default function App() {
   /** Capabilities the simulator needs, derived from the build and injected faults. */
   const capabilities = useMemo(
     () => ({
-      gps: Boolean(placed.gps?.length) && links.has("gps->fc") && faultState.gpsPresent !== false,
+      gps: gpsWired && faultState.gpsPresent !== false,
       satelliteCap: faultState.satelliteOverride ?? 12,
-      positionHold:
-        Boolean(placed.gps?.length) &&
-        links.has("gps->fc") &&
-        faultState.compassWorking !== false,
+      positionHold: gpsWired && faultState.compassWorking !== false,
       imuWorking: faultState.imuWorking !== false && Boolean(placed.imu?.length || !componentSet.includes("imu")),
       imuCalibrated:
         faultState.imuCalibrated !== false &&
@@ -267,7 +273,7 @@ export default function App() {
       overVoltage: Boolean(faultState.overVoltage),
       socOverride: faultState.socOverride ?? null,
     }),
-    [placed, links, faultState, flags.imuCalibrated, componentSet]
+    [placed, gpsWired, faultState, flags.imuCalibrated, componentSet]
   );
 
   /* Push configuration into the sim whenever the build changes. */
@@ -306,38 +312,36 @@ export default function App() {
     });
   }, [diagnostics]);
 
-  /* The render/physics loop. Only runs in flight mode. */
+  /**
+   * Flight loop.
+   *
+   * The PHYSICS is stepped inside the three.js render loop (see
+   * DroneScene.attachSim) so the aircraft's pose is read on the very frame it is
+   * drawn. React only samples telemetry on a timer to refresh the HUD.
+   *
+   * Doing it the other way round — physics in a React rAF, pose delivered through
+   * React state — meant the drone's position only updated 20 times a second while
+   * the world around it rendered at 60, which is what made the flight look laggy.
+   */
   useEffect(() => {
+    const sim = simRef.current;
+    const scene = sceneRef.current;
+    if (!sim || !scene) return;
+
     if (mode !== "flight") {
-      cancelAnimationFrame(rafRef.current);
+      scene.attachSim(null);
       return;
     }
-    const sim = simRef.current;
-    if (!sim) return;
+    scene.attachSim(sim);
 
-    let last = performance.now();
-    let acc = 0;
-    let sinceSnapshot = 0;
-    const STEP = 1 / 120; // fixed-step physics keeps the PID stable
+    const id = setInterval(() => {
+      setTelemetry({ ...sim.telemetry(), keys: { ...keysRef.current } });
+    }, 100); // 10 Hz is plenty for numeric readouts
 
-    const loop = (now) => {
-      rafRef.current = requestAnimationFrame(loop);
-      const dt = Math.min((now - last) / 1000, 0.05);
-      last = now;
-      acc += dt;
-      let guard = 0;
-      while (acc >= STEP && guard++ < 12) {
-        sim.step(STEP);
-        acc -= STEP;
-      }
-      sinceSnapshot += dt;
-      if (sinceSnapshot > 1 / 20) {
-        sinceSnapshot = 0;
-        setTelemetry({ ...sim.telemetry(), keys: { ...keysRef.current } });
-      }
+    return () => {
+      clearInterval(id);
+      scene.attachSim(null);
     };
-    rafRef.current = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(rafRef.current);
   }, [mode]);
 
   /* Keyboard */
@@ -388,29 +392,34 @@ export default function App() {
     [frame, variants]
   );
 
-  const toggleLink = useCallback((id) => {
+  const connectWire = useCallback((id) => {
+    setLinks((prev) => new Set(prev).add(id));
+    setFlags((f) => ({ ...f, wiringValidated: false }));
+  }, []);
+
+  const disconnectWire = useCallback((id) => {
     setLinks((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      next.delete(id);
       return next;
     });
     setFlags((f) => ({ ...f, wiringValidated: false }));
   }, []);
 
+  /** Teacher shortcut: make every wire this build could legally have. */
   const connectAll = useCallback(() => {
-    const spec = buildWiringSpec(frame, { components: componentSet });
-    const canWire = (link) => {
-      const partFor = (n) =>
-        n.startsWith("esc") ? "esc" : n.startsWith("motor") ? "motor" : n;
-      const has = (n) => {
-        const p = partFor(n);
-        if (p === "pdb" && !placed.pdb?.length) return Boolean(placed.battery?.length);
-        return Boolean(placed[p]?.length);
-      };
-      return link.available !== false && has(link.from) && has(link.to);
-    };
-    setLinks(new Set(spec.filter(canWire).map((l) => l.id)));
-  }, [frame, placed, componentSet]);
+    setLinks(new Set(allWireIds(frame, componentSet)));
+    setNotice("Every loom wired. Open one to see how the connections were made.");
+  }, [frame, componentSet]);
+
+  /* The loom currently open in the wiring dialog. */
+  const [openHarnessId, setOpenHarnessId] = useState(null);
+  const openHarness = useMemo(() => {
+    if (!openHarnessId) return null;
+    return (
+      buildHarnesses(frame, componentSet).find((h) => h.id === openHarnessId) || null
+    );
+  }, [openHarnessId, frame, componentSet]);
 
   const toggleFault = useCallback((id, motor) => {
     setFaults((prev) => {
@@ -429,7 +438,9 @@ export default function App() {
   }, []);
 
   const injectRandom = useCallback(() => {
-    const pool = (module.unlocks?.randomFailures ? RANDOM_FAILURE_POOL : module.failures) || [];
+    // Prefer this module's own failure list; fall back to the general pool so the
+    // teacher's random-fault button always has something to throw.
+    const pool = module.failures?.length ? module.failures : RANDOM_FAILURE_POOL;
     const usable = pool.filter((id) => FAILURES[id]);
     if (!usable.length) return;
     const id = usable[Math.floor(Math.random() * usable.length)];
@@ -621,7 +632,7 @@ export default function App() {
             setNotice("All required connections match the wiring diagram.");
           } else {
             setNotice(
-              `${missing.length} required connection(s) missing. Open the Wiring tab.`
+              `Still incomplete: ${missing.map((h) => h.title).join(", ")}.`
             );
             setSidebarTab("wiring");
           }
@@ -644,31 +655,10 @@ export default function App() {
       disabled: testing || !flags.powered,
       onClick: runMotorTest,
     });
-    if (module.unlocks?.environment) {
-      a.push({
-        id: "envDone",
-        label: "Confirm environment & payload",
-        onClick: () => {
-          setFlags((f) => ({ ...f, envConfigured: true, payloadConfigured: true }));
-          setSidebarTab("environment");
-          setNotice("Environment locked in. The flight model is using these numbers.");
-        },
-      });
-    }
-    if (module.unlocks?.randomFailures) {
-      a.push({
-        id: "diagnosed",
-        label: "Mark fault as diagnosed",
-        disabled: faults.length === 0,
-        onClick: () => {
-          setFlags((f) => ({ ...f, faultDiagnosed: true }));
-          setNotice("Diagnosis recorded. Now repair it.");
-        },
-      });
+    if (faults.length > 0) {
       a.push({
         id: "repair",
         label: "Repair the aircraft",
-        disabled: faults.length === 0,
         tone: "primary",
         onClick: clearFaults,
       });
@@ -710,7 +700,6 @@ export default function App() {
     const t = [{ id: "tasks", label: "Tasks" }];
     if (module.components?.length) t.push({ id: "parts", label: "Parts" });
     if (module.unlocks?.wiring) t.push({ id: "wiring", label: "Wiring" });
-    if (module.unlocks?.environment) t.push({ id: "environment", label: "Environment" });
     t.push({ id: "airframe", label: "Airframe" });
     return t;
   }, [module]);
@@ -886,24 +875,8 @@ export default function App() {
               links={links}
               placed={placed}
               componentSet={componentSet}
-              onToggle={toggleLink}
+              onOpenHarness={setOpenHarnessId}
               onConnectAll={connectAll}
-            />
-          )}
-          {sidebarTab === "environment" && (
-            <EnvironmentPanel
-              env={env}
-              frame={frame}
-              build={build}
-              telemetry={telemetry}
-              onChange={(k, v) => {
-                setEnv((e) => ({ ...e, [k]: v }));
-                setFlags((f) => ({
-                  ...f,
-                  envConfigured: true,
-                  payloadConfigured: k === "payload" ? true : f.payloadConfigured,
-                }));
-              }}
             />
           )}
           {sidebarTab === "airframe" && (
@@ -995,6 +968,16 @@ export default function App() {
               setCrashReport(null);
             }}
             onDismiss={() => setCrashReport(null)}
+          />
+        )}
+
+        {openHarness && (
+          <WiringDialog
+            harness={openHarness}
+            links={links}
+            onConnect={connectWire}
+            onDisconnect={disconnectWire}
+            onClose={() => setOpenHarnessId(null)}
           />
         )}
       </Viewport>

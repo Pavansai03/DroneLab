@@ -109,6 +109,21 @@ export const PART_ICONS = {
       <path d="M17 8V4" />
     </S>
   ),
+  telemetry: (
+    <S>
+      <rect x="5" y="12" width="14" height="7" rx="1.6" />
+      <path d="M12 12V6" />
+      <path d="M8.5 5.5a5 5 0 017 0" />
+      <path d="M6 3a9 9 0 0112 0" />
+    </S>
+  ),
+  buzzer: (
+    <S>
+      <circle cx="12" cy="12" r="7.5" />
+      <circle cx="12" cy="12" r="2.2" />
+      <path d="M12 4.5v2M12 17.5v2" />
+    </S>
+  ),
 };
 
 export const Check = ({ size = 13 }) => (

@@ -13,7 +13,7 @@
 import { LOGIC_TREES, evaluateTree } from "../data/logicTrees.js";
 import { AIRFRAMES, classifyMotorFailure } from "../data/airframes.js";
 import { PARTS, requiredQty } from "../data/parts.js";
-import { buildWiringSpec } from "../data/wiring.js";
+import { wiringStatus } from "../data/wiring.js";
 import { BATTERY_SPEC, ESC_LIMIT_C } from "./physics.js";
 import { analyseAuthority } from "./mixer.js";
 
@@ -40,6 +40,10 @@ export function runDiagnostics(build, runtime) {
   const f = build.flags || {};
   const fault = build.faultState || {};
 
+  /* One authority for every "is it wired?" question, so the checklist, the
+     diagnostics panel and the wiring bench can never disagree. */
+  const wiring = wiringStatus(frame, build.componentSet, links);
+
   const has = (partId) => (build.placed?.[partId]?.length || 0) > 0;
   const countOf = (partId) => build.placed?.[partId]?.length || 0;
   const allOf = (partId) =>
@@ -55,7 +59,7 @@ export function runDiagnostics(build, runtime) {
 
   /* ---------------------------------------------------------- BATTERY */
   const batteryConnected =
-    has("battery") && links.has("battery->pdb") && fault.batteryConnected !== false;
+    has("battery") && wiring.batteryToPower && fault.batteryConnected !== false;
   const soc = fault.socOverride ?? runtime.soc ?? 1;
   const voltage = fault.overVoltage ? 16.8 : (runtime.voltage ?? BATTERY_SPEC.vNominal);
 
@@ -78,7 +82,7 @@ export function runDiagnostics(build, runtime) {
   const receiverPowered =
     has("receiver") && batteryConnected && fault.receiverPowered !== false;
   const receiverLinked =
-    links.has("receiver->fc") && fault.receiverLinked !== false;
+    wiring.receiverToFc && fault.receiverLinked !== false;
   const ctxReceiver = {
     powered: receiverPowered,
     fcConnected: receiverLinked && has("fc"),
@@ -97,7 +101,7 @@ export function runDiagnostics(build, runtime) {
     ? (fault.satelliteOverride ?? runtime.satellites ?? 0)
     : 0;
   const ctxGps = {
-    connected: gpsPresent && links.has("gps->fc"),
+    connected: gpsPresent && wiring.gpsToFc,
     satellites,
   };
 
@@ -139,7 +143,7 @@ export function runDiagnostics(build, runtime) {
   const benchMode = !(build.componentSet || []).includes("receiver");
 
   const ctxFc = {
-    powered: has("fc") && batteryConnected && links.has("pdb->fc"),
+    powered: has("fc") && batteryConnected && wiring.fcPowered,
     sensorsInitialized,
     receiverConnected:
       benchMode ||
@@ -169,8 +173,8 @@ export function runDiagnostics(build, runtime) {
         batteryConnected &&
         !brokenPdb.has(i) &&
         !dead.has(i) &&
-        links.has(`pdb->esc${i}`),
-      signalConnected: links.has(`fc->esc${i}`) && has("fc"),
+        wiring.escPowered(i),
+      signalConnected: wiring.escSignal(i) && has("fc"),
       pwmReceived: Boolean(runtime.armed) && ctxFc.powered,
       temperature: (runtime.escTemps?.[i] ?? 25) + (fault.escTempBoost?.[i] ?? 0),
     };
@@ -183,7 +187,7 @@ export function runDiagnostics(build, runtime) {
     const fittedReversed = reversed.has(i) || motorVariant?.reversed === true;
     const cMotor = {
       motor: i,
-      connected: motorPlaced && links.has(`esc${i}->motor${i}`) && !dead.has(i),
+      connected: motorPlaced && wiring.motorPhases(i) && !dead.has(i),
       correctDirection: !fittedReversed && !fault.crossedOutputs,
       rpmResponding: !jammed.has(i),
       declaredSpin,
@@ -238,10 +242,7 @@ export function runDiagnostics(build, runtime) {
   };
 
   /* ------------------------------------------------------- PRE-FLIGHT */
-  const wiringSpec = buildWiringSpec(frame, { components: build.componentSet });
-  const missingRequiredLinks = wiringSpec.filter(
-    (l) => l.required && !links.has(l.id)
-  );
+  const missingRequiredLinks = wiring.missingRequired;
 
   const missingParts = (build.componentSet || [])
     .filter((id) => PARTS[id])
@@ -268,13 +269,13 @@ export function runDiagnostics(build, runtime) {
     {
       id: "wiring",
       label: "Required wiring complete",
-      pass: missingRequiredLinks.length === 0,
+      pass: wiring.allRequiredDone,
       detail:
-        missingRequiredLinks.length === 0
-          ? "Every mandatory link made."
-          : `${missingRequiredLinks.length} link(s) missing: ${missingRequiredLinks
-              .slice(0, 3)
-              .map((l) => l.id)
+        wiring.allRequiredDone
+          ? `Every mandatory connection made (${wiring.requiredDone}).`
+          : `${wiring.requiredTotal - wiring.requiredDone} wire(s) still missing in: ${missingRequiredLinks
+              .slice(0, 2)
+              .map((h) => h.title)
               .join(", ")}`,
     },
     {
@@ -382,6 +383,7 @@ export function runDiagnostics(build, runtime) {
     readyToFly,
     missingParts,
     missingRequiredLinks,
+    wiring,
     failureClass,
     authority,
     deadMotors: deadList,

@@ -147,12 +147,12 @@ export default function FlightHUD({ telemetry, diagnostics, frame, keys }) {
       </div>
 
       <div className="keycaps">
-        <Cap on={keys.KeyW}>W <b>fwd</b></Cap>
+        <Cap on={keys.KeyW}>W <b>forward</b></Cap>
         <Cap on={keys.KeyS}>S <b>back</b></Cap>
-        <Cap on={keys.KeyA}>A <b>yaw L</b></Cap>
-        <Cap on={keys.KeyD}>D <b>yaw R</b></Cap>
-        <Cap on={keys.KeyQ}>Q <b>roll L</b></Cap>
-        <Cap on={keys.KeyE}>E <b>roll R</b></Cap>
+        <Cap on={keys.KeyA || keys.ArrowLeft}>A / &larr; <b>turn LEFT</b></Cap>
+        <Cap on={keys.KeyD || keys.ArrowRight}>D / &rarr; <b>turn RIGHT</b></Cap>
+        <Cap on={keys.KeyQ}>Q <b>slide L</b></Cap>
+        <Cap on={keys.KeyE}>E <b>slide R</b></Cap>
         <Cap on={keys.Space}>SPACE <b>up</b></Cap>
         <Cap on={keys.ShiftLeft || keys.ShiftRight}>SHIFT <b>down</b></Cap>
       </div>

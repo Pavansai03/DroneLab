@@ -227,6 +227,36 @@ export const PARTS = {
       "If the radio link drops, the FC does NOT just stop — it runs the failsafe you configured. A well set-up drone climbs to a safe height and flies home; a badly set-up one falls out of the sky.",
     variants: [{ id: "std", label: "6-Ch TX", detail: "Mode 2" }],
   },
+
+  /* ------------------------------------------- TELEMETRY (wiring diagram) */
+  telemetry: {
+    id: "telemetry",
+    label: "Telemetry Radio",
+    category: "radio",
+    qty: 1,
+    spec: "433 / 915 MHz",
+    icon: "telemetry",
+    optional: true,
+    why: "The telemetry radio streams live flight data down to a ground station and carries commands back up, on a separate link from the control radio.",
+    teaches:
+      "Telemetry is a serial link, so it crosses over exactly like the GPS: the radio's TX must reach the flight controller's RX. Wire TX to TX and both ends talk while neither listens.",
+    variants: [{ id: "std", label: "Telemetry Set", detail: "Air + ground pair" }],
+  },
+
+  /* ---------------------------------------------- BUZZER (wiring diagram) */
+  buzzer: {
+    id: "buzzer",
+    label: "Buzzer",
+    category: "avionics",
+    qty: 1,
+    spec: "PIEZO",
+    icon: "buzzer",
+    optional: true,
+    why: "The buzzer is how the drone talks to you without a screen: arming tones, pre-arm failures, low battery, and the lost-model alarm after a crash.",
+    teaches:
+      "A drone that refuses to arm usually tells you why in beeps before it tells you anything else. Learning the tones is faster than plugging in a laptop.",
+    variants: [{ id: "std", label: "Piezo Buzzer", detail: "Alarms + tones" }],
+  },
 };
 
 export const PART_LIST = Object.values(PARTS);

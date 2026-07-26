@@ -549,6 +549,69 @@ export function buildTransmitter(mats) {
   return g;
 }
 
+/** Telemetry radio — small board with a whip antenna, per the wiring diagram. */
+export function buildTelemetry(mats) {
+  const g = new THREE.Group();
+  g.name = "telemetry";
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.2, 0.045, 0.11),
+    new THREE.MeshStandardMaterial({ color: 0x18202b, roughness: 0.5, metalness: 0.2 })
+  );
+  body.castShadow = true;
+  g.add(body);
+  const sma = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.013, 0.013, 0.03, 10),
+    mats.gold
+  );
+  sma.position.set(-0.08, 0.035, 0);
+  g.add(sma);
+  const whip = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.007, 0.007, 0.34, 8),
+    new THREE.MeshStandardMaterial({ color: 0x101319, roughness: 0.6 })
+  );
+  whip.position.set(-0.08, 0.22, 0);
+  g.add(whip);
+  const led = new THREE.Mesh(
+    new THREE.SphereGeometry(0.012, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0x39ff6a })
+  );
+  led.position.set(0.07, 0.03, 0.03);
+  g.add(led);
+  return g;
+}
+
+/** Piezo buzzer. */
+export function buildBuzzer(mats) {
+  const g = new THREE.Group();
+  g.name = "buzzer";
+  const can = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.06, 0.06, 0.05, 18),
+    new THREE.MeshStandardMaterial({ color: 0x0e1116, roughness: 0.55, metalness: 0.25 })
+  );
+  can.castShadow = true;
+  g.add(can);
+  const port = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.014, 0.014, 0.012, 12),
+    new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.4 })
+  );
+  port.position.y = 0.028;
+  g.add(port);
+  [0xe5484d, 0x101010].forEach((col, i) => {
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0.05, -0.01, -0.01 + i * 0.02),
+      new THREE.Vector3(0.11, -0.02, -0.02 + i * 0.02),
+      new THREE.Vector3(0.17, -0.02, -0.02 + i * 0.02),
+    ]);
+    g.add(
+      new THREE.Mesh(
+        new THREE.TubeGeometry(curve, 8, 0.007, 6, false),
+        new THREE.MeshStandardMaterial({ color: col, roughness: 0.55 })
+      )
+    );
+  });
+  return g;
+}
+
 /* --------------------------------------------------------------- LOOKUP */
 
 export const PART_BUILDERS = {
@@ -568,6 +631,8 @@ export const PART_BUILDERS = {
   gps: (mats) => buildGps(mats),
   receiver: (mats) => buildReceiver(mats),
   transmitter: (mats) => buildTransmitter(mats),
+  telemetry: (mats) => buildTelemetry(mats),
+  buzzer: (mats) => buildBuzzer(mats),
 };
 
 export function buildPart(partId, mats, ctx = {}) {
