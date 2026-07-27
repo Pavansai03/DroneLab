@@ -549,37 +549,6 @@ export function buildTransmitter(mats) {
   return g;
 }
 
-/** Telemetry radio — small board with a whip antenna, per the wiring diagram. */
-export function buildTelemetry(mats) {
-  const g = new THREE.Group();
-  g.name = "telemetry";
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(0.2, 0.045, 0.11),
-    new THREE.MeshStandardMaterial({ color: 0x18202b, roughness: 0.5, metalness: 0.2 })
-  );
-  body.castShadow = true;
-  g.add(body);
-  const sma = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.013, 0.013, 0.03, 10),
-    mats.gold
-  );
-  sma.position.set(-0.08, 0.035, 0);
-  g.add(sma);
-  const whip = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.007, 0.007, 0.34, 8),
-    new THREE.MeshStandardMaterial({ color: 0x101319, roughness: 0.6 })
-  );
-  whip.position.set(-0.08, 0.22, 0);
-  g.add(whip);
-  const led = new THREE.Mesh(
-    new THREE.SphereGeometry(0.012, 8, 8),
-    new THREE.MeshBasicMaterial({ color: 0x39ff6a })
-  );
-  led.position.set(0.07, 0.03, 0.03);
-  g.add(led);
-  return g;
-}
-
 /** Piezo buzzer. */
 export function buildBuzzer(mats) {
   const g = new THREE.Group();
@@ -631,7 +600,6 @@ export const PART_BUILDERS = {
   gps: (mats) => buildGps(mats),
   receiver: (mats) => buildReceiver(mats),
   transmitter: (mats) => buildTransmitter(mats),
-  telemetry: (mats) => buildTelemetry(mats),
   buzzer: (mats) => buildBuzzer(mats),
 };
 

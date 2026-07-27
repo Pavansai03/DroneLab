@@ -341,53 +341,6 @@ export function buildHarnesses(frame, components = null) {
     });
   }
 
-  /* ------------------------------------------------ 8. Telemetry -> FC TELEM */
-  if (has("telemetry")) {
-    H.push({
-      id: "telem-fc",
-      title: "Telemetry radio to the Flight Controller",
-      subtitle: "Live data back to the ground station — another crossover link",
-      group: "navigation",
-      required: false,
-      correction:
-        "The reference diagram labels this port 'TX' twice; the row carrying the red wire should read 5V. Its wire colours also contradict its own legend. We follow the legend: green TX, blue RX.",
-      leftCards: [
-        card("telemetry", "telemetry", "Telemetry Module", "433 / 915 MHz", [
-          pin("V5", "5V", "Power in"),
-          pin("TX", "TX", "Radio transmits"),
-          pin("RX", "RX", "Radio listens"),
-          pin("GND", "GND", "Ground"),
-        ]),
-      ],
-      rightCards: [
-        card("fc", "fc", "Flight Controller", "TELEM port", [
-          pin("TEL_5V", "5V", "Power out"),
-          pin("TEL_RX", "RX", "FC listens"),
-          pin("TEL_TX", "TX", "FC transmits"),
-          pin("TEL_GND", "GND", "Ground"),
-        ]),
-      ],
-      wires: [
-        { key: "v5", from: ["telemetry", "V5"], to: ["fc", "TEL_5V"], color: "red", note: "5 V for the radio." },
-        {
-          key: "tx",
-          from: ["telemetry", "TX"],
-          to: ["fc", "TEL_RX"],
-          color: "green",
-          note: "Same crossover rule as the GPS: the radio's TX goes to the FC's RX.",
-        },
-        {
-          key: "rx",
-          from: ["telemetry", "RX"],
-          to: ["fc", "TEL_TX"],
-          color: "blue",
-          note: "FC TX to radio RX, so the ground station can send commands up to the aircraft.",
-        },
-        { key: "gnd", from: ["telemetry", "GND"], to: ["fc", "TEL_GND"], color: "black", note: "Common ground." },
-      ],
-    });
-  }
-
   /* --------------------------------------------------- 9. Buzzer -> FC BUZZER */
   if (has("buzzer")) {
     H.push({
@@ -475,7 +428,6 @@ export function wiringStatus(frame, components, linkSet) {
     motorPhases: (i) => wired(`escs-motors:phase${i}`),
     receiverToFc: isDone("rx-fc"),
     gpsToFc: isDone("gps-fc"),
-    telemToFc: isDone("telem-fc"),
     buzzerToFc: isDone("buzzer-fc"),
   };
 }
@@ -500,6 +452,5 @@ export const CONNECTION_SUMMARY = [
   "FC Main Out 1-N -> ESC Signal Wires",
   "Receiver -> FC (SBUS)",
   "GPS -> FC (GPS Port)",
-  "Telemetry -> FC (TELEM Port)",
   "All Grounds (GND) must be Common",
 ];

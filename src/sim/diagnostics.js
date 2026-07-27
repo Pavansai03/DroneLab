@@ -175,7 +175,16 @@ export function runDiagnostics(build, runtime) {
         !dead.has(i) &&
         wiring.escPowered(i),
       signalConnected: wiring.escSignal(i) && has("fc"),
-      pwmReceived: Boolean(runtime.armed) && ctxFc.powered,
+      /* "PWM Received?" asks whether a pulse train is present on the signal wire,
+         NOT whether the motors have been told to spin. A booted flight controller
+         emits the idle pulse straight away — that is what makes ESCs play their
+         startup tones long before you arm.
+         Tying this to `armed` was wrong: it made "All ESCs operational" impossible
+         to pass while disarmed, so arming a perfect build always warned about it.
+         What genuinely leaves an ESC with no signal is an unconfigured FC, whose
+         MAIN OUT channels are not yet mapped to motors. */
+      pwmReceived:
+        ctxFc.powered && Boolean(f.fcConfigured) && fault.fcConfigured !== false,
       temperature: (runtime.escTemps?.[i] ?? 25) + (fault.escTempBoost?.[i] ?? 0),
     };
     escContexts.push(cEsc);

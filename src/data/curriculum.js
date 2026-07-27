@@ -499,7 +499,6 @@ export const MODULES = [
       "imu",
       "compass",
       "barometer",
-      "telemetry",
       "buzzer",
     ],
     unlocks: { wiring: true, flight: true, environment: false, missions: true },

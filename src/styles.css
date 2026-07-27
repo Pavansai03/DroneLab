@@ -355,6 +355,16 @@ body {
   width: 100%;
   justify-content: center;
 }
+.btn.icon {
+  padding: 8px 10px;
+}
+.topbar-sep {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
 
 /* -------------------------------------------------------- parts library */
 .cat-row {
@@ -1577,6 +1587,43 @@ input[type="range"]::-moz-range-thumb {
 }
 .harness-row.complete .harness-count {
   color: var(--ok);
+}
+
+/* Empty checkbox until the loom is finished, then a filled green tick. */
+.harness-row .wire-check {
+  color: transparent;
+  border-color: var(--faint);
+  background: transparent;
+}
+.harness-row.complete .wire-check {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #05210f;
+}
+
+/* Same treatment on each component card inside the wiring dialog. */
+.wd-card-check {
+  margin-left: auto;
+  width: 19px;
+  height: 19px;
+  border-radius: 6px;
+  border: 1.5px solid var(--faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  flex-shrink: 0;
+}
+.wd-card.complete .wd-card-check {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #05210f;
+}
+.wd-card.complete {
+  border-color: rgba(57, 217, 138, 0.5);
+}
+.wd-card.complete .wd-card-head {
+  background: rgba(57, 217, 138, 0.12);
 }
 
 /* --------------------------------------------------------------- flow */

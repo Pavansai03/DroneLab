@@ -214,16 +214,29 @@ export class FlightSim {
     this.emit("rth");
   }
 
+  /**
+   * WHICH WAY IS RIGHT?
+   * -------------------
+   * The aircraft's nose is +Z and up is +Y. The chase camera sits BEHIND the
+   * aircraft, so it looks along +Z — and in a right-handed system a camera facing
+   * +Z has screen-right at -X, not +X.
+   *
+   * So from the pilot's seat:
+   *     pilot RIGHT = -X          pilot LEFT = +X
+   *
+   * A positive yaw angle swings the nose from +Z toward +X, which the pilot sees
+   * as a turn to the LEFT. "Turn left" is therefore a POSITIVE yaw demand, and
+   * "slide right" is a POSITIVE roll demand (positive roll tips the lift vector
+   * toward -X). Getting this backwards is what made A and D feel swapped.
+   */
   readSticks() {
     const k = this.keys;
     const on = (...codes) => codes.some((c) => k[c]);
     return {
       pitch: (on("KeyW", "ArrowUp") ? 1 : 0) - (on("KeyS", "ArrowDown") ? 1 : 0),
-      yaw: (on("KeyD", "ArrowRight") ? 1 : 0) - (on("KeyA", "ArrowLeft") ? 1 : 0),
+      yaw: (on("KeyA", "ArrowLeft") ? 1 : 0) - (on("KeyD", "ArrowRight") ? 1 : 0),
       throttle: (on("Space") ? 1 : 0) - (on("ShiftLeft", "ShiftRight") ? 1 : 0),
-      // A POSITIVE roll angle tilts the lift vector towards -X, i.e. the aircraft
-      // slides LEFT. So "roll right" (E) is a negative roll demand.
-      roll: (on("KeyQ") ? 1 : 0) - (on("KeyE") ? 1 : 0),
+      roll: (on("KeyE") ? 1 : 0) - (on("KeyQ") ? 1 : 0),
     };
   }
 
@@ -454,7 +467,10 @@ export class FlightSim {
       const a = (m.angle * Math.PI) / 180;
       tauRoll += thrust * -Math.sin(a) * L;
       tauPitch += thrust * -Math.cos(a) * L;
-      tauYaw += -m.spin * KAPPA * thrust;
+      // A propeller spinning CW (seen from above) drags the airframe the other way.
+      // CW from above means the nose swings toward -X, which is DECREASING yaw, so
+      // the reaction on the airframe is an INCREASING yaw — hence +spin here.
+      tauYaw += m.spin * KAPPA * thrust;
 
       // Power and ESC heating
       const pw = propPowerW(rpm, D, rho);

@@ -228,21 +228,6 @@ export const PARTS = {
     variants: [{ id: "std", label: "6-Ch TX", detail: "Mode 2" }],
   },
 
-  /* ------------------------------------------- TELEMETRY (wiring diagram) */
-  telemetry: {
-    id: "telemetry",
-    label: "Telemetry Radio",
-    category: "radio",
-    qty: 1,
-    spec: "433 / 915 MHz",
-    icon: "telemetry",
-    optional: true,
-    why: "The telemetry radio streams live flight data down to a ground station and carries commands back up, on a separate link from the control radio.",
-    teaches:
-      "Telemetry is a serial link, so it crosses over exactly like the GPS: the radio's TX must reach the flight controller's RX. Wire TX to TX and both ends talk while neither listens.",
-    variants: [{ id: "std", label: "Telemetry Set", detail: "Air + ground pair" }],
-  },
-
   /* ---------------------------------------------- BUZZER (wiring diagram) */
   buzzer: {
     id: "buzzer",

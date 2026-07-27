@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { WIRE_COLORS, WIRE_COLOR_LIST } from "../data/wiring.js";
-import { PART_ICONS } from "./Icons.jsx";
+import { PART_ICONS, Check } from "./Icons.jsx";
 
 /**
  * THE WIRING DIALOG
@@ -209,14 +209,31 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
 
   /* --------------------------------------------------------------- render */
 
-  const renderCard = (c) => (
-    <div className="wd-card" key={c.id}>
+  /** Every wire that touches this card, and how many are made. */
+  const cardStatus = (cardId) => {
+    const wires = harness.wires.filter(
+      (w) => w.from[0] === cardId || w.to[0] === cardId
+    );
+    const done = wires.filter((w) => links.has(w.id)).length;
+    return { done, total: wires.length, complete: wires.length > 0 && done === wires.length };
+  };
+
+  const renderCard = (c) => {
+    const st = cardStatus(c.id);
+    return (
+    <div className={`wd-card ${st.complete ? "complete" : ""}`} key={c.id}>
       <div className="wd-card-head">
         <span className="wd-card-icon">{PART_ICONS[c.part] || null}</span>
         <div>
           <b>{c.label}</b>
           {c.sub && <small>{c.sub}</small>}
         </div>
+        <span
+          className="wd-card-check"
+          title={`${st.done} of ${st.total} connections made`}
+        >
+          <Check size={12} />
+        </span>
       </div>
       <div className="wd-pins">
         {c.pins.map((p) => {
@@ -250,7 +267,8 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
         })}
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="modal-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>

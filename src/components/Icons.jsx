@@ -109,14 +109,6 @@ export const PART_ICONS = {
       <path d="M17 8V4" />
     </S>
   ),
-  telemetry: (
-    <S>
-      <rect x="5" y="12" width="14" height="7" rx="1.6" />
-      <path d="M12 12V6" />
-      <path d="M8.5 5.5a5 5 0 017 0" />
-      <path d="M6 3a9 9 0 0112 0" />
-    </S>
-  ),
   buzzer: (
     <S>
       <circle cx="12" cy="12" r="7.5" />
@@ -162,6 +154,20 @@ export const Warn = ({ size = 14 }) => (
   <S size={size}>
     <path d="M12 4l9 16H3z" />
     <path d="M12 10v4M12 17v.5" />
+  </S>
+);
+
+export const Undo = ({ size = 14 }) => (
+  <S size={size}>
+    <path d="M9 14L4 9l5-5" />
+    <path d="M4 9h9a7 7 0 010 14h-3" />
+  </S>
+);
+
+export const Redo = ({ size = 14 }) => (
+  <S size={size}>
+    <path d="M15 14l5-5-5-5" />
+    <path d="M20 9h-9a7 7 0 000 14h3" />
   </S>
 );
 

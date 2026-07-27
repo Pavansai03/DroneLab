@@ -1,7 +1,7 @@
 # DroneLab — Drone Engineering Simulator
 
 A classroom simulator for teaching how a multirotor is built and why it flies (or
-doesn't). Students assemble a **quadcopter, hexacopter or octocopter** part by part,
+doesn't). Students assemble a **quadcopter** part by part,
 wire the loom, run the pre-flight checks, then fly it — and every component's
 behaviour is driven by the decision logic from the course notes.
 
@@ -32,7 +32,8 @@ the consequences emerge on their own:
   aircraft really does flip on takeoff;
 - kill one motor on a quadcopter and the three survivors genuinely cannot cancel
   the leftover yaw torque, so it spins up and crashes;
-- do the same to a hexacopter and the mixer really can redistribute, so it flies on.
+- and the same analysis, run on a six- or eight-rotor mixer, shows why those
+  airframes survive it — the maths is general even though the course builds a quad.
 
 The simulator's independently-computed verdict is displayed next to the failure
 table from the course notes. **They agree on all eight cases** — which is the point:
@@ -50,6 +51,10 @@ the theory the students are taught is confirmed by the physics they are watching
 | Octo, 3 motors | rank 4/4, **saturated** | Severe instability, emergency landing |
 | Octo, 4+ motors | heavily saturated | Crash |
 
+The quad rows are what the simulator flies. The hexa and octo rows are the same
+code run against six- and eight-rotor mixers — kept because they show the analysis
+is general, not hand-tuned for one airframe.
+
 ---
 
 ## The three modules
@@ -62,9 +67,9 @@ genuinely satisfies them — never on a button press.
 |---|---|---|---|
 | 1 | Basic Drone Build | Build your first drone and make it hover | Frame, battery, FC, ESC x4, motor x4, prop x4 |
 | 2 | Controlled Flight | Control the drone using a transmitter | Transmitter, receiver, GPS |
-| 3 | Complete Electronics | Build and configure a complete drone | PDB, IMU, compass, barometer, telemetry radio, buzzer — **airframe choice unlocks here** |
+| 3 | Complete Electronics | Build and configure a complete drone | PDB, IMU, compass, barometer, buzzer |
 
-Module 3 is the final module. Modules 1 and 2 are locked to a quadcopter, as the notes specify. Module 1 has no
+Module 3 is the final module. Every module builds a quadcopter. Module 1 has no
 radio yet, so it runs as a **bench hover test** — this is stated explicitly in the
 pre-flight panel rather than quietly faked.
 
@@ -84,7 +89,7 @@ When a student cannot arm, they open the Flight Controller tree and see precisel
 which question answered "no". That is the whole teaching loop.
 
 ESC, motor and propeller trees are **per-motor** — tabs let you inspect M1…M8
-individually, which is how you find the one backwards motor on an octocopter.
+individually, which is how you find the one backwards motor on the aircraft.
 
 
 ---
@@ -108,18 +113,17 @@ Click a finished wire to pull it out again.
 
 The loom is grouped into harnesses, and scales with the airframe:
 
-| Harness | Quad | Hexa | Octo |
-|---|---|---|---|
-| Battery to PDB | 2 | 2 | 2 |
-| PDB to ESCs | 8 | 12 | 16 |
-| PDB BEC to FC | 2 | 2 | 2 |
-| FC MAIN OUT to ESC signals | 4 | 6 | 8 |
-| ESCs to motors (3-phase) | 4 | 6 | 8 |
-| Receiver to FC (SBUS) | 3 | 3 | 3 |
-| GPS to FC *(optional)* | 4 | 4 | 4 |
-| Telemetry to FC *(optional)* | 4 | 4 | 4 |
-| Buzzer to FC *(optional)* | 2 | 2 | 2 |
-| **Required total** | **23** | **31** | **39** |
+| Harness | Wires |
+|---|---|
+| Battery to PDB | 2 |
+| PDB to ESCs | 8 |
+| PDB BEC to FC | 2 |
+| FC MAIN OUT to ESC signals | 4 |
+| ESCs to motors (3-phase) | 4 |
+| Receiver to FC (SBUS) | 3 |
+| GPS to FC *(optional)* | 4 |
+| Buzzer to FC *(optional)* | 2 |
+| **Required total** | **23** |
 
 ### Two corrections to the reference diagram
 
@@ -168,7 +172,7 @@ if you want that lesson back.
 ```
 src/
   data/
-    airframes.js     quad/hexa/octo geometry, motor order & direction, failure model
+    airframes.js     airframe geometry, motor order & direction, failure model
     parts.js         bill of materials with the real specs from the parts chart
     logicTrees.js    the 13 decision trees + the Complete Flight Logic diagram
     wiring.js        pin-level connections + harness grouping, generalised to N motors
@@ -199,6 +203,20 @@ you are close enough to drop). Left-drag the background to orbit, wheel to zoom.
 left and right**, `Q`/`E` slide sideways, `Space` climb, `Shift` descend.
 `ARM` and `RTH` are in the top bar.
 
+**Undo / redo** — `Ctrl+Z` and `Ctrl+Y` (or `Ctrl+Shift+Z`), or the arrows in the
+top bar. History covers the build only: parts, wiring, calibrations and injected
+faults. It deliberately does not rewind the camera, the open panel or the flight
+itself. Stripping the build asks for confirmation and clears the history with it.
+
+### Which way is "right"?
+
+The nose is `+Z` and up is `+Y`, and the chase camera sits *behind* the aircraft
+looking along `+Z`. In a right-handed system a camera facing `+Z` has screen-right
+at **`-X`**, not `+X`. So a positive yaw angle swings the nose toward `+X`, which
+the pilot sees as a turn to the **left**. Every control sign in `readSticks()`,
+every motor position in `buildSlots()` and the propeller spin direction all follow
+from that one fact — get it wrong and A/D feel swapped.
+
 ---
 
 ## Teaching with it
@@ -208,7 +226,6 @@ fault, inject it, and send students to the logic trees to find it — the affect
 tree is already showing the failing branch. "Inject random fault" does it blind, so
 the class has to diagnose from symptoms alone.
 
-Suggested comparison in Module 3: build the same aircraft as a quad, then a hexa,
-then an octo, and kill one motor on each. The Health panel will show three
-different verdicts for the same fault, and the students can explain why from the
-mixer rank alone.
+Suggested exercise: kill one motor on the quad and ask the class to predict what
+happens before you fly it. The Health panel shows the mixer rank dropping to 3/4
+with yaw uncommandable — and the aircraft then does exactly that in the air.

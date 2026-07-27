@@ -13,16 +13,16 @@
  *
  *     rollFactor_i  = -right_i      more thrust on the LEFT  -> banks right
  *     pitchFactor_i = -forward_i    more thrust at the REAR  -> nose drops, flies forward
- *     yawFactor_i   = -s_i          a CW motor drags the airframe CCW
+ *     yawFactor_i   = +s_i          spin up the CW motors and the airframe yaws CCW
  *
  *     output_i = throttle + roll*rollFactor_i + pitch*pitchFactor_i + yaw*yawFactor_i
  *
- * Sign convention, stated once so it is never guessed at:
- *   +pitch demand -> nose down -> accelerates FORWARD (+Z)
- *   +roll  demand -> banks so the lift vector tilts to -X -> slides LEFT
- *   +yaw   demand -> nose right
- * The roll sign is the one that trips people up, so the pilot's "roll right" key is
- * mapped to a NEGATIVE roll demand in flightSim.js.
+ * Sign convention, stated once so it is never guessed at. The nose is +Z, up is +Y,
+ * and because the chase camera looks along +Z the pilot's RIGHT is -X:
+ *   +pitch demand -> nose down  -> accelerates FORWARD (+Z)
+ *   +roll  demand -> lift vector tilts to -X -> slides RIGHT
+ *   +yaw   demand -> nose swings toward +X    -> turns LEFT
+ * See readSticks() in flightSim.js for why -X is "right".
  *
  * The roll/pitch factors are normalised so the largest is 1.0, which keeps
  * control authority comparable between a quad, a hexa and an octo.
@@ -44,7 +44,7 @@ export function getMixer(frame) {
       throttle: 1,
       roll: -Math.sin(a),
       pitch: -Math.cos(a),
-      yaw: -m.spin,
+      yaw: m.spin,
       spin: m.spin,
       angle: m.angle,
     };

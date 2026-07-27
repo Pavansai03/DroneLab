@@ -13,6 +13,7 @@ import {
 import { FlightSim } from "./sim/flightSim.js";
 import { runDiagnostics, buildCrashReport } from "./sim/diagnostics.js";
 import { buildProgressApi, evaluateModule } from "./sim/progress.js";
+import { useBuildHistory, makeInitialBuild } from "./sim/useBuildHistory.js";
 
 import Viewport from "./components/Viewport.jsx";
 import PartsLibrary from "./components/PartsLibrary.jsx";
@@ -26,7 +27,8 @@ import SystemFlow from "./components/SystemFlow.jsx";
 import FramePicker from "./components/FramePicker.jsx";
 import FlightHUD from "./components/FlightHUD.jsx";
 import CrashReport from "./components/CrashReport.jsx";
-import { Arrow, ArrowLeft, Reset, Bolt, Warn } from "./components/Icons.jsx";
+import ConfirmDialog from "./components/ConfirmDialog.jsx";
+import { Arrow, ArrowLeft, Reset, Bolt, Warn, Undo, Redo } from "./components/Icons.jsx";
 
 /* Canonical assembly order. Propellers come after the battery deliberately:
    on a real drone you fit props last, and only with the battery disconnected. */
@@ -40,32 +42,12 @@ const BUILD_ORDER = [
   "motor",
   "receiver",
   "transmitter",
-  "telemetry",
   "buzzer",
   "gps",
   "compass",
   "battery",
   "propeller",
 ];
-
-const EMPTY_FLAGS = {
-  bound: false,
-  fcConfigured: false,
-  imuCalibrated: false,
-  compassCalibrated: false,
-  escCalibrated: false,
-  powered: false,
-  motorTestPassed: false,
-  wiringValidated: false,
-  preflightPassed: false,
-  envConfigured: false,
-  payloadConfigured: false,
-  frameChosen: false,
-  failureExperienced: false,
-  faultDiagnosed: false,
-  faultRepaired: false,
-  crashed: false,
-};
 
 const DEFAULT_ENV = { wind: 0, payload: 0, temperature: 25, altitude: 0 };
 
@@ -102,13 +84,51 @@ export default function App() {
   const [allUnlocked, setAllUnlocked] = useState(false);
 
   /* ------------------------------------------------------------ build */
-  const [frameId, setFrameId] = useState("quad");
-  const [placed, setPlaced] = useState({});
-  const [links, setLinks] = useState(() => new Set());
-  const [flags, setFlags] = useState(EMPTY_FLAGS);
-  const [faults, setFaults] = useState([]);
-  const [variants, setVariants] = useState({});
-  const [env, setEnv] = useState(DEFAULT_ENV);
+  /* Everything about the aircraft lives in one undoable object. The UI state
+     below it (which tab is open, telemetry, the camera) deliberately does not —
+     undo should reverse a build decision, not rewind the interface. */
+  const {
+    build: bs,
+    commit,
+    undo,
+    redo,
+    reset: resetHistory,
+    canUndo,
+    canRedo,
+    undoLabel,
+    redoLabel,
+  } = useBuildHistory(makeInitialBuild("quad"));
+
+  const { frameId, placed, links, flags, faults, variants } = bs;
+  const [env] = useState(DEFAULT_ENV);
+
+  /* Thin wrappers so each slice reads naturally at the call sites.
+     `label` is what the undo button will offer to reverse. */
+  const setPlaced = useCallback(
+    (u, label = "fit a part", o) =>
+      commit((p) => ({ ...p, placed: typeof u === "function" ? u(p.placed) : u }), label, o),
+    [commit]
+  );
+  const setLinks = useCallback(
+    (u, label = "change wiring", o) =>
+      commit((p) => ({ ...p, links: typeof u === "function" ? u(p.links) : u }), label, o),
+    [commit]
+  );
+  const setFlags = useCallback(
+    (u, label = "change a setting", o) =>
+      commit((p) => ({ ...p, flags: typeof u === "function" ? u(p.flags) : u }), label, o),
+    [commit]
+  );
+  const setFaults = useCallback(
+    (u, label = "change faults", o) =>
+      commit((p) => ({ ...p, faults: typeof u === "function" ? u(p.faults) : u }), label, o),
+    [commit]
+  );
+  const setVariants = useCallback(
+    (u, label = "choose a variant", o) =>
+      commit((p) => ({ ...p, variants: typeof u === "function" ? u(p.variants) : u }), label, o),
+    [commit]
+  );
 
   /* ---------------------------------------------------------- session */
   const [mode, setMode] = useState("assembly");
@@ -119,6 +139,8 @@ export default function App() {
   const [crashReport, setCrashReport] = useState(null);
   const [notice, setNotice] = useState(null);
   const [testing, setTesting] = useState(false);
+  /* Which destructive action is awaiting confirmation, if any. */
+  const [confirm, setConfirm] = useState(null);
 
   const frame = AIRFRAMES[frameId];
   const sceneRef = useRef(null);
@@ -348,6 +370,22 @@ export default function App() {
   useEffect(() => {
     const down = (e) => {
       if (e.target?.tagName === "INPUT") return;
+
+      // Undo / redo. Ctrl+Z, and either Ctrl+Y or Ctrl+Shift+Z for redo.
+      if (e.ctrlKey || e.metaKey) {
+        const k = e.key.toLowerCase();
+        if (k === "z" && !e.shiftKey) {
+          e.preventDefault();
+          undo();
+          return;
+        }
+        if (k === "y" || (k === "z" && e.shiftKey)) {
+          e.preventDefault();
+          redo();
+          return;
+        }
+      }
+
       keysRef.current[e.code] = true;
       simRef.current?.setKey(e.code, true);
       if (e.code === "Space") e.preventDefault();
@@ -362,7 +400,7 @@ export default function App() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, []);
+  }, [undo, redo]);
 
   useEffect(() => {
     if (!notice) return;
@@ -372,45 +410,66 @@ export default function App() {
 
   /* --------------------------------------------------------- actions */
 
+  /* Each of these makes exactly ONE history entry, so a single undo reverses a
+     single student action rather than half of one. */
+
   const handlePlace = useCallback(
     (partId, slot) => {
       const def = PARTS[partId];
-      setPlaced((prev) => {
-        const list = prev[partId] || [];
-        if (list.some((x) => x.slot === slot)) return prev;
+      commit((p) => {
+        const list = p.placed[partId] || [];
+        if (list.some((x) => x.slot === slot)) return p;
         // Propellers and motors inherit the slot's required direction unless the
         // student has deliberately picked a variant.
         const slotSpin = frame.motors[slot]?.spin;
-        let variant = variants[partId] || defaultVariant(def, frame);
-        if (partId === "propeller" && !variants.propeller) {
+        let variant = p.variants[partId] || defaultVariant(def, frame);
+        if (partId === "propeller" && !p.variants.propeller) {
           variant = slotSpin === 1 ? "cw" : "ccw";
         }
-        return { ...prev, [partId]: [...list, { slot, variant }] };
-      });
-      if (partId === "frame") setFlags((f) => ({ ...f, frameChosen: true }));
+        return {
+          ...p,
+          placed: { ...p.placed, [partId]: [...list, { slot, variant }] },
+          flags: partId === "frame" ? { ...p.flags, frameChosen: true } : p.flags,
+        };
+      }, `fit ${def.label}${def.qty === "motors" ? ` ${slot + 1}` : ""}`);
     },
-    [frame, variants]
+    [frame, commit]
   );
 
-  const connectWire = useCallback((id) => {
-    setLinks((prev) => new Set(prev).add(id));
-    setFlags((f) => ({ ...f, wiringValidated: false }));
-  }, []);
+  const connectWire = useCallback(
+    (id) => {
+      commit(
+        (p) => ({
+          ...p,
+          links: new Set(p.links).add(id),
+          flags: { ...p.flags, wiringValidated: false },
+        }),
+        "connect a wire"
+      );
+    },
+    [commit]
+  );
 
-  const disconnectWire = useCallback((id) => {
-    setLinks((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-    setFlags((f) => ({ ...f, wiringValidated: false }));
-  }, []);
+  const disconnectWire = useCallback(
+    (id) => {
+      commit((p) => {
+        const next = new Set(p.links);
+        next.delete(id);
+        return { ...p, links: next, flags: { ...p.flags, wiringValidated: false } };
+      }, "remove a wire");
+    },
+    [commit]
+  );
 
   /** Teacher shortcut: make every wire this build could legally have. */
   const connectAll = useCallback(() => {
-    setLinks(new Set(allWireIds(frame, componentSet)));
+    const ids = allWireIds(frame, componentSet);
+    commit(
+      (p) => ({ ...p, links: new Set(ids), flags: { ...p.flags, wiringValidated: false } }),
+      "auto-wire the whole loom"
+    );
     setNotice("Every loom wired. Open one to see how the connections were made.");
-  }, [frame, componentSet]);
+  }, [frame, componentSet, commit]);
 
   /* The loom currently open in the wiring dialog. */
   const [openHarnessId, setOpenHarnessId] = useState(null);
@@ -421,21 +480,35 @@ export default function App() {
     );
   }, [openHarnessId, frame, componentSet]);
 
-  const toggleFault = useCallback((id, motor) => {
-    setFaults((prev) => {
-      const exists = prev.some((f) => f.id === id && f.motor === motor);
-      if (exists) return prev.filter((f) => !(f.id === id && f.motor === motor));
-      return [...prev, { id, motor }];
-    });
-    setFlags((f) => ({ ...f, failureExperienced: true, faultRepaired: false }));
-  }, []);
+  const toggleFault = useCallback(
+    (id, motor) => {
+      commit((p) => {
+        const exists = p.faults.some((f) => f.id === id && f.motor === motor);
+        const faults = exists
+          ? p.faults.filter((f) => !(f.id === id && f.motor === motor))
+          : [...p.faults, { id, motor }];
+        return {
+          ...p,
+          faults,
+          flags: { ...p.flags, failureExperienced: true, faultRepaired: false },
+        };
+      }, `${FAILURES[id]?.label ?? "fault"}`);
+    },
+    [commit]
+  );
 
   const clearFaults = useCallback(() => {
-    setFaults([]);
-    setFlags((f) => ({ ...f, faultRepaired: true, crashed: false }));
+    commit(
+      (p) => ({
+        ...p,
+        faults: [],
+        flags: { ...p.flags, faultRepaired: true, crashed: false },
+      }),
+      "repair the aircraft"
+    );
     simRef.current?.reset(true);
     setCrashReport(null);
-  }, []);
+  }, [commit]);
 
   const injectRandom = useCallback(() => {
     // Prefer this module's own failure list; fall back to the general pool so the
@@ -446,21 +519,27 @@ export default function App() {
     const id = usable[Math.floor(Math.random() * usable.length)];
     const def = FAILURES[id];
     const motor = def.perMotor ? Math.floor(Math.random() * frame.motorCount) : undefined;
-    setFaults((prev) => [...prev, { id, motor }]);
-    setFlags((f) => ({ ...f, failureExperienced: true, faultRepaired: false }));
+    commit(
+      (p) => ({
+        ...p,
+        faults: [...p.faults, { id, motor }],
+        flags: { ...p.flags, failureExperienced: true, faultRepaired: false },
+      }),
+      `inject ${def.label}`
+    );
     setNotice("A fault has been injected. Diagnose it using the logic trees.");
-  }, [module, frame.motorCount]);
+  }, [module, frame.motorCount, commit]);
 
+  /* Stripping the build clears the undo history with it: keeping steps that lead
+     back into a build that no longer exists would be worse than not having them. */
   const resetBuild = useCallback(() => {
-    setPlaced({});
-    setLinks(new Set());
-    setFlags(EMPTY_FLAGS);
-    setFaults([]);
+    resetHistory(makeInitialBuild(frameId));
     setCrashReport(null);
     setTelemetry(null);
     setMode("assembly");
     simRef.current?.reset();
-  }, []);
+    setNotice("Build stripped. Start again from the frame.");
+  }, [resetHistory, frameId]);
 
   /** The motor test from the task chain: spin each motor and verify direction. */
   const runMotorTest = useCallback(() => {
@@ -691,6 +770,11 @@ export default function App() {
     };
   }, [mode, telemetry, baySatellites, runtime.escTemps]);
 
+  const totalPlaced = useMemo(
+    () => Object.values(placed).reduce((s, a) => s + (a?.length || 0), 0),
+    [placed]
+  );
+
   const canFly =
     (placed.propeller?.length || 0) >= frame.motorCount &&
     (placed.battery?.length || 0) > 0 &&
@@ -766,10 +850,8 @@ export default function App() {
             </button>
             <button
               className="btn"
-              onClick={() => {
-                simRef.current?.reset(false);
-                syncTelemetry();
-              }}
+              onClick={() => setConfirm("resetFlight")}
+              title="Put the aircraft back on the pad"
             >
               <Reset /> Reset flight
             </button>
@@ -778,7 +860,33 @@ export default function App() {
             </button>
           </>
         )}
-        <button className="btn" onClick={resetBuild} title="Strip the build">
+
+        <div className="topbar-sep" />
+
+        <button
+          className="btn icon"
+          onClick={undo}
+          disabled={!canUndo}
+          title={canUndo ? `Undo: ${undoLabel ?? "last change"}  (Ctrl+Z)` : "Nothing to undo"}
+          aria-label="Undo"
+        >
+          <Undo />
+        </button>
+        <button
+          className="btn icon"
+          onClick={redo}
+          disabled={!canRedo}
+          title={canRedo ? `Redo: ${redoLabel ?? "next change"}  (Ctrl+Y)` : "Nothing to redo"}
+          aria-label="Redo"
+        >
+          <Redo />
+        </button>
+        <button
+          className="btn icon"
+          onClick={() => setConfirm("resetBuild")}
+          title="Strip the build and start again"
+          aria-label="Strip the build"
+        >
           <Reset />
         </button>
       </header>
@@ -866,7 +974,7 @@ export default function App() {
                   variant: variants[id],
                 })
               }
-              onRemove={resetBuild}
+              onRemove={() => setConfirm("resetBuild")}
             />
           )}
           {sidebarTab === "wiring" && (
@@ -882,13 +990,9 @@ export default function App() {
           {sidebarTab === "airframe" && (
             <FramePicker
               frameId={frameId}
-              lockedTo={module.frameLocked}
               onPick={(id) => {
-                setFrameId(id);
-                setPlaced({});
-                setLinks(new Set());
-                setFlags((f) => ({ ...EMPTY_FLAGS, frameChosen: true }));
-                setFaults([]);
+                if (id === frameId) return;
+                resetHistory({ ...makeInitialBuild(id), flags: { ...makeInitialBuild(id).flags, frameChosen: true } });
                 setTelemetry(null);
                 setMode("assembly");
                 simRef.current?.reset();
@@ -978,6 +1082,40 @@ export default function App() {
             onConnect={connectWire}
             onDisconnect={disconnectWire}
             onClose={() => setOpenHarnessId(null)}
+          />
+        )}
+
+        {confirm === "resetBuild" && (
+          <ConfirmDialog
+            title="Strip the whole build?"
+            message="Every part you have fitted and every wire you have made will be removed, and the undo history goes with it."
+            detail={`You currently have ${totalPlaced} part${
+              totalPlaced === 1 ? "" : "s"
+            } fitted and ${links.size} wire${links.size === 1 ? "" : "s"} connected.`}
+            confirmLabel="Yes, strip it"
+            cancelLabel="Keep my build"
+            onConfirm={() => {
+              setConfirm(null);
+              resetBuild();
+            }}
+            onCancel={() => setConfirm(null)}
+          />
+        )}
+
+        {confirm === "resetFlight" && (
+          <ConfirmDialog
+            title="Reset the flight?"
+            message="The aircraft goes back to the launch pad with a full battery. Your build and wiring are untouched."
+            detail="Mission gates and the current flight log will be cleared."
+            confirmLabel="Reset flight"
+            cancelLabel="Keep flying"
+            tone="primary"
+            onConfirm={() => {
+              setConfirm(null);
+              simRef.current?.reset(false);
+              syncTelemetry();
+            }}
+            onCancel={() => setConfirm(null)}
           />
         )}
       </Viewport>

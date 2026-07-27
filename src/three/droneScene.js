@@ -445,23 +445,24 @@ export class DroneScene {
     const escR = R * 0.58;
 
     const slots = {};
-    /* Motor angles are measured CLOCKWISE FROM THE NOSE, and the mixer treats
-       cos(angle) as the FORWARD component and sin(angle) as the RIGHT component.
-       World axes here are +Z forward and +X right, so it must be
-       x = sin(angle), z = cos(angle). Swapping these two mirrors the whole
-       airframe about its diagonal, which silently puts M2 at the front-left when
-       the mixer believes it is at the rear-right. */
+    /* Motor angles are measured CLOCKWISE FROM THE NOSE as the pilot sees it.
+       The nose is +Z, and because the chase camera looks along +Z the pilot's RIGHT
+       is -X (see readSticks() in flightSim.js). So a motor at angle `a` sits at
+           x = -sin(a) * r      z = +cos(a) * r
+       which also matches the roll torque the physics computes, T * -sin(a) * L.
+       Getting the sign of x wrong mirrors the whole airframe and puts M2 on the
+       wrong side of the aircraft. */
     const polar = (r, y, a) =>
-      new THREE.Vector3(Math.sin(deg(a)) * r, y, Math.cos(deg(a)) * r);
+      new THREE.Vector3(-Math.sin(deg(a)) * r, y, Math.cos(deg(a)) * r);
 
     slots.frame = [{ slot: 0, pos: new THREE.Vector3(0, H.hub, 0), rot: 0, size: 0.95 }];
 
     slots.esc = f.motors.map((m) => ({
       slot: m.index,
       pos: polar(escR, H.esc, m.angle),
-      // Same convention as the arms: a part laid along +X is rotated by
-      // (angle - 90 degrees) about Y to point down its arm.
-      rot: deg(m.angle) - Math.PI / 2,
+      // Same convention as the arms: a part laid along +X is swung to
+      // (-sin a, 0, cos a) by rotating -(a + 90 degrees) about Y.
+      rot: -deg(m.angle) - Math.PI / 2,
       size: 0.34,
       label: `ESC ${m.index + 1}`,
     }));
@@ -504,9 +505,6 @@ export class DroneScene {
     slots.receiver = [
       { slot: 0, pos: new THREE.Vector3(0.3, H.receiver, 0.2), rot: 0, size: 0.3 },
     ];
-    slots.telemetry = [
-      { slot: 0, pos: new THREE.Vector3(-0.32, H.receiver, 0.18), rot: 0, size: 0.3 },
-    ];
     slots.buzzer = [
       { slot: 0, pos: new THREE.Vector3(-0.3, H.pdb + 0.04, -0.26), rot: 0, size: 0.22 },
     ];
@@ -541,9 +539,9 @@ export class DroneScene {
     this.armsGroup.visible = false;
     this.frame.motors.forEach((m) => {
       const arm = buildArm(this.mats, this.frame);
-      // buildArm lays the arm along +X. Rotating by (angle - 90) about Y swings it
-      // to (sin angle, 0, cos angle) — the same place buildSlots() puts the motor.
-      arm.rotation.y = deg(m.angle) - Math.PI / 2;
+      // buildArm lays the arm along +X. Rotating by -(angle + 90) about Y swings it
+      // to (-sin angle, 0, cos angle) — the same place buildSlots() puts the motor.
+      arm.rotation.y = -deg(m.angle) - Math.PI / 2;
       this.armsGroup.add(arm);
     });
     this.aircraft.add(this.armsGroup);
@@ -960,8 +958,10 @@ export class DroneScene {
         if (liveRpm?.[slot] != null) rpm = liveRpm[slot];
         else if (t?.motorRpm?.[slot] != null) rpm = t.motorRpm[slot];
         else if (this.mode === "assembly" && this.idleSpin) rpm = 1200;
-        // Scale RPM down heavily — real RPM would be a strobing blur
-        mesh.rotation.y += spin * (rpm / 6000) * dt * 22;
+        // Scale RPM down heavily — real RPM would be a strobing blur.
+        // A CW propeller (spin = +1) turns clockwise seen from above, which is the
+        // DECREASING yaw direction, hence the minus sign.
+        mesh.rotation.y -= spin * (rpm / 6000) * dt * 22;
       }
 
       if (partId === "esc" && mesh.userData.led) {
