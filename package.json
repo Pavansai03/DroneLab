@@ -7,9 +7,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview --port 4173"
+    "preview": "vite preview --port 4173",
+    "supabase:keys": "node supabase/generate-keys.mjs",
+    "supabase:check": "node supabase/check-connection.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.9",
     "lucide-react": "^0.454.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

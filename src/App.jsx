@@ -14,6 +14,12 @@ import { FlightSim } from "./sim/flightSim.js";
 import { runDiagnostics, buildCrashReport } from "./sim/diagnostics.js";
 import { buildProgressApi, evaluateModule } from "./sim/progress.js";
 import { useBuildHistory, makeInitialBuild } from "./sim/useBuildHistory.js";
+import {
+  useAuthSession,
+  useBuildSync,
+  useProgressSync,
+  fetchCompletedModules,
+} from "./lib/useCloudSync.js";
 
 import Viewport from "./components/Viewport.jsx";
 import PartsLibrary from "./components/PartsLibrary.jsx";
@@ -28,6 +34,8 @@ import FramePicker from "./components/FramePicker.jsx";
 import FlightHUD from "./components/FlightHUD.jsx";
 import CrashReport from "./components/CrashReport.jsx";
 import ConfirmDialog from "./components/ConfirmDialog.jsx";
+import AccountPanel from "./components/AccountPanel.jsx";
+import TeacherDashboard from "./components/TeacherDashboard.jsx";
 import { Arrow, ArrowLeft, Reset, Bolt, Warn, Undo, Redo } from "./components/Icons.jsx";
 
 /* Canonical assembly order. Propellers come after the battery deliberately:
@@ -102,6 +110,24 @@ export default function App() {
   const { frameId, placed, links, flags, faults, variants } = bs;
   const [env] = useState(DEFAULT_ENV);
 
+  /* ------------------------------------------------------ cloud (optional) */
+  /* All of this is inert when Supabase is not configured, so the simulator is
+     unchanged offline — no feature is locked behind an account. */
+  const auth = useAuthSession();
+
+  const applyCloudBuild = useCallback(
+    (loaded) => resetHistory(loaded),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  const { status: syncStatus, error: syncError } = useBuildSync({
+    user: auth.user,
+    build: bs,
+    applyBuild: applyCloudBuild,
+    fallbackBuild: makeInitialBuild(frameId),
+  });
+
   /* Thin wrappers so each slice reads naturally at the call sites.
      `label` is what the undo button will offer to reverse. */
   const setPlaced = useCallback(
@@ -146,13 +172,6 @@ export default function App() {
   const sceneRef = useRef(null);
   const simRef = useRef(null);
   const keysRef = useRef({});
-
-  /* Module 1-2 are locked to a quadcopter, per the course notes. */
-  useEffect(() => {
-    if (module.frameLocked && frameId !== module.frameLocked) {
-      setFrameId(module.frameLocked);
-    }
-  }, [module, frameId]);
 
   const faultState = useMemo(() => deriveFaultState(faults), [faults]);
 
@@ -245,6 +264,22 @@ export default function App() {
       setCompletedModules((prev) => new Set(prev).add(moduleId));
     }
   }, [progress.complete, moduleId, completedModules]);
+
+  /* Mirror progress into Supabase, and restore it on sign-in so the module rail
+     reflects work done on another machine. Both are no-ops when offline. */
+  useProgressSync({ user: auth.user, moduleId, progress });
+
+  useEffect(() => {
+    if (!auth.user) return;
+    let cancelled = false;
+    fetchCompletedModules(auth.user.id).then((set) => {
+      if (cancelled || set.size === 0) return;
+      setCompletedModules((prev) => new Set([...prev, ...set]));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.user?.id]);
 
   /* -------------------------------------------------- the active part */
   const filledSlots = useMemo(() => {
@@ -530,15 +565,29 @@ export default function App() {
     setNotice("A fault has been injected. Diagnose it using the logic trees.");
   }, [module, frame.motorCount, commit]);
 
-  /* Stripping the build clears the undo history with it: keeping steps that lead
-     back into a build that no longer exists would be worse than not having them. */
+  /**
+   * Strip the build back to nothing.
+   *
+   * This also clears the curriculum progress, because the modules were only ever
+   * marked complete BY that build. Leaving the ticks and unlocks behind would say
+   * a student had finished work that no longer exists — and would strand them in a
+   * module that has just re-locked. So we return to Module 1 as well.
+   *
+   * Teacher mode is left alone: it is a deliberate override, not progress.
+   *
+   * The undo history goes too — steps leading back into a build that no longer
+   * exists are worse than no history at all.
+   */
   const resetBuild = useCallback(() => {
     resetHistory(makeInitialBuild(frameId));
+    setCompletedModules(new Set());
+    setModuleId("m1");
     setCrashReport(null);
     setTelemetry(null);
     setMode("assembly");
+    setSidebarTab("tasks");
     simRef.current?.reset();
-    setNotice("Build stripped. Start again from the frame.");
+    setNotice("Build stripped and module progress cleared. Start again at Module 1.");
   }, [resetHistory, frameId]);
 
   /** The motor test from the task chain: spin each motor and verify direction. */
@@ -785,8 +834,13 @@ export default function App() {
     if (module.components?.length) t.push({ id: "parts", label: "Parts" });
     if (module.unlocks?.wiring) t.push({ id: "wiring", label: "Wiring" });
     t.push({ id: "airframe", label: "Airframe" });
+    /* Always "Account": the panel's own tabs are labelled "Sign in" and "Create
+       account", and having two different controls both read "Sign in" is a
+       genuine source of mis-clicks. */
+    t.push({ id: "account", label: "Account" });
+    if (auth.isTeacher) t.push({ id: "class", label: "Class" });
     return t;
-  }, [module]);
+  }, [module, auth.user, auth.isTeacher]);
 
   useEffect(() => {
     if (!sidebarTabs.some((t) => t.id === sidebarTab)) setSidebarTab("tasks");
@@ -860,6 +914,41 @@ export default function App() {
             </button>
           </>
         )}
+
+        <button
+          className={`cloud-chip ${
+            !auth.enabled
+              ? ""
+              : syncStatus === "error"
+                ? "bad"
+                : syncStatus === "saving" || syncStatus === "loading"
+                  ? "busy"
+                  : auth.user
+                    ? "on"
+                    : ""
+          }`}
+          onClick={() => setSidebarTab("account")}
+          title={
+            !auth.enabled
+              ? "Supabase is not configured — progress is kept in this browser only. Click for details."
+              : auth.user
+                ? `Signed in as ${auth.user.email}. Click to manage your account.`
+                : "Not signed in — progress is not being saved. Click to sign in."
+          }
+        >
+          <i />
+          {!auth.enabled
+            ? "LOCAL ONLY"
+            : syncStatus === "error"
+              ? "SYNC FAILED"
+              : syncStatus === "saving"
+                ? "SAVING"
+                : syncStatus === "loading"
+                  ? "LOADING"
+                  : auth.user
+                    ? "SYNCED"
+                    : "SIGN IN"}
+        </button>
 
         <div className="topbar-sep" />
 
@@ -987,6 +1076,15 @@ export default function App() {
               onConnectAll={connectAll}
             />
           )}
+          {sidebarTab === "account" && (
+            <AccountPanel
+              auth={auth}
+              syncStatus={syncStatus}
+              syncError={syncError}
+              onSignedIn={() => setNotice("Signed in. Your build and progress will now be saved.")}
+            />
+          )}
+          {sidebarTab === "class" && <TeacherDashboard auth={auth} />}
           {sidebarTab === "airframe" && (
             <FramePicker
               frameId={frameId}
@@ -1088,10 +1186,19 @@ export default function App() {
         {confirm === "resetBuild" && (
           <ConfirmDialog
             title="Strip the whole build?"
-            message="Every part you have fitted and every wire you have made will be removed, and the undo history goes with it."
-            detail={`You currently have ${totalPlaced} part${
-              totalPlaced === 1 ? "" : "s"
-            } fitted and ${links.size} wire${links.size === 1 ? "" : "s"} connected.`}
+            message="Every part you have fitted and every wire you have made will be removed, along with the undo history and your module progress."
+            detail={
+              `You currently have ${totalPlaced} part${totalPlaced === 1 ? "" : "s"} fitted ` +
+              `and ${links.size} wire${links.size === 1 ? "" : "s"} connected` +
+              (completedModules.size
+                ? `, with ${completedModules.size} module${
+                    completedModules.size === 1 ? "" : "s"
+                  } marked complete.`
+                : ".") +
+              ` You will start again at Module 1${
+                allUnlocked ? " (teacher mode stays on, so all modules remain reachable)." : ", and Modules 2 and 3 will re-lock."
+              }`
+            }
             confirmLabel="Yes, strip it"
             cancelLabel="Keep my build"
             onConfirm={() => {

@@ -1626,6 +1626,86 @@ input[type="range"]::-moz-range-thumb {
   background: rgba(57, 217, 138, 0.12);
 }
 
+/* -------------------------------------------------- accounts / roster */
+.field {
+  display: grid;
+  gap: 4px;
+}
+.field > span {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.field input {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: inherit;
+  outline: none;
+}
+.field input:focus {
+  border-color: var(--cyan);
+}
+
+.roster-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.roster-name {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.roster-meta {
+  font-size: 10.5px;
+  color: var(--dim);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.cloud-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--panel2);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--dim);
+  white-space: nowrap;
+  cursor: pointer;
+  font-family: inherit;
+}
+.cloud-chip:hover {
+  border-color: var(--cyan);
+}
+.cloud-chip i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--faint);
+  flex-shrink: 0;
+}
+.cloud-chip.on i {
+  background: var(--ok);
+  box-shadow: 0 0 7px rgba(57, 217, 138, 0.6);
+}
+.cloud-chip.busy i {
+  background: var(--amber);
+}
+.cloud-chip.bad i {
+  background: var(--bad);
+}
+
 /* --------------------------------------------------------------- flow */
 .flow {
   padding: 14px;

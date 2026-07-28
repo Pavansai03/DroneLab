@@ -167,6 +167,118 @@ if you want that lesson back.
 
 ---
 
+## Optional: Supabase on Dokploy
+
+The simulator works with no backend at all. Supabase adds accounts, saved
+builds and a teacher dashboard — and if it is not configured, **every one of
+those features switches off silently and nothing else changes**. No part of the
+simulator is locked behind an account.
+
+### 1. Deploy Supabase
+
+Dokploy → **Templates → Supabase** (needs Dokploy ≥ 0.22.5). It brings up
+Postgres, Kong, GoTrue, PostgREST, Realtime, Storage and Studio.
+
+Generate the secrets first:
+
+```bash
+node supabase/generate-keys.mjs
+```
+
+`ANON_KEY` and `SERVICE_ROLE_KEY` are **HS256 JWTs signed with `JWT_SECRET`**, not
+random strings. If they are not signed with the same secret the stack is given,
+every API call returns 401 and nothing tells you why. The script emits a matching
+set, plus the exact-length fields (`VAULT_ENC_KEY` 32, `REALTIME_DB_ENC_KEY` 16,
+`SECRET_KEY_BASE` 64) that the stack refuses to start without.
+
+Set these yourself — the template does not generate them all:
+
+| Variable | Note |
+|---|---|
+| `JWT_SECRET` | Sign `ANON_KEY` and `SERVICE_ROLE_KEY` **with this secret**; they are JWTs, not random strings |
+| `ANON_KEY` / `SERVICE_ROLE_KEY` | roles `anon` and `service_role` respectively |
+| `POSTGRES_PASSWORD` | |
+| `SECRET_KEY_BASE` | 64 random chars |
+| `VAULT_ENC_KEY` | 32 random chars |
+| `LOGFLARE_API_KEY` | the stack will not come up healthy without it |
+| `DOCKER_SOCKET_LOCATION` | `/var/run/docker.sock` |
+| `SUPABASE_PUBLIC_URL`, `API_EXTERNAL_URL` | must match the domain you expose, with the right scheme |
+| `SITE_URL`, `ADDITIONAL_REDIRECT_URLS` | GoTrue validates these before sending auth emails |
+| `SMTP_*` | needed for confirmation and password-reset emails |
+
+Point a domain at the **Kong** service on port **8000** — that is the single API
+entry point. Give Studio its own domain. Do not change `CONTAINER_PREFIX` after
+deploying; it is referenced by the Vector logging config.
+
+### 2. Create the schema
+
+Studio → SQL Editor → run [`supabase/schema.sql`](supabase/schema.sql). It creates
+the tables **and their Row Level Security policies**. Do not skip it: self-hosted
+Supabase creates tables with RLS *off*, which would make the public anon key a
+full read/write credential to your students' data.
+
+Then make yourself a teacher (the statement is at the bottom of that file). It
+has to be done in Studio — the app deliberately cannot grant it, or any student
+could promote themselves.
+
+### 3. Check the connection before touching the app
+
+```bash
+# .env.local in the project root:
+#   VITE_SUPABASE_URL=https://<kong-domain>
+#   VITE_SUPABASE_ANON_KEY=<anon key>
+npm run supabase:check
+```
+
+Works through every failure mode that produces a silent or misleading symptom in
+the browser: key not signed with the deployed `JWT_SECRET`, the Studio domain
+used instead of Kong, `schema.sql` never run, or RLS left off. Nothing it does
+writes to the database.
+
+### 4. Deploy DroneLab
+
+Build type **Dockerfile**, domain port **80**. Then set, under
+**Advanced → Build Time Arguments** — *not* Environment:
+
+```
+VITE_SUPABASE_URL=https://<your-kong-domain>
+VITE_SUPABASE_ANON_KEY=<your anon key>
+```
+
+**This is the step that catches people out.** Vite substitutes
+`import.meta.env.VITE_*` while `vite build` runs and then discards the
+environment, so the values are compiled into the bundle. Runtime environment
+variables reach a container that was built long ago and have no effect — the
+only symptom is that nothing ever saves. The Dockerfile fails the build if the
+URL is set without the key, rather than shipping a half-configured bundle.
+
+### Things that will bite you
+
+- **Plain HTTP breaks it outright.** If DroneLab is served over HTTPS and
+  Supabase over HTTP, the browser blocks every request as mixed content. Over
+  HTTP the auth tokens and Studio's basic-auth password also travel in the
+  clear. Use a domain with Dokploy's Let's Encrypt. The app logs an explicit
+  console error if it detects this mismatch.
+- **`SERVICE_ROLE_KEY` must never appear in the frontend.** It bypasses RLS
+  entirely. It is not referenced anywhere in `src/`.
+- **Email confirmation is on by default.** Either configure SMTP or turn
+  confirmation off in Auth settings, or new accounts cannot sign in.
+
+### What gets stored
+
+| Table | Contents |
+|---|---|
+| `profiles` | display name, class code |
+| `user_roles` | `student` or `teacher` — no client write policy at all, by design |
+| `module_progress` | per-module tasks done, completion, current task |
+| `builds` | the current aircraft as JSON, so a student resumes on any machine |
+| `class_roster` (view) | the teacher dashboard, `security_invoker` on so a student sees only themselves |
+
+Saves are debounced (1.5 s for builds, 1.2 s for progress) — assembling a drone
+fires dozens of state changes a minute and each one is not worth a round trip.
+
+---
+
 ## Project layout
 
 ```
