@@ -1,0 +1,12 @@
+# Secrets. .env.local will hold your real Supabase anon key — never commit it.
+.env
+.env.local
+.env.*.local
+
+# Build output and dependencies
+node_modules/
+dist/
+
+# Editor / OS noise
+.DS_Store
+*.log
