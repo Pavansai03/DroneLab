@@ -429,11 +429,36 @@ export default function App() {
       keysRef.current[e.code] = false;
       simRef.current?.setKey(e.code, false);
     };
+
+    /**
+     * Release every key when the window loses focus.
+     *
+     * If anything steals focus mid-flight — an OS dialog, alt-tab, a
+     * notification — the browser never delivers the keyup, so the control stays
+     * jammed on and the drone flies away on its own while the student watches.
+     * Treat losing focus as letting go of the sticks, which is also what a real
+     * failsafe does when it stops hearing the transmitter.
+     */
+    const releaseAll = () => {
+      for (const code of Object.keys(keysRef.current)) {
+        if (!keysRef.current[code]) continue;
+        keysRef.current[code] = false;
+        simRef.current?.setKey(code, false);
+      }
+    };
+    const onVisibility = () => {
+      if (document.hidden) releaseAll();
+    };
+
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
+    window.addEventListener("blur", releaseAll);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", releaseAll);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [undo, redo]);
 

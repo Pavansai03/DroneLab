@@ -222,7 +222,7 @@ export const PARTS = {
     qty: 1,
     spec: "2.4 GHz TX",
     icon: "transmitter",
-    why: "The transmitter is the pilot's control box. In this simulator its sticks are mapped to W / A / S / D, Space and Shift.",
+    why: "The transmitter is the pilot's control box. In this simulator its sticks are mapped to W / A / S / D, Q / E, Space and Z.",
     teaches:
       "If the radio link drops, the FC does NOT just stop — it runs the failsafe you configured. A well set-up drone climbs to a safe height and flies home; a badly set-up one falls out of the sky.",
     variants: [{ id: "std", label: "6-Ch TX", detail: "Mode 2" }],

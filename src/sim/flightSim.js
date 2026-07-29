@@ -235,7 +235,12 @@ export class FlightSim {
     return {
       pitch: (on("KeyW", "ArrowUp") ? 1 : 0) - (on("KeyS", "ArrowDown") ? 1 : 0),
       yaw: (on("KeyA", "ArrowLeft") ? 1 : 0) - (on("KeyD", "ArrowRight") ? 1 : 0),
-      throttle: (on("Space") ? 1 : 0) - (on("ShiftLeft", "ShiftRight") ? 1 : 0),
+      /* Descend is Z, NOT Shift. Windows opens its Sticky Keys prompt after five
+         Shift presses, which is trivially reached by a student tapping to come
+         down — and the dialog steals focus mid-flight, so the keyup never
+         arrives and the control sticks on. Z sits under the left hand next to
+         W/A/S/D and triggers nothing. */
+      throttle: (on("Space") ? 1 : 0) - (on("KeyZ") ? 1 : 0),
       roll: (on("KeyE") ? 1 : 0) - (on("KeyQ") ? 1 : 0),
     };
   }

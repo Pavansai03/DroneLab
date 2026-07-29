@@ -154,7 +154,7 @@ export default function FlightHUD({ telemetry, diagnostics, frame, keys }) {
         <Cap on={keys.KeyQ}>Q <b>slide L</b></Cap>
         <Cap on={keys.KeyE}>E <b>slide R</b></Cap>
         <Cap on={keys.Space}>SPACE <b>up</b></Cap>
-        <Cap on={keys.ShiftLeft || keys.ShiftRight}>SHIFT <b>down</b></Cap>
+        <Cap on={keys.KeyZ}>Z <b>down</b></Cap>
       </div>
     </>
   );

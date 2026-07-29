@@ -312,8 +312,15 @@ src/
 you are close enough to drop). Left-drag the background to orbit, wheel to zoom.
 
 **Flight** — `W`/`S` forward and back, **`A`/`D` (or the left/right arrows) turn
-left and right**, `Q`/`E` slide sideways, `Space` climb, `Shift` descend.
+left and right**, `Q`/`E` slide sideways, `Space` climb, **`Z` descend**.
 `ARM` and `RTH` are in the top bar.
+
+Descend is `Z` and not `Shift` on purpose: Windows pops its **Sticky Keys**
+prompt after five Shift presses, which a student reaches in seconds while
+trying to come down. Worse, that dialog steals focus, so the browser never
+delivers the `keyup` and the control stays jammed on. Losing focus for any
+reason — an OS dialog, alt-tab, a notification — now releases every key, the
+same way a real failsafe reacts to losing the transmitter.
 
 **Undo / redo** — `Ctrl+Z` and `Ctrl+Y` (or `Ctrl+Shift+Z`), or the arrows in the
 top bar. History covers the build only: parts, wiring, calibrations and injected
