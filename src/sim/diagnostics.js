@@ -367,6 +367,22 @@ export function runDiagnostics(build, runtime) {
       required: false,
       detail: `${satellites} satellite(s) · ${resGps.text}`,
     },
+    // Only shown once the module has introduced the buzzer, and never blocks
+    // arming — a real drone flies perfectly well silent, it just tells you
+    // nothing while it does.
+    ...((build.componentSet || []).includes("buzzer")
+      ? [
+          {
+            id: "buzzer",
+            label: "Buzzer fitted (arm tones, warnings, lost-model alarm)",
+            pass: wiring.buzzerToFc,
+            required: false,
+            detail: wiring.buzzerToFc
+              ? "Wired to the FC — arming, warnings and the crash alarm are audible."
+              : "Not fitted or not wired — the aircraft will give no audible feedback at all.",
+          },
+        ]
+      : []),
   ];
 
   const blocking = preflight.filter((c) => c.required !== false && !c.pass);
@@ -393,6 +409,9 @@ export function runDiagnostics(build, runtime) {
     missingParts,
     missingRequiredLinks,
     wiring,
+    // Whether the buzzer is fitted AND wired — the single switch that turns the
+    // whole audio layer on. See sim/buzzer.js.
+    buzzerFitted: Boolean(wiring.buzzerToFc),
     failureClass,
     authority,
     deadMotors: deadList,

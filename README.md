@@ -168,6 +168,35 @@ rather than being quietly steered around it:
 
 There is still an "auto-wire everything" button for teachers who want to skip ahead.
 
+### The buzzer is genuinely silent until it is fitted
+
+Module 3 adds a piezo buzzer, and it is not a decoration — it is wired to real
+audio, synthesised with the Web Audio API (no sound files to ship). But it only
+makes a sound once the buzzer is **placed on the airframe and wired to the FC**,
+exactly like a real one. Skip it, and the aircraft is completely silent: arming,
+pre-arm failures, and the crash alarm all happen without a sound, which is the
+honest behaviour of a drone nobody fitted a buzzer to.
+
+| Event | Tune |
+|---|---|
+| Armed | two rising beeps |
+| Disarmed | two falling beeps |
+| Arming denied | three harsh beeps — a pre-arm check failed |
+| Power on | three-note rising chirp |
+| Low battery | slow triple beep |
+| RTH engaged | three level beeps |
+| Failsafe | rapid urgent buzz |
+| ESC overheat / prop departed | short double blip |
+| Mission gate | bright two-note chime |
+| Mission complete | four-note rising jingle |
+| Crash | the "lost model" alarm — insistent, repeats until you find the wreckage |
+
+A speaker icon in the top bar mutes it — for the mid-lesson moment when the whole
+room arms at once. It is disabled with an explanatory tooltip until a buzzer is
+actually wired in, and the pre-flight checklist reports its status the same way
+it reports GPS: informational, never blocking arming, because a real drone flies
+just fine without one.
+
 ---
 
 ## Physics model

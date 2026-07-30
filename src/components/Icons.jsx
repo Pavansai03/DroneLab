@@ -171,6 +171,21 @@ export const Redo = ({ size = 14 }) => (
   </S>
 );
 
+export const SpeakerOn = ({ size = 14 }) => (
+  <S size={size}>
+    <path d="M4 9v6h4l5 4V5L8 9z" />
+    <path d="M17 8.5a5 5 0 010 7" />
+    <path d="M19.5 6a8.5 8.5 0 010 12" />
+  </S>
+);
+
+export const SpeakerOff = ({ size = 14 }) => (
+  <S size={size}>
+    <path d="M4 9v6h4l5 4V5L8 9z" />
+    <path d="M17 9l5 6M22 9l-5 6" />
+  </S>
+);
+
 export const Bolt = ({ size = 14 }) => (
   <S size={size}>
     <path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z" />

@@ -36,7 +36,14 @@ import CrashReport from "./components/CrashReport.jsx";
 import ConfirmDialog from "./components/ConfirmDialog.jsx";
 import AccountPanel from "./components/AccountPanel.jsx";
 import TeacherDashboard from "./components/TeacherDashboard.jsx";
-import { Arrow, ArrowLeft, Reset, Bolt, Warn, Undo, Redo } from "./components/Icons.jsx";
+import { Arrow, ArrowLeft, Reset, Bolt, Warn, Undo, Redo, SpeakerOn, SpeakerOff } from "./components/Icons.jsx";
+import {
+  setBuzzerEnabled,
+  setBuzzerMuted,
+  isBuzzerMuted,
+  unlockAudio,
+  play as playBuzzer,
+} from "./sim/buzzer.js";
 
 /* Canonical assembly order. Propellers come after the battery deliberately:
    on a real drone you fit props last, and only with the battery disconnected. */
@@ -167,6 +174,11 @@ export default function App() {
   const [testing, setTesting] = useState(false);
   /* Which destructive action is awaiting confirmation, if any. */
   const [confirm, setConfirm] = useState(null);
+  /* Buzzer mute — a listening preference, not part of the build, so it lives
+     outside the undo history and is not itself gated on the buzzer being fitted:
+     muting a buzzer that is not there yet is harmless and keeps the control
+     available the moment one is wired in. */
+  const [buzzerMuted, setBuzzerMutedState] = useState(() => isBuzzerMuted());
 
   const frame = AIRFRAMES[frameId];
   const sceneRef = useRef(null);
@@ -240,6 +252,12 @@ export default function App() {
   );
 
   const diagnostics = useMemo(() => runDiagnostics(build, runtime), [build, runtime]);
+
+  /* The buzzer is silent until it is actually fitted and wired — see
+     sim/buzzer.js. This is the one place that switch gets flipped. */
+  useEffect(() => {
+    setBuzzerEnabled(diagnostics.buzzerFitted);
+  }, [diagnostics.buzzerFitted]);
 
   /* --------------------------------------------------------- progress */
   const progressApi = useMemo(
@@ -354,18 +372,34 @@ export default function App() {
         setCrashReport(
           buildCrashReport(diagnostics, sim.telemetry(), payload.cause)
         );
+        // The lost-model alarm: the one tune a real buzzer plays with no pilot
+        // input at all, which is the whole point of fitting one.
+        playBuzzer("lostModel");
       }
       if (type === "escShutdown") {
         setNotice(
           `ESC ${payload.motor + 1} hit ${payload.temp.toFixed(0)} degC and shut down — see the ESC logic tree.`
         );
+        playBuzzer("warning");
       }
       if (type === "propDeparted") {
         setNotice(`Propeller ${payload.motor + 1} departed the aircraft — it was loose.`);
+        playBuzzer("warning");
       }
-      if (type === "failsafe") setNotice("Radio link lost — FAILSAFE engaged.");
-      if (type === "lowBatteryRth") setNotice("Battery below 20% — Return-To-Home triggered.");
-      if (type === "missionComplete") setNotice("Mission complete — all gates passed.");
+      if (type === "failsafe") {
+        setNotice("Radio link lost — FAILSAFE engaged.");
+        playBuzzer("failsafe");
+      }
+      if (type === "lowBatteryRth") {
+        setNotice("Battery below 20% — Return-To-Home triggered.");
+        playBuzzer("lowBattery");
+      }
+      if (type === "rth") playBuzzer("rth");
+      if (type === "gate") playBuzzer("gate");
+      if (type === "missionComplete") {
+        setNotice("Mission complete — all gates passed.");
+        playBuzzer("missionComplete");
+      }
     });
   }, [diagnostics]);
 
@@ -659,6 +693,7 @@ export default function App() {
     }
     setFlags((f) => ({ ...f, powered: true }));
     setNotice("Power on. Flight controller booting, sensors initialising.");
+    playBuzzer("powerOn");
   }, [diagnostics]);
 
   /** Pull one telemetry snapshot immediately, so the HUD never renders blank. */
@@ -690,11 +725,16 @@ export default function App() {
   }, []);
 
   const armDrone = useCallback(() => {
+    // Browsers only allow audio to start from within a user gesture — this
+    // click is that gesture, so unlock the context before anything tries to
+    // play through it.
+    unlockAudio();
     const modeId = diagnostics.flightMode.id;
     if (modeId === "ready" || modeId === "manual") {
       simRef.current?.arm();
       setFlags((f) => ({ ...f, powered: true, preflightPassed: true }));
       syncTelemetry();
+      playBuzzer("armed");
       // A real flight controller cannot detect a dead motor or a backwards
       // propeller until the aircraft leaves the ground — which is exactly why the
       // pre-flight list exists. So we arm anyway, but say what is about to happen.
@@ -707,6 +747,7 @@ export default function App() {
         );
       }
     } else {
+      playBuzzer("armingDenied");
       setNotice(
         `Arming denied — ${diagnostics.results.fc.text}. Open the Flight Controller logic tree to see which check failed.`
       );
@@ -915,6 +956,7 @@ export default function App() {
                 if (telemetry?.armed) {
                   simRef.current?.disarm();
                   syncTelemetry();
+                  playBuzzer("disarmed");
                 } else armDrone();
               }}
             >
@@ -939,6 +981,26 @@ export default function App() {
             </button>
           </>
         )}
+
+        <button
+          className={`btn icon ${diagnostics.buzzerFitted && !buzzerMuted ? "go" : ""}`}
+          onClick={() => {
+            const next = !buzzerMuted;
+            setBuzzerMutedState(next);
+            setBuzzerMuted(next);
+          }}
+          disabled={!diagnostics.buzzerFitted}
+          title={
+            !diagnostics.buzzerFitted
+              ? "No buzzer fitted and wired — the aircraft is silent. Add one in Module 3."
+              : buzzerMuted
+                ? "Buzzer wired, but muted. Click to unmute."
+                : "Buzzer wired and audible. Click to mute."
+          }
+          aria-label={buzzerMuted ? "Unmute buzzer" : "Mute buzzer"}
+        >
+          {diagnostics.buzzerFitted && !buzzerMuted ? <SpeakerOn /> : <SpeakerOff />}
+        </button>
 
         <button
           className={`cloud-chip ${
