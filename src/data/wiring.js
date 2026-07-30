@@ -301,10 +301,15 @@ export function buildHarnesses(frame, components = null) {
         ]),
       ],
       rightCards: [
+        /* Pin ORDER matters here, not just the pairing. A real Pixhawk GPS port
+           runs VCC / TX / RX / GND — the same order as the GPS lead. Listing the
+           FC's RX second so it lines up with the GPS's TX would draw the two
+           serial wires as straight parallel lines and hide the crossover, which
+           is the one thing this harness exists to teach. */
         card("fc", "fc", "Flight Controller", "GPS port", [
           pin("GPS_5V", "5V", "Power out"),
-          pin("GPS_RX", "RX", "FC listens"),
           pin("GPS_TX", "TX", "FC transmits"),
+          pin("GPS_RX", "RX", "FC listens"),
           pin("GPS_GND", "GND", "Ground"),
         ]),
       ],

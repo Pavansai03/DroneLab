@@ -1269,7 +1269,7 @@ input[type="range"]::-moz-range-thumb {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 16px;
-  width: min(1080px, 96vw);
+  width: min(1240px, 97vw);
   max-height: 94vh;
   display: flex;
   flex-direction: column;
@@ -1375,7 +1375,7 @@ input[type="range"]::-moz-range-thumb {
   background: #0c1016;
   border: 1px solid var(--border);
   display: flex;
-  gap: 70px;
+  gap: 130px;
   justify-content: space-between;
   align-items: flex-start;
 }
@@ -1390,96 +1390,144 @@ input[type="range"]::-moz-range-thumb {
 /* Four or more cards wrap into two sub-columns so nothing scrolls out of reach. */
 .wd-col.grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(170px, 1fr));
+  grid-template-columns: repeat(2, minmax(216px, 1fr));
   gap: 8px;
   align-content: start;
 }
 .wd-col.grid .wd-card {
-  min-width: 0;
-}
-.wd-wires {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 3;
-  overflow: visible;
-}
-.wd-wires path {
-  pointer-events: stroke;
-}
-
-.wd-card {
   border: 1px solid var(--border);
-  border-radius: 11px;
+  border-radius: 12px;
   background: var(--panel2);
   overflow: hidden;
-  min-width: 190px;
+  min-width: 216px;
 }
 .wd-card-head {
   display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 11px;
+  align-items: baseline;
+  gap: 7px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--panel3);
 }
-.wd-card-icon {
-  color: var(--cyan);
-  display: flex;
-}
 .wd-card-head b {
-  display: block;
-  font-size: 12px;
+  font-size: 11.5px;
+  white-space: nowrap;
 }
 .wd-card-head small {
-  display: block;
-  font-size: 9.5px;
+  font-size: 9px;
   color: var(--dim);
-  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.wd-card-check {
+  margin-left: auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  flex-shrink: 0;
+}
+.wd-card.complete {
+  border-color: rgba(57, 217, 138, 0.5);
+}
+.wd-card.complete .wd-card-head {
+  background: rgba(57, 217, 138, 0.12);
+}
+.wd-card.complete .wd-card-check {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #05210f;
+}
+
+/* Picture and pins side by side. Pins always sit on the edge facing the gap,
+   so a wire leaves the pin and heads straight across. */
+.wd-card-body {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 0;
+}
+.wd-card.right .wd-card-body {
+  flex-direction: row-reverse;
+}
+.wd-art {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+.part-art,
+.part-photo {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.part-photo {
+  object-fit: contain;
+  border-radius: 6px;
+}
+
 .wd-pins {
-  padding: 5px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 4px;
 }
 .wd-pin {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 4px 11px;
+  gap: 6px;
+  padding: 2px 3px;
+  border-radius: 5px;
   cursor: grab;
   touch-action: none;
   user-select: none;
 }
+.wd-card.right .wd-pin {
+  flex-direction: row-reverse;
+}
 .wd-pin:hover {
-  background: rgba(70, 230, 207, 0.08);
+  background: rgba(70, 230, 207, 0.1);
 }
 .wd-pin:active {
   cursor: grabbing;
 }
-.wd-dot {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: #39424f;
-  border: 2px solid #556074;
-  flex-shrink: 0;
-  transition: transform 0.12s;
-}
-.wd-pin:hover .wd-dot {
-  transform: scale(1.3);
-  border-color: var(--cyan);
-}
-.wd-pin.done .wd-dot {
-  border-color: rgba(255, 255, 255, 0.55);
-}
 .wd-pin-label {
-  font-size: 11px;
+  font-size: 9.5px;
   font-family: "JetBrains Mono", monospace;
   color: var(--dim);
+  white-space: nowrap;
 }
 .wd-pin.done .wd-pin-label {
   color: var(--text);
+}
+
+/* Left column pins are solder pads (square), right column are sockets (round) —
+   the same visual language as the wiring diagram. */
+.wd-dot {
+  width: 11px;
+  height: 11px;
+  background: #39424f;
+  border: 2px solid #66738a;
+  flex-shrink: 0;
+  transition: transform 0.12s;
+  border-radius: 2px;
+}
+.wd-card.right .wd-dot {
+  border-radius: 50%;
+}
+.wd-pin:hover .wd-dot {
+  transform: scale(1.35);
+  border-color: var(--cyan);
+}
+.wd-pin.done .wd-dot {
+  border-color: rgba(255, 255, 255, 0.65);
 }
 
 .wd-feedback {

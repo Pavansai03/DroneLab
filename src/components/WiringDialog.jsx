@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { WIRE_COLORS, WIRE_COLOR_LIST } from "../data/wiring.js";
-import { PART_ICONS, Check } from "./Icons.jsx";
+import { Check } from "./Icons.jsx";
+import PartArtwork from "./PartArtwork.jsx";
 
 /**
  * THE WIRING DIALOG
@@ -199,10 +200,49 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
   const done = connected.length;
   const total = harness.wires.length;
 
-  const path = (a, b) => {
+  /**
+   * WIRE ROUTING
+   * ------------
+   * Every wire gets its OWN vertical lane in the gutter between the columns, so
+   * no two wires ever share a segment. A bundle of curves that all sweep through
+   * the same space is impossible to trace with your eye — which defeats the point
+   * of drawing them at all.
+   *
+   * Route: out of the pin horizontally -> along a private lane vertically ->
+   * into the target pin horizontally, with rounded corners.
+   */
+  const laneX = (index, count) => {
+    const s = surfaceRef.current;
+    if (!s) return 0;
+    // Gutter is the space between the two card columns.
+    const cols = s.querySelectorAll(".wd-col");
+    const sr = s.getBoundingClientRect();
+    const leftEdge = cols[0] ? cols[0].getBoundingClientRect().right - sr.left : sr.width * 0.35;
+    const rightEdge = cols[1] ? cols[1].getBoundingClientRect().left - sr.left : sr.width * 0.65;
+    const pad = 18;
+    const a = leftEdge + pad;
+    const b = rightEdge - pad;
+    if (count <= 1) return (a + b) / 2;
+    return a + ((b - a) * index) / (count - 1);
+  };
+
+  const routePath = (a, b, lane) => {
     if (!a || !b) return "";
-    const dx = Math.max(38, Math.abs(b.x - a.x) * 0.45);
-    return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
+    const r = 7;
+    // Straight through when the pins already line up.
+    if (Math.abs(a.y - b.y) < 1.5) return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+
+    const v = b.y > a.y ? 1 : -1;
+    const c1y = a.y + v * r;
+    const c2y = b.y - v * r;
+    return [
+      `M ${a.x} ${a.y}`,
+      `H ${lane - r}`,
+      `Q ${lane} ${a.y} ${lane} ${c1y}`,
+      `V ${c2y}`,
+      `Q ${lane} ${b.y} ${lane + r} ${b.y}`,
+      `H ${b.x}`,
+    ].join(" ");
   };
 
   const dragFrom = drag ? pinPos(drag.fromCard, drag.fromPin) : null;
@@ -218,55 +258,63 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
     return { done, total: wires.length, complete: wires.length > 0 && done === wires.length };
   };
 
-  const renderCard = (c) => {
+  /**
+   * A component card: the part's picture, with its pins on the edge that faces
+   * the other column — so a wire leaves the pin and heads straight across the
+   * gap, the way it does on a bench.
+   */
+  const renderCard = (c, side) => {
     const st = cardStatus(c.id);
     return (
-    <div className={`wd-card ${st.complete ? "complete" : ""}`} key={c.id}>
-      <div className="wd-card-head">
-        <span className="wd-card-icon">{PART_ICONS[c.part] || null}</span>
-        <div>
+      <div className={`wd-card ${side} ${st.complete ? "complete" : ""}`} key={c.id}>
+        <div className="wd-card-head">
           <b>{c.label}</b>
           {c.sub && <small>{c.sub}</small>}
+          <span className="wd-card-check" title={`${st.done} of ${st.total} connections made`}>
+            <Check size={11} />
+          </span>
         </div>
-        <span
-          className="wd-card-check"
-          title={`${st.done} of ${st.total} connections made`}
-        >
-          <Check size={12} />
-        </span>
+
+        <div className="wd-card-body">
+          <div className="wd-art">
+            {/* Swap in a photo of your own kit by giving the part a `photo` in
+                the harness definition. */}
+            <PartArtwork part={c.part} src={c.photo} label={c.label} width={132} height={94} />
+          </div>
+
+          <div className="wd-pins">
+            {c.pins.map((p) => {
+              const wire = harness.wires.find(
+                (w) =>
+                  (w.from[0] === c.id && w.from[1] === p.id) ||
+                  (w.to[0] === c.id && w.to[1] === p.id)
+              );
+              const isDone = wire && links.has(wire.id);
+              return (
+                <div
+                  key={p.id}
+                  className={`wd-pin ${isDone ? "done" : ""}`}
+                  data-pin="1"
+                  data-card={c.id}
+                  data-pinid={p.id}
+                  onPointerDown={(e) => startDrag(c.id, p.id, e)}
+                  title={p.hint}
+                >
+                  <span className="wd-pin-label">{p.label}</span>
+                  <span
+                    className="wd-dot"
+                    ref={(el) => {
+                      if (el) pinRefs.current.set(key(c.id, p.id), el);
+                      else pinRefs.current.delete(key(c.id, p.id));
+                    }}
+                    style={isDone ? { background: WIRE_COLORS[wire.color].hex } : undefined}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
-      <div className="wd-pins">
-        {c.pins.map((p) => {
-          const wire = harness.wires.find(
-            (w) =>
-              (w.from[0] === c.id && w.from[1] === p.id) ||
-              (w.to[0] === c.id && w.to[1] === p.id)
-          );
-          const isDone = wire && links.has(wire.id);
-          return (
-            <div
-              key={p.id}
-              className={`wd-pin ${isDone ? "done" : ""}`}
-              data-pin="1"
-              data-card={c.id}
-              data-pinid={p.id}
-              onPointerDown={(e) => startDrag(c.id, p.id, e)}
-              title={p.hint}
-            >
-              <span
-                className="wd-dot"
-                ref={(el) => {
-                  if (el) pinRefs.current.set(key(c.id, p.id), el);
-                  else pinRefs.current.delete(key(c.id, p.id));
-                }}
-                style={isDone ? { background: WIRE_COLORS[wire.color].hex } : undefined}
-              />
-              <span className="wd-pin-label">{p.label}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
     );
   };
 
@@ -321,24 +369,38 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
         <div className="wd-surface" ref={surfaceRef}>
           {/* Columns with many cards wrap into a grid, otherwise an octocopter's
               eight ESCs would run off the bottom and become undraggable. */}
-          <div className={`wd-col ${harness.leftCards.length > 3 ? "grid" : ""}`}>
-            {harness.leftCards.map(renderCard)}
+          <div className={`wd-col left ${harness.leftCards.length > 2 ? "grid" : ""}`}>
+            {harness.leftCards.map((c) => renderCard(c, "left"))}
           </div>
-          <div className={`wd-col ${harness.rightCards.length > 3 ? "grid" : ""}`}>
-            {harness.rightCards.map(renderCard)}
+          <div className={`wd-col right ${harness.rightCards.length > 2 ? "grid" : ""}`}>
+            {harness.rightCards.map((c) => renderCard(c, "right"))}
           </div>
 
           <svg className="wd-wires">
-            {connected.map((w) => {
+            {/* Each wire keeps the same lane whether it is drawn or not, so a
+                wire does not jump sideways when a neighbour is connected. */}
+            {harness.wires.map((w, i) => {
+              if (!links.has(w.id)) return null;
               const a = pinPos(w.from[0], w.from[1]);
               const b = pinPos(w.to[0], w.to[1]);
               if (!a || !b) return null;
+              const lane = laneX(i, harness.wires.length);
+              const hot = hoverWire === w.id;
               return (
                 <g key={w.id}>
+                  {/* Dark casing under the coloured core: makes crossings readable
+                      and stops a red wire vanishing against a red one behind it. */}
                   <path
-                    d={path(a, b)}
+                    d={routePath(a, b, lane)}
+                    stroke="#0a0d12"
+                    strokeWidth={hot ? 8 : 6}
+                    fill="none"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d={routePath(a, b, lane)}
                     stroke={WIRE_COLORS[w.color].hex}
-                    strokeWidth={hoverWire === w.id ? 5 : 3.2}
+                    strokeWidth={hot ? 4.5 : 3}
                     fill="none"
                     strokeLinecap="round"
                     style={{ pointerEvents: "stroke", cursor: "pointer" }}
@@ -349,14 +411,30 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
                       setFeedback({ tone: "warn", text: "Wire removed." });
                     }}
                   />
+                  {hot && (
+                    <circle cx={lane} cy={(a.y + b.y) / 2} r="9" fill="#0a0d12" stroke={WIRE_COLORS[w.color].hex} />
+                  )}
+                  {hot && (
+                    <text
+                      x={lane}
+                      y={(a.y + b.y) / 2 + 3.5}
+                      textAnchor="middle"
+                      fill={WIRE_COLORS[w.color].hex}
+                      fontSize="9"
+                      fontFamily="monospace"
+                      style={{ pointerEvents: "none" }}
+                    >
+                      x
+                    </text>
+                  )}
                 </g>
               );
             })}
             {drag && dragFrom && (
               <path
-                d={path(dragFrom, { x: drag.x, y: drag.y })}
+                d={`M ${dragFrom.x} ${dragFrom.y} L ${drag.x} ${drag.y}`}
                 stroke={WIRE_COLORS[color].hex}
-                strokeWidth="3.2"
+                strokeWidth="3"
                 strokeDasharray="7 5"
                 fill="none"
                 strokeLinecap="round"

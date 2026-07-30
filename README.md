@@ -109,7 +109,34 @@ Wrong attempts explain themselves rather than just going red:
   Flight Controller RX. TX talks, RX listens — wire TX to TX and both ends shout
   while neither hears a thing."
 
-Click a finished wire to pull it out again.
+Each component is shown as a **technical illustration with its pins on the edge
+facing the other card**, so a wire leaves the pin and heads straight across the
+gap the way it does on a bench.
+
+**Every wire gets its own vertical lane**, so no two ever overlap. A bundle of
+curves sweeping through the same space cannot be traced by eye, which defeats the
+point of drawing them. Wires are drawn with a dark casing under the coloured core
+so crossings stay readable and a red wire does not vanish against another red one
+behind it. Hover a wire to highlight it; click it to pull it out.
+
+Pin ORDER is deliberate, not just the pairing. The flight controller's GPS port
+is listed `VCC / TX / RX / GND` because that is the real Pixhawk order — listing
+RX second so it lined up with the GPS's TX would have drawn the two serial wires
+as straight parallel lines and hidden the crossover, which is the one thing that
+harness exists to teach.
+
+### Using photographs instead
+
+The illustrations are drawn rather than sourced, because stock product photos are
+copyrighted and this gets handed to a class. To use pictures of **your own kit** —
+which beats any stock image, since it is the hardware the students will actually
+hold — give a card a `photo` in `src/data/wiring.js`:
+
+```js
+card("esc", "esc", "ESC 1", "30A BLHeli_S", [...])   // add: photo: "/img/my-esc.jpg"
+```
+
+Anything passed that way replaces the drawing.
 
 The loom is grouped into harnesses, and scales with the airframe:
 
