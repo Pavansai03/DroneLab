@@ -1365,47 +1365,61 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .wd-surface {
-  position: relative;
   flex: 1 1 auto;
-  min-height: 260px;
+  min-height: 240px;
   overflow: auto;
   margin: 12px 20px;
-  padding: 14px;
+  padding: 16px;
   border-radius: 12px;
   background: #0c1016;
   border: 1px solid var(--border);
-  display: flex;
-  gap: 130px;
-  justify-content: space-between;
-  align-items: flex-start;
 }
-.wd-col {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 190px;
+
+/* One grid for BOTH columns: left cards | gutter | right cards.
+   A shared row track is what keeps ESC 3 level with Motor 3, so its wire is a
+   straight horizontal run. Separate grids per column let the row heights drift
+   apart and the layout turns into a jumble. */
+.wd-canvas {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(200px, max-content) minmax(110px, 1fr) minmax(200px, max-content);
+  gap: 10px 0;
+  align-content: start;
+  justify-content: center;
+  min-width: min-content;
+}
+.wd-gutter {
+  pointer-events: none;
+}
+
+/* The wire overlay. It MUST stay absolutely positioned: as a grid item it
+   collapses to zero width and the wires get drawn outside the cards. */
+.wd-wires {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+  overflow: visible;
+}
+.wd-wires path {
+  pointer-events: stroke;
+}
+
+.wd-card {
   position: relative;
   z-index: 2;
-}
-/* Four or more cards wrap into two sub-columns so nothing scrolls out of reach. */
-.wd-col.grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(216px, 1fr));
-  gap: 8px;
-  align-content: start;
-}
-.wd-col.grid .wd-card {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 11px;
   background: var(--panel2);
   overflow: hidden;
-  min-width: 216px;
 }
 .wd-card-head {
   display: flex;
   align-items: baseline;
   gap: 7px;
-  padding: 7px 10px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--panel3);
 }
@@ -1444,23 +1458,21 @@ input[type="range"]::-moz-range-thumb {
   color: #05210f;
 }
 
-/* Picture and pins side by side. Pins always sit on the edge facing the gap,
-   so a wire leaves the pin and heads straight across. */
+/* Picture and pins side by side, pins always on the edge facing the gutter. */
 .wd-card-body {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 6px 0;
+  gap: 4px;
+  padding: 6px 8px;
 }
 .wd-card.right .wd-card-body {
   flex-direction: row-reverse;
 }
 .wd-art {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 0;
 }
 .part-art,
 .part-photo {
@@ -1476,30 +1488,33 @@ input[type="range"]::-moz-range-thumb {
 .wd-pins {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 0 4px;
+  gap: 3px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .wd-pin {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 3px;
+  gap: 7px;
+  padding: 2px 2px;
   border-radius: 5px;
   cursor: grab;
   touch-action: none;
   user-select: none;
+  /* Pin rows hug the gutter edge so the pad is the outermost thing on the card */
+  justify-content: flex-end;
 }
 .wd-card.right .wd-pin {
   flex-direction: row-reverse;
 }
 .wd-pin:hover {
-  background: rgba(70, 230, 207, 0.1);
+  background: rgba(70, 230, 207, 0.12);
 }
 .wd-pin:active {
   cursor: grabbing;
 }
 .wd-pin-label {
-  font-size: 9.5px;
+  font-size: 10px;
   font-family: "JetBrains Mono", monospace;
   color: var(--dim);
   white-space: nowrap;
@@ -1508,13 +1523,13 @@ input[type="range"]::-moz-range-thumb {
   color: var(--text);
 }
 
-/* Left column pins are solder pads (square), right column are sockets (round) —
-   the same visual language as the wiring diagram. */
+/* Left pins are solder pads (square), right pins are sockets (round) — the same
+   visual language as the wiring diagram. */
 .wd-dot {
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   background: #39424f;
-  border: 2px solid #66738a;
+  border: 2px solid #6a7789;
   flex-shrink: 0;
   transition: transform 0.12s;
   border-radius: 2px;
@@ -1527,7 +1542,7 @@ input[type="range"]::-moz-range-thumb {
   border-color: var(--cyan);
 }
 .wd-pin.done .wd-dot {
-  border-color: rgba(255, 255, 255, 0.65);
+  border-color: rgba(255, 255, 255, 0.7);
 }
 
 .wd-feedback {

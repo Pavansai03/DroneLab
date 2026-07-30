@@ -12,6 +12,14 @@ import PartArtwork from "./PartArtwork.jsx";
  * wire where the black one belongs is not a near miss.
  *
  * Wrong attempts are not just rejected: they explain what the mistake would do.
+ *
+ * LAYOUT
+ * ------
+ * One column of components down the left, one down the right, and a gutter
+ * between them that the wires route through. Both columns share a single CSS grid
+ * so their row tracks are the same height — which is what keeps ESC 3 lined up
+ * with Motor 3 and its wire horizontal. Giving each column its own grid lets the
+ * row heights drift apart and the whole thing turns into a jumble.
  */
 export default function WiringDialog({ harness, links, onConnect, onDisconnect, onClose }) {
   const [color, setColor] = useState("red");
@@ -20,7 +28,8 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
   const [hoverWire, setHoverWire] = useState(null);
   const [tick, setTick] = useState(0); // forces a re-measure
 
-  const surfaceRef = useRef(null);
+  const surfaceRef = useRef(null); // the grid canvas: every coordinate is relative to it
+  const gutterRef = useRef(null); // the gap between the columns; wires route through it
   const pinRefs = useRef(new Map());
 
   /* The pointerup handler is installed while a drag is in flight, so it must read
@@ -83,15 +92,15 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
     };
     const up = (e) => {
       // Prefer a real hit test, but fall back to the nearest pin within reach.
-      // The SVG wire overlay and the scrolling surface can both swallow the hit,
-      // and a drop that lands two pixels off a pin should still count.
+      // The SVG overlay can swallow the hit, and a drop that lands two pixels off
+      // a pin should still count.
       const el = document.elementFromPoint(e.clientX, e.clientY);
       let target = el?.closest?.("[data-pin]");
 
       if (!target) {
         let best = null;
         let bestD = 30; // px tolerance
-        pinRefs.current.forEach((node, k) => {
+        pinRefs.current.forEach((node) => {
           const row = node.closest("[data-pin]");
           if (!row) return;
           const r = row.getBoundingClientRect();
@@ -111,7 +120,7 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
       } else {
         setFeedback({
           tone: "miss",
-          text: "Drop the wire onto a pin. Pins are the small circles beside each label.",
+          text: "Drop the wire onto a pin — the small pad or socket beside each label.",
         });
       }
       setDrag(null);
@@ -184,7 +193,7 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
     }
 
     onConnect(match.id);
-    setFeedback({ tone: "ok", text: `Connected.`, detail: match.note });
+    setFeedback({ tone: "ok", text: "Connected.", detail: match.note });
   }
 
   const cardLabel = (id) =>
@@ -200,46 +209,49 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
   const done = connected.length;
   const total = harness.wires.length;
 
+  const rows = Math.max(harness.leftCards.length, harness.rightCards.length);
+
+  /** Where a card sits in the shared grid. A lone card spans every row and centres. */
+  const place = (list, i, col) =>
+    list.length === 1 && rows > 1
+      ? { gridColumn: col, gridRow: `1 / span ${rows}`, alignSelf: "center" }
+      : { gridColumn: col, gridRow: i + 1 };
+
   /**
    * WIRE ROUTING
    * ------------
-   * Every wire gets its OWN vertical lane in the gutter between the columns, so
-   * no two wires ever share a segment. A bundle of curves that all sweep through
-   * the same space is impossible to trace with your eye — which defeats the point
-   * of drawing them at all.
-   *
-   * Route: out of the pin horizontally -> along a private lane vertically ->
-   * into the target pin horizontally, with rounded corners.
+   * Each wire gets its OWN vertical lane inside the gutter, so no two ever share
+   * a segment. Lanes are measured from the real gutter element rather than
+   * inferred from the column edges — inferring it is how the wires previously
+   * ended up drawn outside the cards altogether.
    */
   const laneX = (index, count) => {
-    const s = surfaceRef.current;
-    if (!s) return 0;
-    // Gutter is the space between the two card columns.
-    const cols = s.querySelectorAll(".wd-col");
-    const sr = s.getBoundingClientRect();
-    const leftEdge = cols[0] ? cols[0].getBoundingClientRect().right - sr.left : sr.width * 0.35;
-    const rightEdge = cols[1] ? cols[1].getBoundingClientRect().left - sr.left : sr.width * 0.65;
-    const pad = 18;
-    const a = leftEdge + pad;
-    const b = rightEdge - pad;
+    const g = gutterRef.current;
+    const c = surfaceRef.current;
+    if (!g || !c) return 0;
+    const gr = g.getBoundingClientRect();
+    const cr = c.getBoundingClientRect();
+    const pad = 16;
+    const a = gr.left - cr.left + pad;
+    const b = gr.right - cr.left - pad;
+    if (b <= a) return (gr.left + gr.right) / 2 - cr.left;
     if (count <= 1) return (a + b) / 2;
     return a + ((b - a) * index) / (count - 1);
   };
 
   const routePath = (a, b, lane) => {
     if (!a || !b) return "";
-    const r = 7;
-    // Straight through when the pins already line up.
+    // Pins already level: a straight run. Once the rows line up this is the
+    // common case, and it is exactly what a real loom looks like.
     if (Math.abs(a.y - b.y) < 1.5) return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
 
+    const r = 7;
     const v = b.y > a.y ? 1 : -1;
-    const c1y = a.y + v * r;
-    const c2y = b.y - v * r;
     return [
       `M ${a.x} ${a.y}`,
       `H ${lane - r}`,
-      `Q ${lane} ${a.y} ${lane} ${c1y}`,
-      `V ${c2y}`,
+      `Q ${lane} ${a.y} ${lane} ${a.y + v * r}`,
+      `V ${b.y - v * r}`,
       `Q ${lane} ${b.y} ${lane + r} ${b.y}`,
       `H ${b.x}`,
     ].join(" ");
@@ -251,22 +263,15 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
 
   /** Every wire that touches this card, and how many are made. */
   const cardStatus = (cardId) => {
-    const wires = harness.wires.filter(
-      (w) => w.from[0] === cardId || w.to[0] === cardId
-    );
-    const done = wires.filter((w) => links.has(w.id)).length;
-    return { done, total: wires.length, complete: wires.length > 0 && done === wires.length };
+    const wires = harness.wires.filter((w) => w.from[0] === cardId || w.to[0] === cardId);
+    const n = wires.filter((w) => links.has(w.id)).length;
+    return { done: n, total: wires.length, complete: wires.length > 0 && n === wires.length };
   };
 
-  /**
-   * A component card: the part's picture, with its pins on the edge that faces
-   * the other column — so a wire leaves the pin and heads straight across the
-   * gap, the way it does on a bench.
-   */
-  const renderCard = (c, side) => {
+  const renderCard = (c, side, style) => {
     const st = cardStatus(c.id);
     return (
-      <div className={`wd-card ${side} ${st.complete ? "complete" : ""}`} key={c.id}>
+      <div className={`wd-card ${side} ${st.complete ? "complete" : ""}`} key={c.id} style={style}>
         <div className="wd-card-head">
           <b>{c.label}</b>
           {c.sub && <small>{c.sub}</small>}
@@ -277,9 +282,9 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
 
         <div className="wd-card-body">
           <div className="wd-art">
-            {/* Swap in a photo of your own kit by giving the part a `photo` in
-                the harness definition. */}
-            <PartArtwork part={c.part} src={c.photo} label={c.label} width={132} height={94} />
+            {/* Give a card a `photo` in data/wiring.js to show a picture of your
+                own kit instead of the drawing. */}
+            <PartArtwork part={c.part} src={c.photo} label={c.label} width={112} height={78} />
           </div>
 
           <div className="wd-pins">
@@ -319,7 +324,10 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
   };
 
   return (
-    <div className="modal-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="modal-backdrop"
+      onPointerDown={(e) => e.target === e.currentTarget && onClose()}
+    >
       <div className="wd">
         <div className="wd-head">
           <div>
@@ -345,7 +353,6 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
           </div>
         )}
 
-        {/* ---------------- wire colour palette ---------------- */}
         <div className="wd-palette">
           <span className="wd-palette-label">Wire:</span>
           {WIRE_COLOR_LIST.map((c) => (
@@ -366,84 +373,77 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
         </div>
 
         {/* ---------------- the wiring surface ---------------- */}
-        <div className="wd-surface" ref={surfaceRef}>
-          {/* Columns with many cards wrap into a grid, otherwise an octocopter's
-              eight ESCs would run off the bottom and become undraggable. */}
-          <div className={`wd-col left ${harness.leftCards.length > 2 ? "grid" : ""}`}>
-            {harness.leftCards.map((c) => renderCard(c, "left"))}
-          </div>
-          <div className={`wd-col right ${harness.rightCards.length > 2 ? "grid" : ""}`}>
-            {harness.rightCards.map((c) => renderCard(c, "right"))}
-          </div>
-
-          <svg className="wd-wires">
-            {/* Each wire keeps the same lane whether it is drawn or not, so a
-                wire does not jump sideways when a neighbour is connected. */}
-            {harness.wires.map((w, i) => {
-              if (!links.has(w.id)) return null;
-              const a = pinPos(w.from[0], w.from[1]);
-              const b = pinPos(w.to[0], w.to[1]);
-              if (!a || !b) return null;
-              const lane = laneX(i, harness.wires.length);
-              const hot = hoverWire === w.id;
-              return (
-                <g key={w.id}>
-                  {/* Dark casing under the coloured core: makes crossings readable
-                      and stops a red wire vanishing against a red one behind it. */}
-                  <path
-                    d={routePath(a, b, lane)}
-                    stroke="#0a0d12"
-                    strokeWidth={hot ? 8 : 6}
-                    fill="none"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d={routePath(a, b, lane)}
-                    stroke={WIRE_COLORS[w.color].hex}
-                    strokeWidth={hot ? 4.5 : 3}
-                    fill="none"
-                    strokeLinecap="round"
-                    style={{ pointerEvents: "stroke", cursor: "pointer" }}
-                    onPointerEnter={() => setHoverWire(w.id)}
-                    onPointerLeave={() => setHoverWire(null)}
-                    onClick={() => {
-                      onDisconnect(w.id);
-                      setFeedback({ tone: "warn", text: "Wire removed." });
-                    }}
-                  />
-                  {hot && (
-                    <circle cx={lane} cy={(a.y + b.y) / 2} r="9" fill="#0a0d12" stroke={WIRE_COLORS[w.color].hex} />
-                  )}
-                  {hot && (
-                    <text
-                      x={lane}
-                      y={(a.y + b.y) / 2 + 3.5}
-                      textAnchor="middle"
-                      fill={WIRE_COLORS[w.color].hex}
-                      fontSize="9"
-                      fontFamily="monospace"
-                      style={{ pointerEvents: "none" }}
-                    >
-                      x
-                    </text>
-                  )}
-                </g>
-              );
-            })}
-            {drag && dragFrom && (
-              <path
-                d={`M ${dragFrom.x} ${dragFrom.y} L ${drag.x} ${drag.y}`}
-                stroke={WIRE_COLORS[color].hex}
-                strokeWidth="3"
-                strokeDasharray="7 5"
-                fill="none"
-                strokeLinecap="round"
-              />
+        <div className="wd-surface">
+          <div className="wd-canvas" ref={surfaceRef}>
+            {harness.leftCards.map((c, i) =>
+              renderCard(c, "left", place(harness.leftCards, i, 1))
             )}
-          </svg>
+
+            {/* A real element for the gap, so lane positions are measured rather
+                than guessed from the column edges. */}
+            <div
+              className="wd-gutter"
+              ref={gutterRef}
+              style={{ gridColumn: 2, gridRow: `1 / span ${rows}` }}
+            />
+
+            {harness.rightCards.map((c, i) =>
+              renderCard(c, "right", place(harness.rightCards, i, 3))
+            )}
+
+            <svg className="wd-wires">
+              {/* A wire keeps its lane whether drawn or not, so it never jumps
+                  sideways when a neighbour gets connected. */}
+              {harness.wires.map((w, i) => {
+                if (!links.has(w.id)) return null;
+                const a = pinPos(w.from[0], w.from[1]);
+                const b = pinPos(w.to[0], w.to[1]);
+                if (!a || !b) return null;
+                const d = routePath(a, b, laneX(i, harness.wires.length));
+                const hot = hoverWire === w.id;
+                return (
+                  <g key={w.id}>
+                    {/* Dark casing under the coloured core keeps crossings readable
+                        and stops a red wire vanishing against another behind it. */}
+                    <path
+                      d={d}
+                      stroke="#0a0d12"
+                      strokeWidth={hot ? 8 : 6}
+                      fill="none"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d={d}
+                      stroke={WIRE_COLORS[w.color].hex}
+                      strokeWidth={hot ? 4.5 : 3}
+                      fill="none"
+                      strokeLinecap="round"
+                      style={{ pointerEvents: "stroke", cursor: "pointer" }}
+                      onPointerEnter={() => setHoverWire(w.id)}
+                      onPointerLeave={() => setHoverWire(null)}
+                      onClick={() => {
+                        onDisconnect(w.id);
+                        setFeedback({ tone: "warn", text: "Wire removed." });
+                      }}
+                    />
+                  </g>
+                );
+              })}
+
+              {drag && dragFrom && (
+                <path
+                  d={`M ${dragFrom.x} ${dragFrom.y} L ${drag.x} ${drag.y}`}
+                  stroke={WIRE_COLORS[color].hex}
+                  strokeWidth="3"
+                  strokeDasharray="7 5"
+                  fill="none"
+                  strokeLinecap="round"
+                />
+              )}
+            </svg>
+          </div>
         </div>
 
-        {/* ---------------- feedback ---------------- */}
         <div className={`wd-feedback ${feedback ? feedback.tone : "idle"}`}>
           {feedback ? (
             <>
@@ -451,9 +451,7 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
               {feedback.detail && <span>{feedback.detail}</span>}
             </>
           ) : (
-            <span>
-              Click a connected wire to remove it. Hover a pin to see what it does.
-            </span>
+            <span>Click a connected wire to remove it. Hover a pin to see what it does.</span>
           )}
         </div>
 
@@ -467,11 +465,7 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
           <button className="btn" onClick={onClose}>
             Close
           </button>
-          <button
-            className="btn primary"
-            disabled={done !== total}
-            onClick={onClose}
-          >
+          <button className="btn primary" disabled={done !== total} onClick={onClose}>
             Done
           </button>
         </div>
