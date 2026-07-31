@@ -25,6 +25,8 @@ import { buildPart, buildArm } from "./partMeshes.js";
 import { AIRFRAMES } from "../data/airframes.js";
 import { GATES } from "../sim/flightSim.js";
 import { FLIGHT_FIELDS, DEFAULT_FIELD } from "./environments.js";
+import { proximityLevel } from "../sim/obstacles.js";
+import { setAlarm, clearAlarms } from "../sim/buzzer.js";
 
 const deg = (d) => (d * Math.PI) / 180;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -48,6 +50,11 @@ const H = {
 };
 
 export const SNAP_DISTANCE = 0.85;
+
+/* Height at which the landing-approach tone starts. Roughly a two-storey house:
+   high enough to give useful warning, low enough that a normal descent from
+   altitude is not accompanied by half a minute of beeping. */
+const LANDING_CALL_ALT = 6;
 
 export class DroneScene {
   constructor(canvas, wrap) {
@@ -377,6 +384,11 @@ export class DroneScene {
     this.fieldId = def.id;
     this.fieldSky = this.fieldObj.userData.sky || null;
     this.fieldAnimate = this.fieldObj.userData.animate || null;
+    this.fieldObstacles = this.fieldObj.userData.obstacles || null;
+    /* The field and the simulator arrive independently, so both paths push the
+       colliders across — whichever lands second wins, and neither can leave the
+       simulator flying through scenery it cannot see. */
+    this.sim?.setObstacles(this.fieldObstacles);
 
     // A field carries its own sky; apply it immediately if we are already flying.
     if (this.mode === "flight") this.applyFieldSky();
@@ -881,6 +893,8 @@ export class DroneScene {
   attachSim(sim) {
     this.sim = sim;
     this.simAccumulator = 0;
+    sim?.setObstacles(this.fieldObstacles);
+    if (!sim) clearAlarms();
   }
 
   setEnvironment(env) {
@@ -1028,6 +1042,31 @@ export class DroneScene {
     this.camera.lookAt(this.camTarget);
   }
 
+  /**
+   * Obstacle proximity and landing-approach tones.
+   *
+   * Both are suppressed on the ground and after a crash: a drone sitting on the
+   * pad two metres from a lamp post is not in danger, and the wreckage already
+   * has the lost-model alarm to itself.
+   */
+  updateAlarms(sim) {
+    if (sim.crashed || sim.onGround) {
+      setAlarm("obstacle", 0);
+      setAlarm("landing", 0);
+      return;
+    }
+
+    setAlarm("obstacle", proximityLevel(sim.obstacleDistance));
+
+    /* Landing approach: armed, descending, and low. Urgency rises as the ground
+       comes up, so the beep rate tells the pilot how much height is left without
+       them having to look away from the aircraft. */
+    const descending = sim.vel.y < -0.15;
+    const alt = sim.pos.y;
+    const landing = sim.armed && descending && alt < LANDING_CALL_ALT;
+    setAlarm("landing", landing ? 1 - alt / LANDING_CALL_ALT : 0);
+  }
+
   updateFlight(dt) {
     const sim = this.sim;
 
@@ -1063,6 +1102,11 @@ export class DroneScene {
           }
         : null;
     if (!t) return;
+
+    /* Audible warnings. Driven from here rather than from React because they
+       have to track the aircraft frame-for-frame: a proximity alarm that updates
+       at the telemetry rate would still be beeping slowly as the drone arrives. */
+    if (sim) this.updateAlarms(sim);
 
     /* Let the field animate itself: traffic, pedestrians, the crane, birds.
        Driven from the render loop so it stays smooth with the aircraft rather

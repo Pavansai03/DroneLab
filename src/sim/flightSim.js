@@ -32,6 +32,7 @@
 
 import { AIRFRAMES } from "../data/airframes.js";
 import { getMixer, mix } from "./mixer.js";
+import { ObstacleField, WARN_DISTANCE } from "./obstacles.js";
 import {
   g,
   airDensity,
@@ -48,6 +49,11 @@ import {
 } from "./physics.js";
 
 const KAPPA = 0.016; // prop reaction-torque arm, metres (torque = KAPPA * thrust)
+
+/* Below this height, cutting the motors is landing. Above it, it is a crash.
+   Set just above the skid height so setting down on the pad and then disarming —
+   the correct way to end a flight — is never punished. */
+const DISARM_SAFE_ALT = 0.6;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -99,6 +105,12 @@ export class FlightSim {
     this.batteryMassKg = this.capacityMah === 5200 ? 0.395 : 0.32;
     this.payloadKg = env?.payload || 0;
     this.massKg = this.frame.dryMassKg + this.batteryMassKg + this.payloadKg;
+
+    /* The aircraft is treated as a sphere for collisions: arm length out to the
+       motor, plus a propeller radius. It is the propeller tips that hit things
+       first, and it is the propeller tips that end the flight when they do. */
+    this.collisionRadius =
+      this.frame.armLength + inchesToM(this.frame.propDiameterIn) / 2;
 
     // Inertia: mass distributed between a central hub and the motor pods
     const L = this.frame.armLength;
@@ -168,6 +180,8 @@ export class FlightSim {
     this.achievements = new Set();
     this.gatesPassed = new Set();
     this.rthActive = false;
+    this.obstacleDistance = Infinity;
+    this.obstacleLabel = null;
     this.events = [];
 
     // PID integrators
@@ -179,6 +193,19 @@ export class FlightSim {
     this.imuDriftX = 0;
     this.imuDriftZ = 0;
     this.time = 0;
+  }
+
+  /**
+   * Hand the simulator the scenery it is flying through.
+   *
+   * Called whenever the field changes. Passing null (the assembly bay, or a field
+   * that has not loaded yet) leaves the sky empty rather than keeping the last
+   * field's buildings around invisibly.
+   */
+  setObstacles(list) {
+    this.obstacles = list && list.length ? new ObstacleField(list) : null;
+    this.obstacleDistance = Infinity;
+    this.obstacleLabel = null;
   }
 
   on(fn) {
@@ -204,9 +231,22 @@ export class FlightSim {
     return true;
   }
 
+  /**
+   * Cut the motors.
+   *
+   * On the ground this is the normal end of a flight. In the air it is not a
+   * control input at all — it is switching the aircraft off mid-hover, and every
+   * multirotor does exactly one thing after that. There is no soft version of it
+   * and no recovery, so the simulator says so immediately rather than letting the
+   * student watch a silent fall and wonder whether they can still save it.
+   */
   disarm() {
+    const wasFlying = this.armed && !this.crashed && this.pos.y > DISARM_SAFE_ALT;
     this.armed = false;
     this.emit("disarmed");
+    if (wasFlying) {
+      this.crash(`Disarmed in flight at ${this.pos.y.toFixed(1)} m — motors stopped`);
+    }
   }
 
   triggerRth() {
@@ -605,6 +645,28 @@ export class FlightSim {
       this.onGround = false;
     }
 
+    /* ---- Scenery ----------------------------------------------------- */
+    /* Run this whether or not we are armed: an unpowered aircraft still falls
+       into things, and the proximity alarm has to keep sounding through a
+       failsafe descent, which is precisely when it matters most. */
+    if (this.obstacles && !this.crashed) {
+      const near = this.obstacles.nearest(this.pos.x, this.pos.y, this.pos.z);
+      // Distance to the propeller disc, not to the centre of mass
+      const clearance = near.distance - this.collisionRadius;
+      this.obstacleDistance = clearance;
+      this.obstacleLabel = clearance < WARN_DISTANCE ? near.obstacle?.label ?? null : null;
+
+      if (clearance <= 0 && this.pos.y > 0.2) {
+        const speed = Math.hypot(this.vel.x, this.vel.y, this.vel.z);
+        this.crash(
+          `Hit ${near.obstacle?.label ?? "an obstacle"} at ${speed.toFixed(1)} m/s`
+        );
+      }
+    } else {
+      this.obstacleDistance = Infinity;
+      this.obstacleLabel = null;
+    }
+
     /* ---- Crash conditions ------------------------------------------- */
     if (this.armed && !this.crashed) {
       const tilt = Math.hypot(this.roll, this.pitch);
@@ -734,6 +796,8 @@ export class FlightSim {
       motorOut: [...this.motorOut],
       maxEscTemp: this.escTemps.length ? Math.max(...this.escTemps) : 25,
       satellites: this.satellites,
+      obstacleDistance: this.obstacleDistance,
+      obstacleLabel: this.obstacleLabel,
       gatesPassed: this.gatesPassed.size,
       gatesTotal: GATES.length,
       achievements: new Set(this.achievements),

@@ -81,15 +81,21 @@ function tone(freq, duration, delay = 0, { type = "square", gain = 0.055 } = {})
    before plugging in a laptop actually carries over to a real bench. */
 
 const TUNES = {
-  // Two rising beeps — the standard arm tune.
+  /* Two rising beeps, twice. Betaflight arms on a single pair; the repeat is
+     deliberate here, because in a classroom of twenty a single blip is lost in
+     the room and a student needs to know it was THEIR aircraft that armed. */
   armed: () => {
-    tone(1600, 0.09, 0);
-    tone(2000, 0.11, 0.11);
+    [0, 0.34].forEach((d) => {
+      tone(1600, 0.09, d);
+      tone(2000, 0.11, d + 0.11);
+    });
   },
-  // Two falling beeps — its mirror image.
+  // The mirror image: two falling beeps, twice.
   disarmed: () => {
-    tone(1600, 0.09, 0);
-    tone(1200, 0.11, 0.11);
+    [0, 0.34].forEach((d) => {
+      tone(1600, 0.09, d);
+      tone(1200, 0.11, d + 0.11);
+    });
   },
   // Three fast harsh beeps: a pre-arm check failed.
   armingDenied: () => {
@@ -99,14 +105,17 @@ const TUNES = {
   powerOn: () => {
     [1000, 1300, 1700].forEach((f, i) => tone(f, 0.07, i * 0.08));
   },
-  // Climbing away: a short rising sweep, so leaving the ground is audible even
-  // when the pilot is watching the horizon rather than the altimeter.
+  /* Climbing away: a rising sweep, repeated. Audible even when the pilot is
+     watching the horizon rather than the altimeter — which, at the moment of
+     leaving the ground, is exactly where they should be looking. */
   takeoff: () => {
-    [1200, 1500, 1900].forEach((f, i) => tone(f, 0.1, i * 0.09));
+    [0, 0.36].forEach((d) => [1200, 1500, 1900].forEach((f, i) => tone(f, 0.1, d + i * 0.09)));
   },
-  // Settled back down: the same shape inverted, and softer.
+  // Settled back down: the same shape inverted, repeated, and softer.
   landed: () => {
-    [1900, 1500, 1200].forEach((f, i) => tone(f, 0.11, i * 0.09, { gain: 0.045 }));
+    [0, 0.36].forEach((d) =>
+      [1900, 1500, 1200].forEach((f, i) => tone(f, 0.11, d + i * 0.09, { gain: 0.045 }))
+    );
   },
   // Slow, deliberate triple beep — the low-battery warning.
   lowBattery: () => {
@@ -144,6 +153,70 @@ const TUNES = {
 
 export function play(name) {
   TUNES[name]?.();
+}
+
+/* ================================================================== */
+/* PERIODIC ALARMS                                                     */
+/* ================================================================== */
+/**
+ * The repeating warnings — obstacle proximity and the landing approach — work
+ * like a car's parking sensor: the same blip, faster the closer you get, running
+ * solid at the point of contact. That mapping is worth copying because everyone
+ * already knows how to read it, and a pilot can judge closure rate by ear while
+ * keeping their eyes on the aircraft.
+ *
+ * There are no timers here. Each channel remembers when its next blip is due on
+ * the AudioContext's own clock, and the flight loop pushes an urgency in every
+ * frame; a blip fires when its due time passes. That means the alarm cannot drift
+ * out of step with the physics, cannot keep beeping after a crash freezes the
+ * loop, and costs nothing when nothing is near.
+ */
+
+const ALARM_CHANNELS = {
+  // Obstacle: high and hard, deliberately unlike anything else the buzzer does.
+  obstacle: { freq: 2450, type: "square", gain: 0.055, slowest: 0.62, fastest: 0.075, dur: 0.06 },
+  // Landing approach: lower and softer. Information, not a warning.
+  landing: { freq: 1150, type: "square", gain: 0.04, slowest: 0.9, fastest: 0.22, dur: 0.09 },
+};
+
+const alarmState = {};
+
+/**
+ * Drive one repeating alarm.
+ *
+ * `urgency` runs 0 (clear — silent) to 1 (contact). Call it every frame; call it
+ * with 0 or null the moment the hazard is behind you and the alarm stops there,
+ * which is what "until the drone safely crosses the obstacle" has to mean.
+ */
+export function setAlarm(channel, urgency) {
+  const spec = ALARM_CHANNELS[channel];
+  if (!spec) return;
+  const st = (alarmState[channel] = alarmState[channel] || { nextAt: 0 });
+
+  const level = Math.max(0, Math.min(1, urgency || 0));
+  if (level <= 0.001 || !enabled || muted) {
+    // Re-arm so the next approach sounds immediately instead of waiting out a
+    // stale interval from the last one.
+    st.nextAt = 0;
+    return;
+  }
+
+  const c = ensureContext();
+  if (!c) return;
+  const now = c.currentTime;
+  if (st.nextAt && now < st.nextAt) return;
+
+  const interval = spec.slowest + (spec.fastest - spec.slowest) * level;
+  /* Past 92% the gaps are shorter than the blips, so it becomes one continuous
+     tone — the "you are about to hit it" end of the scale. */
+  const solid = level > 0.92;
+  tone(spec.freq, solid ? interval * 1.6 : spec.dur, 0, { type: spec.type, gain: spec.gain });
+  st.nextAt = now + interval;
+}
+
+/** Silence every repeating alarm — on landing, on reset, on leaving flight mode. */
+export function clearAlarms() {
+  for (const k of Object.keys(alarmState)) alarmState[k].nextAt = 0;
 }
 
 export const BUZZER_TUNE_NAMES = Object.keys(TUNES);

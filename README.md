@@ -181,8 +181,10 @@ honest behaviour of a drone nobody fitted a buzzer to.
 |---|---|
 | Armed | two rising beeps |
 | Disarmed | two falling beeps |
-| Takeoff | short rising chirp, the moment it leaves the ground |
-| Landed | soft two-note settle |
+| Takeoff | rising three-note sweep, twice, the moment it leaves the ground |
+| Landed | the same shape inverted, twice, and softer |
+| Obstacle ahead | repeating blip, faster the closer you get, solid at contact |
+| Landing approach | slow low beep while descending below 6 m, speeding up as the ground comes up |
 | Arming denied | three harsh beeps — a pre-arm check failed |
 | Power on | three-note rising chirp |
 | Low battery | slow triple beep |
@@ -199,6 +201,47 @@ actually wired in, and the pre-flight checklist reports its status the same way
 it reports GPS: informational, never blocking arming, because a real drone flies
 just fine without one.
 
+### Things you can hit
+
+The scenery used to be decoration the physics knew nothing about, so a drone flew
+straight through a tower block. Every solid object now publishes an analytic
+collider — an upright cylinder or a box — alongside its mesh, and the simulator
+asks one question per frame: how far is the nearest thing I could hit?
+
+Hitting it ends the flight, with a crash report naming what was hit and how fast.
+
+A few details that matter more than they look:
+
+- **Trees get two colliders, not one.** A single canopy-width cylinder would make
+  it impossible to fly between the trunks under the canopy — which is exactly the
+  shot a confident student goes looking for, and it is legitimately flyable. The
+  trunk is slim, the canopy is wide, and the gap between them is real.
+- **The crane jib sweeps**, so it cannot be bucketed with the static scenery. It is
+  a chain of colliders the animation loop moves under the drawn arm each frame,
+  spaced closer than twice their radius so the arm is genuinely solid along its
+  length rather than a row of posts with gaps between them.
+- **Buildings collide at their drawn rotation.** A 24x14 block turned 90 degrees is
+  a different obstacle, and getting that wrong would let a drone clip a corner
+  that looks solid on screen.
+- The distance is measured to the **propeller disc**, not the centre of mass,
+  because the propeller tips hit things first and end the flight when they do.
+
+The proximity alarm and the collision test read the same signed distance, so the
+alarm can never disagree with the impact that follows it. At 8 m/s into a
+building it gives about 2.4 seconds of warning.
+
+The gate course is verified clear in both fields — over 40 random layouts per
+field the tightest clearance anywhere along it is 5.8 m.
+
+### Disarming in flight
+
+On the ground, disarming is the normal end of a flight. In the air it is not a
+control input at all: it is switching the aircraft off mid-hover, and every
+multirotor does exactly one thing after that. There is no soft version of it and
+no recovery, so the simulator says so immediately rather than letting a student
+watch a silent fall and wonder whether they can still save it. The DISARM button
+warns in its tooltip while airborne.
+
 ### Two flight fields
 
 The student picks where to fly from the **Field** tab, and the choice is a real
@@ -206,8 +249,15 @@ difficulty setting rather than a skin.
 
 | Field | What is in it | Why it is harder or easier |
 |---|---|---|
-| **Forest** | Broadleaf and conifer canopy, a river, deer, birds, rocks and long grass | Open lanes between the trunks. Height is easy to judge against a tree, and the ground is flat. This is where a first solo should happen. |
-| **City** | Tower blocks, a lattice cell tower, a crane and a building under construction, moving traffic, a park, and people on the pavements | Vertical walls on both sides, a crane arm that swings through the course, and far less room to recover from a bad input. |
+| **Forest** | Broadleaf and conifer canopy, a river, a lake, deer, birds, rocks and long grass | Open lanes between the trunks. Height is easy to judge against a tree, and the ground is flat. This is where a first solo should happen. |
+| **City** | Tower blocks, a lattice cell tower, a crane and a building under construction, moving traffic, a park with a bandstand, and people on the pavements | Vertical walls on both sides, a crane arm that swings through the course, and far less room to recover from a bad input. |
+
+All the open water is in the forest — the river and a lake off to the west. Still
+water is the best altitude reference a field can have: it is perfectly flat, and
+the shoreline is a hard edge to hold a hover against. In the middle of a city
+block it was scenery nobody had a reason to fly over, so the city's park has a
+bandstand where its pond used to be — small, hard, and right where a student
+practising a slow circuit will be looking.
 
 Both fields are laid out around the same mission gates, and the scenery generator
 keeps a clearance corridor along the whole course — trees and buildings are placed

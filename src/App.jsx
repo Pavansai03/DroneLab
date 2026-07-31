@@ -407,6 +407,12 @@ export default function App() {
         setNotice("Battery below 20% — Return-To-Home triggered.");
         playBuzzer("lowBattery");
       }
+      /* Arm and disarm are announced by the SIMULATOR, not by the button that
+         happens to have caused them. Disarming now has a second path — a mid-air
+         disarm goes on to crash the aircraft — and a button that plays its own
+         tune would fall out of step with that the moment anything else disarms. */
+      if (type === "armed") playBuzzer("armed");
+      if (type === "disarmed") playBuzzer("disarmed");
       if (type === "takeoff") playBuzzer("takeoff");
       if (type === "landed") playBuzzer("landed");
       if (type === "rth") playBuzzer("rth");
@@ -749,7 +755,6 @@ export default function App() {
       simRef.current?.arm();
       setFlags((f) => ({ ...f, powered: true, preflightPassed: true }));
       syncTelemetry();
-      playBuzzer("armed");
       // A real flight controller cannot detect a dead motor or a backwards
       // propeller until the aircraft leaves the ground — which is exactly why the
       // pre-flight list exists. So we arm anyway, but say what is about to happen.
@@ -910,6 +915,10 @@ export default function App() {
     (placed.battery?.length || 0) > 0 &&
     (placed.motor?.length || 0) >= frame.motorCount;
 
+  /* Off the ground far enough that cutting the motors is a crash rather than a
+     shutdown. Matches DISARM_SAFE_ALT in the simulator. */
+  const airborne = Boolean(telemetry?.armed) && (telemetry?.altitude ?? 0) > 0.6;
+
   const sidebarTabs = useMemo(() => {
     const t = [{ id: "tasks", label: "Tasks" }];
     if (module.components?.length) t.push({ id: "parts", label: "Parts" });
@@ -972,9 +981,15 @@ export default function App() {
                 if (telemetry?.armed) {
                   simRef.current?.disarm();
                   syncTelemetry();
-                  playBuzzer("disarmed");
                 } else armDrone();
               }}
+              title={
+                !telemetry?.armed
+                  ? "Arm the aircraft — motors go live"
+                  : airborne
+                    ? "DISARM IN FLIGHT: this cuts the motors and the aircraft will fall. Land first."
+                    : "Cut the motors — the safe way to end a flight, once you are down"
+              }
             >
               <Bolt /> {telemetry?.armed ? "DISARM" : "ARM"}
             </button>

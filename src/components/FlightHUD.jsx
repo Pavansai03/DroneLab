@@ -1,5 +1,6 @@
 import React from "react";
 import { BATTERY_SPEC, ESC_LIMIT_C } from "../sim/physics.js";
+import { WARN_DISTANCE } from "../sim/obstacles.js";
 
 /** Flight instruments, drawn over the 3D view. */
 export default function FlightHUD({ telemetry, diagnostics, frame, keys }) {
@@ -25,6 +26,18 @@ export default function FlightHUD({ telemetry, diagnostics, frame, keys }) {
     failsafe: "FAILSAFE",
   }[t.flightMode] || t.flightMode.toUpperCase();
 
+  /* Distance is to the propeller disc and can go slightly negative on contact,
+     so clamp it before it is shown — "-0.2 m to a tree" is not a useful reading. */
+  const clearance = t.obstacleDistance;
+  const obstacleWarn =
+    Number.isFinite(clearance) && clearance < WARN_DISTANCE
+      ? {
+          metres: Math.max(0, clearance).toFixed(1),
+          contact: clearance <= 0,
+          tone: clearance < WARN_DISTANCE * 0.3 ? "bad" : "warn",
+        }
+      : null;
+
   const modeTone =
     t.flightMode === "failsafe"
       ? "bad"
@@ -40,6 +53,17 @@ export default function FlightHUD({ telemetry, diagnostics, frame, keys }) {
         <span className={`mode-pill ${t.crashed ? "bad" : modeTone}`}>
           {t.crashed ? "CRASHED" : modeLabel}
         </span>
+        {/* The buzzer is the primary proximity warning, but it is silent on a
+            build with no buzzer fitted — which is most of Module 1 and 2. This
+            pill is what a student without one has to fly by, so it carries the
+            same information: what is close, and how close. */}
+        {!t.crashed && obstacleWarn && (
+          <span className={`mode-pill ${obstacleWarn.tone} proximity`}>
+            {obstacleWarn.contact
+              ? `IMPACT — ${t.obstacleLabel ?? "obstacle"}`
+              : `${t.obstacleLabel ?? "OBSTACLE"} ${obstacleWarn.metres} m`}
+          </span>
+        )}
         {t.deadMotors.length > 0 && (
           <span className="mode-pill bad">
             MOTOR{t.deadMotors.length > 1 ? "S" : ""}{" "}

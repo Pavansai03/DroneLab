@@ -1330,6 +1330,29 @@ input[type="range"]::-moz-range-thumb {
   border-color: var(--bad);
   color: var(--bad);
 }
+/* The proximity pill pulses, so it reads as live rather than as another static
+   status label — it is the one pill that means "act now". */
+.mode-pill.proximity {
+  text-transform: uppercase;
+  animation: proximity-pulse 0.7s ease-in-out infinite;
+}
+.mode-pill.proximity.bad {
+  animation-duration: 0.32s;
+}
+@keyframes proximity-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.42;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mode-pill.proximity {
+    animation: none;
+  }
+}
 
 .keycaps {
   position: absolute;
