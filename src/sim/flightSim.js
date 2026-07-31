@@ -164,6 +164,7 @@ export class FlightSim {
     this.posHoldTimer = 0;
     this.distanceFlown = 0;
     this.maxAltitude = 0;
+    this.announcedTakeoff = false;
     this.achievements = new Set();
     this.gatesPassed = new Set();
     this.rthActive = false;
@@ -580,9 +581,15 @@ export class FlightSim {
             : `Touched down at ${((tilt * 180) / Math.PI).toFixed(0)} degrees of bank`
         );
       } else {
-        if (!this.onGround && this.armed && impact < 1.0 && this.maxAltitude > 1.0) {
-          this.achievements.add("landed");
-          this.emit("landed", { impact });
+        /* Touching down and touching down WELL are different things.
+           The event fires on any survivable arrival, because the pilot needs to
+           hear that they are down whether it was tidy or not. The achievement
+           keeps its quality bar: under 1 m/s is a real landing, 3 m/s is an
+           arrival you got away with. Conflating the two meant a student who
+           descended at full rate landed safely and got no feedback at all. */
+        if (!this.onGround && this.armed && this.maxAltitude > 1.0) {
+          this.emit("landed", { impact, clean: impact < 1.0 });
+          if (impact < 1.0) this.achievements.add("landed");
         }
         this.onGround = true;
         this.vel.x *= 0.7;
@@ -643,7 +650,15 @@ export class FlightSim {
     if (!this.armed || this.crashed) return;
     const speed = Math.hypot(this.vel.x, this.vel.z);
 
-    if (this.pos.y > 2) this.achievements.add("takeoff");
+    if (this.pos.y > 2) {
+      /* Fire once per flight, not once per frame above 2 m. `announcedTakeoff`
+         resets with the sim, so a second sortie announces itself again. */
+      if (!this.announcedTakeoff) {
+        this.announcedTakeoff = true;
+        this.emit("takeoff", { altitude: this.pos.y });
+      }
+      this.achievements.add("takeoff");
+    }
 
     if (this.pos.y > 1 && Math.abs(this.vel.y) < 0.5) {
       this.hoverTimer += dt;

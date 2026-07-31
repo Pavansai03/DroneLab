@@ -14,6 +14,8 @@ export default function Viewport({
   filledSlots,
   telemetry,
   env,
+  fieldId,
+  theme,
   fcTone,
   onPlace,
   onSceneReady,
@@ -45,6 +47,16 @@ export default function Viewport({
   useEffect(() => {
     sceneRef.current?.setFrame(frameId);
   }, [frameId]);
+
+  /* Swapping the flight field rebuilds a lot of geometry, so it is driven by an
+     explicit prop rather than happening implicitly on mode change. */
+  useEffect(() => {
+    if (fieldId) sceneRef.current?.setField(fieldId);
+  }, [fieldId]);
+
+  useEffect(() => {
+    sceneRef.current?.setTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     sceneRef.current?.syncBuild(placed);

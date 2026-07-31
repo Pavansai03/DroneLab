@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { AIRFRAMES } from "./data/airframes.js";
 import { PARTS, requiredQty, defaultVariant } from "./data/parts.js";
@@ -14,6 +14,7 @@ import { FlightSim } from "./sim/flightSim.js";
 import { runDiagnostics, buildCrashReport } from "./sim/diagnostics.js";
 import { buildProgressApi, evaluateModule } from "./sim/progress.js";
 import { useBuildHistory, makeInitialBuild } from "./sim/useBuildHistory.js";
+import { DEFAULT_FIELD, FLIGHT_FIELDS } from "./three/environments.js";
 import {
   useAuthSession,
   useBuildSync,
@@ -31,12 +32,14 @@ import WiringDialog from "./components/WiringDialog.jsx";
 import FaultPanel from "./components/FaultPanel.jsx";
 import SystemFlow from "./components/SystemFlow.jsx";
 import FramePicker from "./components/FramePicker.jsx";
+import FieldPicker from "./components/FieldPicker.jsx";
 import FlightHUD from "./components/FlightHUD.jsx";
 import CrashReport from "./components/CrashReport.jsx";
 import ConfirmDialog from "./components/ConfirmDialog.jsx";
 import AccountPanel from "./components/AccountPanel.jsx";
 import TeacherDashboard from "./components/TeacherDashboard.jsx";
-import { Arrow, ArrowLeft, Reset, Bolt, Warn, Undo, Redo, SpeakerOn, SpeakerOff } from "./components/Icons.jsx";
+import { Arrow, ArrowLeft, Reset, Bolt, Warn, Undo, Redo, SpeakerOn, SpeakerOff, Sun, Moon } from "./components/Icons.jsx";
+import { initialTheme, applyTheme } from "./lib/theme.js";
 import {
   setBuzzerEnabled,
   setBuzzerMuted,
@@ -179,6 +182,16 @@ export default function App() {
      muting a buzzer that is not there yet is harmless and keeps the control
      available the moment one is wired in. */
   const [buzzerMuted, setBuzzerMutedState] = useState(() => isBuzzerMuted());
+  /* Which world to fly in. Not part of the build, so it stays out of the undo
+     history — changing scenery is not a design decision about the aircraft. */
+  const [fieldId, setFieldId] = useState(DEFAULT_FIELD);
+  const [theme, setTheme] = useState(initialTheme);
+
+  /* Applied in a layout effect so the repaint happens before the browser paints
+     — otherwise the first frame flashes the wrong palette. */
+  useLayoutEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   const frame = AIRFRAMES[frameId];
   const sceneRef = useRef(null);
@@ -394,6 +407,8 @@ export default function App() {
         setNotice("Battery below 20% — Return-To-Home triggered.");
         playBuzzer("lowBattery");
       }
+      if (type === "takeoff") playBuzzer("takeoff");
+      if (type === "landed") playBuzzer("landed");
       if (type === "rth") playBuzzer("rth");
       if (type === "gate") playBuzzer("gate");
       if (type === "missionComplete") {
@@ -900,6 +915,7 @@ export default function App() {
     if (module.components?.length) t.push({ id: "parts", label: "Parts" });
     if (module.unlocks?.wiring) t.push({ id: "wiring", label: "Wiring" });
     t.push({ id: "airframe", label: "Airframe" });
+    t.push({ id: "field", label: "Field" });
     /* Always "Account": the panel's own tabs are labelled "Sign in" and "Create
        account", and having two different controls both read "Sign in" is a
        genuine source of mis-clicks. */
@@ -981,6 +997,29 @@ export default function App() {
             </button>
           </>
         )}
+
+        <button
+          className="theme-toggle"
+          role="switch"
+          aria-checked={theme === "light"}
+          onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
+          title={
+            theme === "light"
+              ? "Light mode. Click for dark mode."
+              : "Dark mode. Click for light mode."
+          }
+          aria-label="Toggle light and dark mode"
+        >
+          <span className="tt-track">
+            <span className="tt-ico moon">
+              <Moon size={11} />
+            </span>
+            <span className="tt-ico sun">
+              <Sun size={11} />
+            </span>
+            <span className="tt-knob" />
+          </span>
+        </button>
 
         <button
           className={`btn icon ${diagnostics.buzzerFitted && !buzzerMuted ? "go" : ""}`}
@@ -1163,6 +1202,17 @@ export default function App() {
               onConnectAll={connectAll}
             />
           )}
+          {sidebarTab === "field" && (
+            <FieldPicker
+              fieldId={fieldId}
+              disabled={mode === "flight"}
+              onPick={(id) => {
+                setFieldId(id);
+                const f = FLIGHT_FIELDS.find((x) => x.id === id);
+                setNotice(`Flight field set to ${f?.label ?? id}.`);
+              }}
+            />
+          )}
           {sidebarTab === "account" && (
             <AccountPanel
               auth={auth}
@@ -1196,6 +1246,8 @@ export default function App() {
         filledSlots={filledSlots}
         telemetry={viewTelemetry}
         env={env}
+        fieldId={fieldId}
+        theme={theme}
         fcTone={diagnostics.results.fc.tone}
         onPlace={handlePlace}
         onSceneReady={(s) => (sceneRef.current = s)}

@@ -69,7 +69,7 @@ export default function TeacherDashboard({ auth }) {
       </div>
 
       {error && (
-        <div className="tip" style={{ borderColor: "rgba(255,92,98,0.4)", background: "rgba(255,92,98,0.08)", color: "#ffc7c9" }}>
+        <div className="tip" style={{ borderColor: "var(--bad-edge)", background: "var(--bad-tint)", color: "var(--bad-ink)" }}>
           {error}
         </div>
       )}

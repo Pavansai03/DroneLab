@@ -24,6 +24,7 @@ import {
 import { buildPart, buildArm } from "./partMeshes.js";
 import { AIRFRAMES } from "../data/airframes.js";
 import { GATES } from "../sim/flightSim.js";
+import { FLIGHT_FIELDS, DEFAULT_FIELD } from "./environments.js";
 
 const deg = (d) => (d * Math.PI) / 180;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -94,7 +95,14 @@ export class DroneScene {
 
   initScene() {
     const scene = new THREE.Scene();
-    this.studioBg = makeGradientTexture("#5fb6e8", "#c6e9fb");
+    /* The assembly bay follows the interface theme — a bright blue workshop
+       beside a dark UI is jarring at night. The FLIGHT fields deliberately do
+       not: they are daylight scenes, and judging your height against a building
+       depends on it being lit like daytime. */
+    this.studioBgLight = makeGradientTexture("#5fb6e8", "#c6e9fb");
+    this.studioBgDark = makeGradientTexture("#111a26", "#22303f");
+    this.theme = "dark";
+    this.studioBg = this.studioBgDark;
     scene.background = this.studioBg;
     this.scene = scene;
 
@@ -266,29 +274,13 @@ export class DroneScene {
     this.flight = fc;
     this.scene.add(fc);
 
-    const base = new THREE.Mesh(
-      new THREE.CircleGeometry(90, 96),
-      new THREE.MeshStandardMaterial({ color: 0x2f6f43, roughness: 0.95, metalness: 0.02 })
-    );
-    base.rotation.x = -Math.PI / 2;
-    base.position.y = -0.02;
-    base.receiveShadow = true;
-    fc.add(base);
-
-    this.fieldTex = makeGridTexture("rgba(255,255,255,0.18)", null, 64);
-    this.fieldTex.repeat.set(60, 60);
-    const gridOverlay = new THREE.Mesh(
-      new THREE.CircleGeometry(90, 96),
-      new THREE.MeshBasicMaterial({
-        map: this.fieldTex,
-        transparent: true,
-        opacity: 0.5,
-        depthWrite: false,
-      })
-    );
-    gridOverlay.rotation.x = -Math.PI / 2;
-    gridOverlay.position.y = -0.01;
-    fc.add(gridOverlay);
+    /* The scenery is swappable — see three/environments.js. Everything below is
+       the FIXED apparatus that every field shares: the launch pad, the mission
+       gates and the windsock. Keeping them out of the field builders means
+       switching fields cannot accidentally move the RTH home point. */
+    this.fieldGroup = new THREE.Group();
+    fc.add(this.fieldGroup);
+    this.fieldId = null;
 
     /* Launch pad marker at the origin — the RTH home point. */
     const homePad = new THREE.Mesh(
@@ -296,14 +288,14 @@ export class DroneScene {
       new THREE.MeshBasicMaterial({ color: 0xffab4a, transparent: true, opacity: 0.28 })
     );
     homePad.rotation.x = -Math.PI / 2;
-    homePad.position.y = 0.005;
+    homePad.position.y = 0.08;
     fc.add(homePad);
     const homeRing = new THREE.Mesh(
       new THREE.TorusGeometry(2.2, 0.06, 8, 60),
       new THREE.MeshBasicMaterial({ color: 0xffab4a })
     );
     homeRing.rotation.x = Math.PI / 2;
-    homeRing.position.y = 0.01;
+    homeRing.position.y = 0.09;
     fc.add(homeRing);
 
     /* Wind indicator — a windsock that leans with the environment setting. */
@@ -363,27 +355,38 @@ export class DroneScene {
       return { group: g, ringMat, glowMat };
     });
 
-    /* A few reference objects so speed and altitude are readable. */
-    for (let i = 0; i < 26; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 18 + Math.random() * 60;
-      const h = 1.5 + Math.random() * 4;
-      const tree = new THREE.Group();
-      const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.12, 0.16, h * 0.4, 6),
-        new THREE.MeshStandardMaterial({ color: 0x5b4632, roughness: 0.9 })
-      );
-      trunk.position.y = h * 0.2;
-      const crown = new THREE.Mesh(
-        new THREE.ConeGeometry(h * 0.34, h * 0.85, 8),
-        new THREE.MeshStandardMaterial({ color: 0x2c6b3f, roughness: 0.9 })
-      );
-      crown.position.y = h * 0.62;
-      crown.castShadow = true;
-      tree.add(trunk, crown);
-      tree.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
-      fc.add(tree);
+    this.setField(DEFAULT_FIELD);
+  }
+
+  /**
+   * Swap the flight scenery. Builds on demand and disposes the outgoing field,
+   * so only one environment's geometry is ever resident.
+   */
+  setField(fieldId) {
+    if (this.fieldId === fieldId) return;
+    const def = FLIGHT_FIELDS.find((f) => f.id === fieldId) || FLIGHT_FIELDS[0];
+
+    if (this.fieldObj) {
+      this.fieldGroup.remove(this.fieldObj);
+      disposeObject(this.fieldObj);
+      this.fieldObj = null;
     }
+
+    this.fieldObj = def.build();
+    this.fieldGroup.add(this.fieldObj);
+    this.fieldId = def.id;
+    this.fieldSky = this.fieldObj.userData.sky || null;
+    this.fieldAnimate = this.fieldObj.userData.animate || null;
+
+    // A field carries its own sky; apply it immediately if we are already flying.
+    if (this.mode === "flight") this.applyFieldSky();
+  }
+
+  /** Each field sets its own sky and fog — a forest haze is not a city haze. */
+  applyFieldSky() {
+    const sky = this.fieldSky || { background: 0x86c9f0, fog: 0x9fd3f2, fogDensity: 0.006 };
+    this.scene.background = new THREE.Color(sky.background);
+    this.scene.fog = new THREE.FogExp2(sky.fog, sky.fogDensity);
   }
 
   /* --------------------------------------------------------- interaction */
@@ -827,8 +830,7 @@ export class DroneScene {
       this.scene.add(this.aircraft);
       this.flight.visible = true;
       this.bay.visible = false;
-      this.scene.background = new THREE.Color(0x86c9f0);
-      this.scene.fog = new THREE.FogExp2(0x9fd3f2, 0.006);
+      this.applyFieldSky();
       this.setShadowBounds(30, 160);
       this.key.intensity = 1.7;
       // In the flight field 1 unit = 1 metre, so the aircraft is scaled down from
@@ -850,6 +852,17 @@ export class DroneScene {
       this.camPolar = deg(60);
       this.camRadius = 10;
     }
+  }
+
+  /** Repaint the assembly bay for the given interface theme. */
+  setTheme(theme) {
+    this.theme = theme === "light" ? "light" : "dark";
+    this.studioBg = this.theme === "light" ? this.studioBgLight : this.studioBgDark;
+    if (this.hemi) {
+      // A dark room needs a little more bounce light or the carbon parts go black
+      this.hemi.intensity = this.theme === "light" ? 0.75 : 0.62;
+    }
+    if (this.mode !== "flight") this.scene.background = this.studioBg;
   }
 
   setTelemetry(t) {
@@ -1050,6 +1063,14 @@ export class DroneScene {
           }
         : null;
     if (!t) return;
+
+    /* Let the field animate itself: traffic, pedestrians, the crane, birds.
+       Driven from the render loop so it stays smooth with the aircraft rather
+       than stepping at the telemetry rate. */
+    if (this.fieldAnimate) {
+      this.fieldTime = (this.fieldTime || 0) + dt;
+      this.fieldAnimate(this.fieldTime, dt);
+    }
 
     this.aircraft.position.set(t.position.x, t.position.y, t.position.z);
     this.aircraft.rotation.order = "YXZ";

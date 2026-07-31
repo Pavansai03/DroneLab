@@ -124,7 +124,7 @@ export default function FlightHUD({ telemetry, diagnostics, frame, keys }) {
                         : negative
                           ? "var(--red)"
                           : m.spin === 1
-                            ? "#7fd7ff"
+                            ? "var(--info)"
                             : "var(--amber)",
                     }}
                   />

@@ -21,7 +21,7 @@ export default function AccountPanel({ auth, syncStatus, syncError, onSignedIn }
     return (
       <div>
         <div className="cat-row">Accounts unavailable</div>
-        <div className="tip" style={{ borderColor: "rgba(122,162,255,0.35)", background: "rgba(122,162,255,0.08)", color: "#c3d4f5" }}>
+        <div className="tip" style={{ borderColor: "var(--info-edge)", background: "var(--info-tint)", color: "var(--info-ink)" }}>
           {supabaseConfigNote}
         </div>
         <div className="sect-note">
@@ -190,7 +190,7 @@ export default function AccountPanel({ auth, syncStatus, syncError, onSignedIn }
               margin: 0,
               borderColor: message.tone === "bad" ? "rgba(255,92,98,0.4)" : "rgba(255,171,74,0.35)",
               background: message.tone === "bad" ? "rgba(255,92,98,0.08)" : "rgba(255,171,74,0.08)",
-              color: message.tone === "bad" ? "#ffc7c9" : "#f0d5ac",
+              color: message.tone === "bad" ? "var(--bad-ink)" : "var(--warn-ink)",
             }}
           >
             {message.text}

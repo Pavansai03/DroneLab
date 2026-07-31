@@ -44,7 +44,7 @@ export default function MotorMap({ frame, deadMotors = [], motorOut = [], size =
               y1={cy}
               x2={x}
               y2={y}
-              stroke={dead.has(m.index) ? "var(--red)" : "#39424f"}
+              stroke={dead.has(m.index) ? "var(--red)" : "var(--pad-idle)"}
               strokeWidth="3.5"
               strokeLinecap="round"
             />
@@ -52,7 +52,7 @@ export default function MotorMap({ frame, deadMotors = [], motorOut = [], size =
         })}
 
         {/* Hub */}
-        <circle cx={cx} cy={cy} r={size * 0.075} fill="#1d232e" stroke="#39424f" strokeWidth="1.5" />
+        <circle cx={cx} cy={cy} r={size * 0.075} fill="var(--panel3)" stroke="var(--pad-idle)" strokeWidth="1.5" />
 
         {/* Motors */}
         {frame.motors.map((m) => {
@@ -61,7 +61,7 @@ export default function MotorMap({ frame, deadMotors = [], motorOut = [], size =
           const y = cy + Math.sin(a) * R;
           const isDead = dead.has(m.index);
           const isCw = m.spin === 1;
-          const col = isDead ? "#ff5c62" : isCw ? "#7fd7ff" : "#ffab4a";
+          const col = isDead ? "var(--red)" : isCw ? "var(--info)" : "var(--amber)";
           const out = motorOut[m.index] ?? 0;
           const rMotor = size * 0.072;
 
@@ -124,16 +124,16 @@ export default function MotorMap({ frame, deadMotors = [], motorOut = [], size =
 
       <div className="motor-legend">
         <span>
-          <i style={{ background: "#7fd7ff" }} />
+          <i style={{ background: "var(--info)" }} />
           CW
         </span>
         <span>
-          <i style={{ background: "#ffab4a" }} />
+          <i style={{ background: "var(--amber)" }} />
           CCW
         </span>
         {deadMotors.length > 0 && (
           <span>
-            <i style={{ background: "#ff5c62" }} />
+            <i style={{ background: "var(--red)" }} />
             Failed
           </span>
         )}

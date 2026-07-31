@@ -181,6 +181,8 @@ honest behaviour of a drone nobody fitted a buzzer to.
 |---|---|
 | Armed | two rising beeps |
 | Disarmed | two falling beeps |
+| Takeoff | short rising chirp, the moment it leaves the ground |
+| Landed | soft two-note settle |
 | Arming denied | three harsh beeps — a pre-arm check failed |
 | Power on | three-note rising chirp |
 | Low battery | slow triple beep |
@@ -196,6 +198,42 @@ room arms at once. It is disabled with an explanatory tooltip until a buzzer is
 actually wired in, and the pre-flight checklist reports its status the same way
 it reports GPS: informational, never blocking arming, because a real drone flies
 just fine without one.
+
+### Two flight fields
+
+The student picks where to fly from the **Field** tab, and the choice is a real
+difficulty setting rather than a skin.
+
+| Field | What is in it | Why it is harder or easier |
+|---|---|---|
+| **Forest** | Broadleaf and conifer canopy, a river, deer, birds, rocks and long grass | Open lanes between the trunks. Height is easy to judge against a tree, and the ground is flat. This is where a first solo should happen. |
+| **City** | Tower blocks, a lattice cell tower, a crane and a building under construction, moving traffic, a park, and people on the pavements | Vertical walls on both sides, a crane arm that swings through the course, and far less room to recover from a bad input. |
+
+Both fields are laid out around the same mission gates, and the scenery generator
+keeps a clearance corridor along the whole course — trees and buildings are placed
+with their canopy or footprint taken into account, so nothing ever grows through a
+gate you are supposed to fly through.
+
+Swapping fields rebuilds the scenery, so it is disabled while the aircraft is
+airborne.
+
+### Light and dark
+
+A switch in the top bar, next to the mute button. The default follows the
+operating system, and an explicit choice is remembered.
+
+The two palettes are not inversions of each other. Text flips dark-on-light, but
+the accent hues are re-picked: `--cyan` at `#46e6cf` is bright and legible on
+near-black and disappears completely on white, so the light theme uses a deeper,
+more saturated teal at roughly the same hue. Every colour in the interface reads
+from a CSS variable — including the alpha tints, which use `rgba(var(--cyan-rgb), .14)`
+so they follow the theme too — and both palettes are checked to WCAG AA contrast
+for every piece of text the interface renders.
+
+The **assembly bay** follows the theme, because a floodlit blue workshop next to a
+dark interface is jarring. The **flight fields deliberately do not**: they are
+daylight scenes, and judging your height against a building or a treeline depends
+on them being lit like daytime.
 
 ---
 

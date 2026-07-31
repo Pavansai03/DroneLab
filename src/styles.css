@@ -7,7 +7,7 @@
   --border-soft: #1e242e;
   --text: #e7ecf2;
   --dim: #8a94a6;
-  --faint: #4b5462;
+  --faint: #7d8798;
 
   --cyan: #46e6cf;
   --amber: #ffab4a;
@@ -24,6 +24,121 @@
   --rail: 62px;
   --side: 336px;
   --insp: 380px;
+
+  /* Surfaces that used to be hard-coded. A theme cannot override a literal, so
+     every one of these had to become a variable before a light mode was possible. */
+  --rail-bg: #0d1117;
+  --topbar-bg: linear-gradient(180deg, #10141b, #0d1116);
+  --cat-bg: #0f131a;
+  --sunken: #0b0e13;          /* inset wells: progress bars, code blocks */
+  --canvas-bg: #0c1016;       /* the wiring surface */
+  --wire-casing: #0a0d12;     /* outline under a drawn wire */
+  --scroll-thumb: #2b3240;
+  --scroll-thumb-hover: #39424f;
+  --pad-idle: #39424f;        /* an unconnected solder pad */
+  --pad-ring: #6a7789;
+  --viewport-bg: #7cc7ec;
+  --focus-halo: rgba(255, 255, 255, 0.03);
+  --swatch-edge: rgba(255, 255, 255, 0.18);
+  --pad-done-ring: rgba(255, 255, 255, 0.7);
+  --shadow-modal: 0 24px 70px rgba(0, 0, 0, 0.6);
+  --shadow-float: 0 10px 30px rgba(0, 0, 0, 0.35);
+
+  /* Ink for text sitting on a tinted callout. Softer than the pure accent on
+     dark; darker than it on light. Same three meanings either way. */
+  --info-ink: #c3d4f5;
+  --warn-ink: #f0d5ac;
+  --bad-ink: #ffc7c9;
+  --info-tint: rgba(122, 162, 255, 0.08);
+  --info-edge: rgba(122, 162, 255, 0.35);
+  --ok-ink: #b6f2d3;
+  --bad-tint: rgba(255, 92, 98, 0.08);
+  --bad-edge: rgba(255, 92, 98, 0.4);
+
+  /* Accent channels, so a tint can be written rgba(var(--cyan-rgb), .14) and
+     follow the theme. A literal rgba() cannot; that is why the light mode was
+     still showing dark-mode accent washes. */
+  --bg-rgb: 11, 14, 19;
+  --cyan-rgb: 70, 230, 207;
+  --amber-rgb: 255, 171, 74;
+  --orange-rgb: 255, 122, 51;
+  --ok-rgb: 57, 217, 138;
+  --bad-rgb: 255, 92, 98;
+  --info-rgb: 122, 162, 255;
+  /* Text placed ON a filled accent chip. */
+  --on-accent: #06120c;
+  --cyan-ink: var(--cyan);   /* accent text sitting on an accent tint */
+  --backdrop: rgba(5, 7, 10, 0.82);
+}
+
+/* ===================================================================
+   LIGHT THEME
+   -------------------------------------------------------------------
+   Not an inversion. Text goes dark on light, but the accent hues are
+   re-picked rather than reused: --cyan and --green are legible on near-black
+   and wash out completely on white, so the light theme uses deeper, more
+   saturated versions at roughly the same hue. The semantic meaning of each
+   token (ok / warn / bad) is identical in both.
+   =================================================================== */
+:root[data-theme="light"] {
+  --bg: #eef1f6;
+  --panel: #ffffff;
+  --panel2: #f4f6fa;
+  --panel3: #e8ecf3;
+  --border: #d2d9e4;
+  --border-soft: #e2e7ef;
+  --text: #161c26;
+  --dim: #5a6675;
+  --faint: #5d6575;
+
+  --cyan: #0b7365;
+  --amber: #8f5400;
+  --green: #177a44;
+  --red: #bd1f28;
+  --blue: #2551b8;
+  --violet: #6a2fbd;
+
+  --ok: #177a44;
+  --warn: #8f5400;
+  --bad: #bd1f28;
+  --info: #2551b8;
+
+  --rail-bg: #e6eaf1;
+  --topbar-bg: linear-gradient(180deg, #ffffff, #f2f5f9);
+  --cat-bg: #e9edf4;
+  --sunken: #dfe4ec;
+  --canvas-bg: #f7f9fc;
+  --wire-casing: #ffffff;
+  --scroll-thumb: #c2cbd9;
+  --scroll-thumb-hover: #a9b4c6;
+  --pad-idle: #c6cedb;
+  --pad-ring: #8b95a4;
+  --viewport-bg: #cfe6f5;
+  --focus-halo: rgba(0, 0, 0, 0.04);
+  --swatch-edge: rgba(0, 0, 0, 0.22);
+  --pad-done-ring: rgba(0, 0, 0, 0.45);
+  --shadow-modal: 0 24px 70px rgba(20, 30, 50, 0.22);
+  --shadow-float: 0 10px 30px rgba(20, 30, 50, 0.14);
+
+  --info-ink: #24408c;
+  --warn-ink: #7a4700;
+  --bad-ink: #93202a;
+  --info-tint: rgba(var(--info-rgb), 0.09);
+  --info-edge: rgba(var(--info-rgb), 0.3);
+  --ok-ink: #10603a;
+  --bad-tint: rgba(var(--bad-rgb), 0.08);
+  --bad-edge: rgba(var(--bad-rgb), 0.32);
+
+  --bg-rgb: 238, 241, 246;
+  --cyan-rgb: 11, 115, 101;
+  --amber-rgb: 143, 84, 0;
+  --orange-rgb: 199, 84, 12;
+  --ok-rgb: 23, 122, 68;
+  --bad-rgb: 189, 31, 40;
+  --info-rgb: 37, 81, 184;
+  --on-accent: #ffffff;
+  --cyan-ink: #075347;
+  --backdrop: rgba(22, 30, 45, 0.45);
 }
 
 * {
@@ -58,11 +173,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2b3240;
+  background: var(--scroll-thumb);
   border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #39424f;
+  background: var(--scroll-thumb-hover);
 }
 
 /* --------------------------------------------------------------- shell */
@@ -87,7 +202,7 @@ body {
   align-items: center;
   gap: 18px;
   padding: 0 16px;
-  background: linear-gradient(180deg, #10141b, #0d1116);
+  background: var(--topbar-bg);
   border-bottom: 1px solid var(--border);
   z-index: 20;
 }
@@ -115,7 +230,7 @@ body {
 
 /* --------------------------------------------------------- module rail */
 .rail {
-  background: #0d1117;
+  background: var(--rail-bg);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -150,8 +265,8 @@ body {
 }
 .rail-btn.active {
   border-color: var(--cyan);
-  background: rgba(70, 230, 207, 0.14);
-  color: var(--cyan);
+  background: rgba(var(--cyan-rgb), 0.14);
+  color: var(--cyan-ink);
 }
 .rail-btn:disabled {
   opacity: 0.32;
@@ -165,7 +280,7 @@ body {
   height: 15px;
   border-radius: 50%;
   background: var(--green);
-  color: #05210f;
+  color: var(--on-accent);
   font-size: 9px;
   display: flex;
   align-items: center;
@@ -251,7 +366,7 @@ body {
 .viewport {
   position: relative;
   overflow: hidden;
-  background: #7cc7ec;
+  background: var(--viewport-bg);
   min-width: 0;
 }
 .viewport canvas {
@@ -278,7 +393,7 @@ body {
 .instruction-bar {
   align-self: center;
   max-width: 640px;
-  background: rgba(11, 14, 19, 0.9);
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px 16px;
@@ -286,7 +401,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-float);
 }
 .instruction-bar .step {
   font-size: 10px;
@@ -331,7 +446,7 @@ body {
 }
 .btn.primary {
   background: var(--amber);
-  color: #1a1204;
+  color: var(--on-accent);
   border-color: var(--amber);
 }
 .btn.primary:hover:not(:disabled) {
@@ -339,12 +454,12 @@ body {
 }
 .btn.go {
   background: var(--cyan);
-  color: #04211d;
+  color: var(--on-accent);
   border-color: var(--cyan);
 }
 .btn.danger {
-  background: rgba(255, 92, 98, 0.14);
-  border-color: rgba(255, 92, 98, 0.5);
+  background: rgba(var(--bad-rgb), 0.14);
+  border-color: rgba(var(--bad-rgb), 0.5);
   color: var(--red);
 }
 .btn.sm {
@@ -366,6 +481,73 @@ body {
   flex-shrink: 0;
 }
 
+/* ------------------------------------------------ light / dark toggle */
+/* A switch rather than a button: the state IS the setting, so it should be
+   readable at a glance without having to reason about what clicking would do. */
+.theme-toggle {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 0;
+}
+.tt-track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 50px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--sunken);
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+.theme-toggle:hover .tt-track {
+  border-color: var(--cyan);
+}
+.theme-toggle:focus-visible .tt-track {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-halo);
+}
+.tt-ico {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  color: var(--muted);
+  transition: color 0.18s ease;
+}
+/* The icon the knob is NOT covering is the one worth highlighting. */
+.theme-toggle[aria-checked="false"] .tt-ico.moon,
+.theme-toggle[aria-checked="true"] .tt-ico.sun {
+  color: var(--bg);
+}
+.tt-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.theme-toggle[aria-checked="true"] .tt-knob {
+  transform: translateX(24px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tt-knob,
+  .tt-track,
+  .tt-ico {
+    transition: none;
+  }
+}
+
 /* -------------------------------------------------------- parts library */
 .cat-row {
   padding: 7px 14px;
@@ -373,7 +555,7 @@ body {
   letter-spacing: 0.12em;
   font-weight: 700;
   color: var(--faint);
-  background: #0f131a;
+  background: var(--cat-bg);
   border-bottom: 1px solid var(--border-soft);
   border-top: 1px solid var(--border-soft);
   text-transform: uppercase;
@@ -411,8 +593,8 @@ body {
 }
 .part-tile.active {
   border-color: var(--cyan);
-  background: rgba(70, 230, 207, 0.08);
-  box-shadow: 0 0 0 1px rgba(70, 230, 207, 0.28);
+  background: rgba(var(--cyan-rgb), 0.08);
+  box-shadow: 0 0 0 1px rgba(var(--cyan-rgb), 0.28);
 }
 .part-tile.active:active {
   transform: scale(0.96);
@@ -457,7 +639,7 @@ body {
   font-weight: 700;
   padding: 2px 6px;
   border-radius: 20px;
-  background: rgba(70, 230, 207, 0.16);
+  background: rgba(var(--cyan-rgb), 0.16);
   color: var(--cyan);
 }
 
@@ -483,7 +665,7 @@ body {
 .variant-chip.on {
   border-color: var(--amber);
   color: var(--amber);
-  background: rgba(255, 171, 74, 0.1);
+  background: rgba(var(--amber-rgb), 0.1);
 }
 .variant-chip small {
   display: block;
@@ -497,8 +679,8 @@ body {
   margin: 8px;
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(70, 230, 207, 0.07);
-  border: 1px solid rgba(70, 230, 207, 0.24);
+  background: rgba(var(--cyan-rgb), 0.07);
+  border: 1px solid rgba(var(--cyan-rgb), 0.24);
 }
 .teach h4 {
   margin: 0 0 5px;
@@ -511,7 +693,7 @@ body {
   margin: 0 0 6px;
   font-size: 11.5px;
   line-height: 1.5;
-  color: #cbd4e0;
+  color: var(--text);
 }
 .teach p:last-child {
   margin-bottom: 0;
@@ -519,7 +701,7 @@ body {
 .teach .why {
   color: var(--dim);
   font-size: 11px;
-  border-top: 1px dashed rgba(70, 230, 207, 0.2);
+  border-top: 1px dashed rgba(var(--cyan-rgb), 0.2);
   padding-top: 6px;
 }
 
@@ -529,9 +711,9 @@ body {
   border-radius: 9px;
   font-size: 11.5px;
   line-height: 1.45;
-  background: rgba(255, 171, 74, 0.09);
-  border: 1px solid rgba(255, 171, 74, 0.28);
-  color: #f0d5ac;
+  background: rgba(var(--amber-rgb), 0.09);
+  border: 1px solid rgba(var(--amber-rgb), 0.28);
+  color: var(--warn-ink);
 }
 
 /* ------------------------------------------------------------ checklist */
@@ -548,8 +730,8 @@ body {
   margin-bottom: 3px;
 }
 .task.current {
-  background: rgba(255, 171, 74, 0.08);
-  border-color: rgba(255, 171, 74, 0.3);
+  background: rgba(var(--amber-rgb), 0.08);
+  border-color: rgba(var(--amber-rgb), 0.3);
 }
 .task-mark {
   width: 18px;
@@ -567,7 +749,7 @@ body {
 .task.done .task-mark {
   background: var(--ok);
   border-color: var(--ok);
-  color: #05210f;
+  color: var(--on-accent);
 }
 .task.current .task-mark {
   border-color: var(--amber);
@@ -644,26 +826,26 @@ body {
 .tree-node.lit {
   color: var(--text);
   border-width: 1.5px;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.03);
+  box-shadow: 0 0 0 3px var(--focus-halo);
 }
 .tree-node.lit.ok {
   border-color: var(--ok);
-  background: rgba(57, 217, 138, 0.12);
-  color: #b6f2d3;
+  background: rgba(var(--ok-rgb), 0.12);
+  color: var(--ok-ink);
 }
 .tree-node.lit.warn {
   border-color: var(--warn);
-  background: rgba(255, 171, 74, 0.12);
-  color: #f7dcb4;
+  background: rgba(var(--amber-rgb), 0.12);
+  color: var(--warn-ink);
 }
 .tree-node.lit.bad {
   border-color: var(--bad);
-  background: rgba(255, 92, 98, 0.13);
-  color: #ffc7c9;
+  background: rgba(var(--bad-rgb), 0.13);
+  color: var(--bad-ink);
 }
 .tree-node.lit.info {
   border-color: var(--info);
-  background: rgba(122, 162, 255, 0.12);
+  background: rgba(var(--info-rgb), 0.12);
 }
 .tree-node.terminal {
   font-weight: 700;
@@ -698,11 +880,11 @@ body {
   text-align: center;
 }
 .branch-tag.yes.on {
-  background: rgba(57, 217, 138, 0.18);
+  background: rgba(var(--ok-rgb), 0.18);
   color: var(--ok);
 }
 .branch-tag.no.on {
-  background: rgba(255, 92, 98, 0.18);
+  background: rgba(var(--bad-rgb), 0.18);
   color: var(--bad);
 }
 .branch-body {
@@ -729,7 +911,7 @@ body {
 .motor-tab.on {
   border-color: var(--cyan);
   color: var(--cyan);
-  background: rgba(70, 230, 207, 0.1);
+  background: rgba(var(--cyan-rgb), 0.1);
 }
 .motor-tab.bad {
   border-color: var(--bad);
@@ -767,11 +949,11 @@ body {
   border-color: var(--cyan);
 }
 .wire-row.connected {
-  border-color: rgba(57, 217, 138, 0.45);
-  background: rgba(57, 217, 138, 0.07);
+  border-color: rgba(var(--ok-rgb), 0.45);
+  background: rgba(var(--ok-rgb), 0.07);
 }
 .wire-row.required-missing {
-  border-color: rgba(255, 92, 98, 0.4);
+  border-color: rgba(var(--bad-rgb), 0.4);
 }
 .wire-swatch {
   width: 4px;
@@ -815,7 +997,7 @@ body {
 .wire-row.connected .wire-check {
   background: var(--ok);
   border-color: var(--ok);
-  color: #05210f;
+  color: var(--on-accent);
 }
 .opt-flag {
   font-size: 8.5px;
@@ -903,7 +1085,7 @@ body {
 .bar {
   height: 5px;
   border-radius: 3px;
-  background: #0b0e13;
+  background: var(--sunken);
   overflow: hidden;
   margin-top: 6px;
 }
@@ -931,11 +1113,11 @@ body {
 }
 .check-dot.pass {
   background: var(--ok);
-  box-shadow: 0 0 8px rgba(57, 217, 138, 0.5);
+  box-shadow: 0 0 8px rgba(var(--ok-rgb), 0.5);
 }
 .check-dot.fail {
   background: var(--bad);
-  box-shadow: 0 0 8px rgba(255, 92, 98, 0.5);
+  box-shadow: 0 0 8px rgba(var(--bad-rgb), 0.5);
 }
 .check-dot.opt {
   background: var(--faint);
@@ -988,7 +1170,7 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 50%;
   background: var(--amber);
   cursor: pointer;
-  border: 2px solid #0b0e13;
+  border: 2px solid var(--bg);
 }
 input[type="range"]::-moz-range-thumb {
   width: 15px;
@@ -996,7 +1178,7 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 50%;
   background: var(--amber);
   cursor: pointer;
-  border: 2px solid #0b0e13;
+  border: 2px solid var(--bg);
 }
 .slider-teach {
   font-size: 10.5px;
@@ -1022,7 +1204,7 @@ input[type="range"]::-moz-range-thumb {
 }
 .fault-row.on {
   border-color: var(--red);
-  background: rgba(255, 92, 98, 0.1);
+  background: rgba(var(--bad-rgb), 0.1);
 }
 .fault-name {
   font-size: 11.5px;
@@ -1037,23 +1219,23 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 800;
 }
 .sev.fatal {
-  background: rgba(255, 92, 98, 0.18);
+  background: rgba(var(--bad-rgb), 0.18);
   color: var(--red);
 }
 .sev.critical {
-  background: rgba(255, 122, 51, 0.18);
-  color: #ff9d5c;
+  background: rgba(var(--orange-rgb), 0.18);
+  color: var(--warn-ink);
 }
 .sev.warning {
-  background: rgba(255, 171, 74, 0.18);
+  background: rgba(var(--amber-rgb), 0.18);
   color: var(--amber);
 }
 .sev.degraded {
-  background: rgba(255, 171, 74, 0.14);
+  background: rgba(var(--amber-rgb), 0.14);
   color: var(--amber);
 }
 .sev.nominal {
-  background: rgba(57, 217, 138, 0.16);
+  background: rgba(var(--ok-rgb), 0.16);
   color: var(--ok);
 }
 
@@ -1061,8 +1243,8 @@ input[type="range"]::-moz-range-thumb {
   margin: 0 8px 8px;
   padding: 9px 11px;
   border-radius: 9px;
-  background: rgba(255, 92, 98, 0.07);
-  border: 1px solid rgba(255, 92, 98, 0.22);
+  background: rgba(var(--bad-rgb), 0.07);
+  border: 1px solid rgba(var(--bad-rgb), 0.22);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -1078,7 +1260,7 @@ input[type="range"]::-moz-range-thumb {
 }
 .fault-detail dd {
   margin: 2px 0 0;
-  color: #d8dfe8;
+  color: var(--text);
 }
 
 /* ---------------------------------------------------------- flight HUD */
@@ -1100,7 +1282,7 @@ input[type="range"]::-moz-range-thumb {
   flex-direction: column;
 }
 .hud-card {
-  background: rgba(11, 14, 19, 0.88);
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 11px;
   padding: 9px 13px;
@@ -1134,17 +1316,17 @@ input[type="range"]::-moz-range-thumb {
   border: 1px solid;
 }
 .mode-pill.ok {
-  background: rgba(57, 217, 138, 0.14);
+  background: rgba(var(--ok-rgb), 0.14);
   border-color: var(--ok);
   color: var(--ok);
 }
 .mode-pill.warn {
-  background: rgba(255, 171, 74, 0.14);
+  background: rgba(var(--amber-rgb), 0.14);
   border-color: var(--warn);
   color: var(--warn);
 }
 .mode-pill.bad {
-  background: rgba(255, 92, 98, 0.14);
+  background: rgba(var(--bad-rgb), 0.14);
   border-color: var(--bad);
   color: var(--bad);
 }
@@ -1166,7 +1348,7 @@ input[type="range"]::-moz-range-thumb {
   font-size: 10px;
   padding: 5px 9px;
   border-radius: 6px;
-  background: rgba(11, 14, 19, 0.85);
+  background: rgba(var(--bg-rgb), 0.85);
   border: 1px solid var(--border);
   color: var(--dim);
   backdrop-filter: blur(6px);
@@ -1183,7 +1365,7 @@ input[type="range"]::-moz-range-thumb {
 .modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(5, 7, 10, 0.82);
+  background: var(--backdrop, rgba(5, 7, 10, 0.82));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1199,7 +1381,7 @@ input[type="range"]::-moz-range-thumb {
   width: 100%;
   max-height: 82%;
   overflow-y: auto;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow-modal);
 }
 .modal-head {
   padding: 16px 20px;
@@ -1253,7 +1435,7 @@ input[type="range"]::-moz-range-thumb {
   align-items: center;
   gap: 8px;
   font-size: 11.5px;
-  color: #e0c4c6;
+  color: var(--bad-ink);
 }
 .chain-item::before {
   content: "";
@@ -1273,7 +1455,7 @@ input[type="range"]::-moz-range-thumb {
   max-height: 94vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow-modal);
   overflow: hidden;
 }
 .wd-head {
@@ -1308,9 +1490,9 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 9px;
   font-size: 11.5px;
   line-height: 1.55;
-  background: rgba(255, 171, 74, 0.1);
-  border: 1px solid rgba(255, 171, 74, 0.3);
-  color: #f0d5ac;
+  background: rgba(var(--amber-rgb), 0.1);
+  border: 1px solid rgba(var(--amber-rgb), 0.3);
+  color: var(--warn-ink);
 }
 .wd-correction b {
   color: var(--amber);
@@ -1350,13 +1532,13 @@ input[type="range"]::-moz-range-thumb {
 .wd-swatch.on {
   border-color: var(--cyan);
   color: var(--text);
-  background: rgba(70, 230, 207, 0.1);
+  background: rgba(var(--cyan-rgb), 0.1);
 }
 .wd-swatch i {
   width: 15px;
   height: 4px;
   border-radius: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid var(--swatch-edge);
 }
 .wd-hint {
   padding: 7px 20px 0;
@@ -1371,7 +1553,7 @@ input[type="range"]::-moz-range-thumb {
   margin: 12px 20px;
   padding: 16px;
   border-radius: 12px;
-  background: #0c1016;
+  background: var(--canvas-bg);
   border: 1px solid var(--border);
 }
 
@@ -1447,15 +1629,15 @@ input[type="range"]::-moz-range-thumb {
   flex-shrink: 0;
 }
 .wd-card.complete {
-  border-color: rgba(57, 217, 138, 0.5);
+  border-color: rgba(var(--ok-rgb), 0.5);
 }
 .wd-card.complete .wd-card-head {
-  background: rgba(57, 217, 138, 0.12);
+  background: rgba(var(--ok-rgb), 0.12);
 }
 .wd-card.complete .wd-card-check {
   background: var(--ok);
   border-color: var(--ok);
-  color: #05210f;
+  color: var(--on-accent);
 }
 
 /* Picture and pins side by side, pins always on the edge facing the gutter. */
@@ -1508,7 +1690,7 @@ input[type="range"]::-moz-range-thumb {
   flex-direction: row-reverse;
 }
 .wd-pin:hover {
-  background: rgba(70, 230, 207, 0.12);
+  background: rgba(var(--cyan-rgb), 0.12);
 }
 .wd-pin:active {
   cursor: grabbing;
@@ -1528,8 +1710,8 @@ input[type="range"]::-moz-range-thumb {
 .wd-dot {
   width: 12px;
   height: 12px;
-  background: #39424f;
-  border: 2px solid #6a7789;
+  background: var(--pad-idle);
+  border: 2px solid var(--pad-ring);
   flex-shrink: 0;
   transition: transform 0.12s;
   border-radius: 2px;
@@ -1542,7 +1724,7 @@ input[type="range"]::-moz-range-thumb {
   border-color: var(--cyan);
 }
 .wd-pin.done .wd-dot {
-  border-color: rgba(255, 255, 255, 0.7);
+  border-color: var(--pad-done-ring);
 }
 
 .wd-feedback {
@@ -1571,23 +1753,23 @@ input[type="range"]::-moz-range-thumb {
   color: var(--faint);
 }
 .wd-feedback.ok {
-  border-color: rgba(57, 217, 138, 0.45);
-  background: rgba(57, 217, 138, 0.09);
+  border-color: rgba(var(--ok-rgb), 0.45);
+  background: rgba(var(--ok-rgb), 0.09);
 }
 .wd-feedback.ok b {
   color: var(--ok);
 }
 .wd-feedback.bad {
-  border-color: rgba(255, 92, 98, 0.45);
-  background: rgba(255, 92, 98, 0.09);
+  border-color: rgba(var(--bad-rgb), 0.45);
+  background: rgba(var(--bad-rgb), 0.09);
 }
 .wd-feedback.bad b {
   color: var(--bad);
 }
 .wd-feedback.warn,
 .wd-feedback.miss {
-  border-color: rgba(255, 171, 74, 0.45);
-  background: rgba(255, 171, 74, 0.08);
+  border-color: rgba(var(--amber-rgb), 0.45);
+  background: rgba(var(--amber-rgb), 0.08);
 }
 .wd-feedback.warn b,
 .wd-feedback.miss b {
@@ -1620,8 +1802,8 @@ input[type="range"]::-moz-range-thumb {
   border-color: var(--cyan);
 }
 .harness-row.complete {
-  border-color: rgba(57, 217, 138, 0.45);
-  background: rgba(57, 217, 138, 0.07);
+  border-color: rgba(var(--ok-rgb), 0.45);
+  background: rgba(var(--ok-rgb), 0.07);
 }
 .harness-row.blocked {
   opacity: 0.42;
@@ -1661,7 +1843,7 @@ input[type="range"]::-moz-range-thumb {
 .harness-row.complete .wire-check {
   background: var(--ok);
   border-color: var(--ok);
-  color: #05210f;
+  color: var(--on-accent);
 }
 
 /* Same treatment on each component card inside the wiring dialog. */
@@ -1680,13 +1862,13 @@ input[type="range"]::-moz-range-thumb {
 .wd-card.complete .wd-card-check {
   background: var(--ok);
   border-color: var(--ok);
-  color: #05210f;
+  color: var(--on-accent);
 }
 .wd-card.complete {
-  border-color: rgba(57, 217, 138, 0.5);
+  border-color: rgba(var(--ok-rgb), 0.5);
 }
 .wd-card.complete .wd-card-head {
-  background: rgba(57, 217, 138, 0.12);
+  background: rgba(var(--ok-rgb), 0.12);
 }
 
 /* -------------------------------------------------- accounts / roster */
@@ -1760,7 +1942,7 @@ input[type="range"]::-moz-range-thumb {
 }
 .cloud-chip.on i {
   background: var(--ok);
-  box-shadow: 0 0 7px rgba(57, 217, 138, 0.6);
+  box-shadow: 0 0 7px rgba(var(--ok-rgb), 0.6);
 }
 .cloud-chip.busy i {
   background: var(--amber);
@@ -1784,19 +1966,19 @@ input[type="range"]::-moz-range-thumb {
   position: relative;
 }
 .flow-node.ok {
-  border-color: rgba(57, 217, 138, 0.55);
-  background: rgba(57, 217, 138, 0.1);
-  color: #b6f2d3;
+  border-color: rgba(var(--ok-rgb), 0.55);
+  background: rgba(var(--ok-rgb), 0.1);
+  color: var(--ok-ink);
 }
 .flow-node.warn {
-  border-color: rgba(255, 171, 74, 0.55);
-  background: rgba(255, 171, 74, 0.1);
-  color: #f7dcb4;
+  border-color: rgba(var(--amber-rgb), 0.55);
+  background: rgba(var(--amber-rgb), 0.1);
+  color: var(--warn-ink);
 }
 .flow-node.bad {
-  border-color: rgba(255, 92, 98, 0.55);
-  background: rgba(255, 92, 98, 0.11);
-  color: #ffc7c9;
+  border-color: rgba(var(--bad-rgb), 0.55);
+  background: rgba(var(--bad-rgb), 0.11);
+  color: var(--bad-ink);
 }
 .flow-arrow {
   height: 16px;
@@ -1838,7 +2020,7 @@ input[type="range"]::-moz-range-thumb {
 }
 .frame-card.on {
   border-color: var(--cyan);
-  background: rgba(70, 230, 207, 0.09);
+  background: rgba(var(--cyan-rgb), 0.09);
 }
 .frame-card:disabled {
   opacity: 0.4;

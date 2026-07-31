@@ -407,7 +407,7 @@ export default function WiringDialog({ harness, links, onConnect, onDisconnect, 
                         and stops a red wire vanishing against another behind it. */}
                     <path
                       d={d}
-                      stroke="#0a0d12"
+                      stroke="var(--wire-casing)"
                       strokeWidth={hot ? 8 : 6}
                       fill="none"
                       strokeLinecap="round"

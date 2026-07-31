@@ -99,6 +99,15 @@ const TUNES = {
   powerOn: () => {
     [1000, 1300, 1700].forEach((f, i) => tone(f, 0.07, i * 0.08));
   },
+  // Climbing away: a short rising sweep, so leaving the ground is audible even
+  // when the pilot is watching the horizon rather than the altimeter.
+  takeoff: () => {
+    [1200, 1500, 1900].forEach((f, i) => tone(f, 0.1, i * 0.09));
+  },
+  // Settled back down: the same shape inverted, and softer.
+  landed: () => {
+    [1900, 1500, 1200].forEach((f, i) => tone(f, 0.11, i * 0.09, { gain: 0.045 }));
+  },
   // Slow, deliberate triple beep — the low-battery warning.
   lowBattery: () => {
     [0, 0.5, 1.0].forEach((d) => tone(1500, 0.15, d));

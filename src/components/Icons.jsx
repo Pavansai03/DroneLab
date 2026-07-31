@@ -191,3 +191,16 @@ export const Bolt = ({ size = 14 }) => (
     <path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z" />
   </S>
 );
+
+export const Sun = ({ size = 14 }) => (
+  <S size={size}>
+    <circle cx="12" cy="12" r="4.2" />
+    <path d="M12 2v2.6M12 19.4V22M2 12h2.6M19.4 12H22M4.9 4.9l1.9 1.9M17.2 17.2l1.9 1.9M19.1 4.9l-1.9 1.9M6.8 17.2l-1.9 1.9" />
+  </S>
+);
+
+export const Moon = ({ size = 14 }) => (
+  <S size={size}>
+    <path d="M20 14.2A8.2 8.2 0 019.8 4a8.4 8.4 0 100 20 8.4 8.4 0 0010.2-9.8z" />
+  </S>
+);
