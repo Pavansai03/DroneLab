@@ -52,6 +52,12 @@ const PIEZO_RESONANCE = 4100;
    biggest difference between "buzzer" and "synthesiser". */
 const PIEZO_ROLLOFF = 950;
 
+/* An active buzzer's own drive frequency — the one pitch it can make. Common
+   12 mm units sit at 2.7 kHz, which is also close enough to the disc resonance to
+   be genuinely loud. Everything Betaflight expresses, it expresses at this pitch
+   by switching it on and off. */
+const ACTIVE_BUZZER_HZ = 2700;
+
 let ctx = null;
 let bus = null; // where every note connects
 let master = null;
@@ -128,6 +134,12 @@ export function isBuzzerMuted() {
   return muted;
 }
 
+/** The shared AudioContext. The rotor synth plays through this same one — a
+    browser will only grant a handful, and two clocks would drift apart. */
+export function getAudioContext() {
+  return ensureContext();
+}
+
 /** Resume a suspended context. Call this from the same click that arms. */
 export function unlockAudio() {
   const c = ensureContext();
@@ -152,7 +164,14 @@ function note(freq, t0, dur, { level = 0.55, detune = 7, type = "square" } = {})
   env.gain.setValueAtTime(0.0001, t0);
   // 2.5 ms attack: fast enough to tick, slow enough not to click
   env.gain.linearRampToValueAtTime(level, t0 + 0.0025);
-  env.gain.setValueAtTime(level, t0 + dur * 0.7);
+  /* Then hold FLAT until the very end and drop in 10 ms.
+     A buzzer is switched, not played: the flight controller drives the pin high
+     and then low, so there is no musical decay. The earlier envelope started
+     falling at 70% of the note, which both softened the hard edge a real one has
+     and stole about 15% off every note — enough to push Betaflight's beeper
+     timings visibly off when measured. */
+  const holdTo = t0 + Math.max(0.004, dur - 0.01);
+  env.gain.setValueAtTime(level, holdTo);
   env.gain.exponentialRampToValueAtTime(0.0006, t0 + dur);
   env.connect(bus);
 
@@ -233,21 +252,28 @@ const TUNES = {
     return 0.16;
   },
 
-  /* ARM — two crisp rising beeps, and nothing more. It used to play the pair
-     twice, which put nearly half a second of buzzer between the student's click
-     and the aircraft moving, and ran straight into the take-off tone. Short is
-     what a real controller does, and short is what keeps the two apart. */
+  /* ARM — Betaflight's real arming sequence, beeperConfirmationBeeps ARMING:
+     `30, 5, 5, 5`, in units of 10 ms. On 300, off 50, on 50. A long beep and a
+     short one.
+
+     Note there is no melody. Most FC buzzers are ACTIVE buzzers: the disc has one
+     internal drive frequency and the flight controller can only switch it on and
+     off, so every distinction a real quad makes is made in RHYTHM. Two earlier
+     attempts here used rising and falling note pairs, which is a thing no
+     four-pound quadcopter has ever done. */
   armed: (t) => {
-    note(2700, t, 0.055);
-    note(3400, t + 0.075, 0.075);
-    return 0.16;
+    note(ACTIVE_BUZZER_HZ, t, 0.3);
+    note(ACTIVE_BUZZER_HZ, t + 0.35, 0.05);
+    return 0.42;
   },
 
-  /* DISARM — the mirror image, so the two are told apart by direction alone. */
+  /* DISARM — the real DISARMING sequence, `15, 5, 15, 5`: two equal 150 ms beeps.
+     Told apart from arming by rhythm alone (long-short against even-even), which
+     is exactly how you tell them apart standing on a flight line. */
   disarmed: (t) => {
-    note(3400, t, 0.055);
-    note(2700, t + 0.075, 0.085);
-    return 0.17;
+    note(ACTIVE_BUZZER_HZ, t, 0.15);
+    note(ACTIVE_BUZZER_HZ, t + 0.2, 0.15);
+    return 0.37;
   },
 
   /* Refused to arm: low, harsh, obviously wrong. A sawtooth through the piezo
@@ -291,11 +317,12 @@ const TUNES = {
     return 0.44;
   },
 
-  /* The classic slow triple. Deliberately unhurried: low battery means "come home
-     now", not "you are about to crash". */
+  /* Betaflight BAT_LOW, `25, 50`: on 250 ms, off 500 ms, repeating. Deliberately
+     unhurried — low battery means "come home now", not "you are about to crash",
+     and the cadence is the difference. */
   lowBattery: (t) => {
-    [0, 0.42, 0.84].forEach((d) => note(2900, t + d, 0.13));
-    return 1.0;
+    [0, 0.75, 1.5].forEach((d) => note(ACTIVE_BUZZER_HZ, t + d, 0.25));
+    return 1.8;
   },
 
   /* Height limit: an alternating two-tone, the shape every altitude alert uses. */

@@ -47,6 +47,7 @@ import {
   unlockAudio,
   play as playBuzzer,
 } from "./sim/buzzer.js";
+import { setRotorMuted } from "./sim/rotorAudio.js";
 
 /* Canonical assembly order. Propellers come after the battery deliberately:
    on a real drone you fit props last, and only with the battery disconnected. */
@@ -177,11 +178,11 @@ export default function App() {
   const [testing, setTesting] = useState(false);
   /* Which destructive action is awaiting confirmation, if any. */
   const [confirm, setConfirm] = useState(null);
-  /* Buzzer mute — a listening preference, not part of the build, so it lives
-     outside the undo history and is not itself gated on the buzzer being fitted:
-     muting a buzzer that is not there yet is harmless and keeps the control
-     available the moment one is wired in. */
-  const [buzzerMuted, setBuzzerMutedState] = useState(() => isBuzzerMuted());
+  /* Master mute — a listening preference, not part of the build, so it lives
+     outside the undo history. It covers the motors as well as the buzzer, which
+     is why it is never disabled: rotor noise exists from the first flight,
+     long before Module 3 adds anything that can beep. */
+  const [muted, setMutedState] = useState(() => isBuzzerMuted());
   /* Which world to fly in. Not part of the build, so it stays out of the undo
      history — changing scenery is not a design decision about the aircraft. */
   const [fieldId, setFieldId] = useState(DEFAULT_FIELD);
@@ -1042,24 +1043,28 @@ export default function App() {
           </span>
         </button>
 
+        {/* Master audio, not just the buzzer. The motors make noise whether or not
+            a buzzer was ever fitted, so this can no longer be disabled along with
+            it — a student on Module 1 still needs to be able to silence a room of
+            twenty quadcopters. */}
         <button
-          className={`btn icon ${diagnostics.buzzerFitted && !buzzerMuted ? "go" : ""}`}
+          className={`btn icon ${muted ? "" : "go"}`}
           onClick={() => {
-            const next = !buzzerMuted;
-            setBuzzerMutedState(next);
+            const next = !muted;
+            setMutedState(next);
             setBuzzerMuted(next);
+            setRotorMuted(next);
           }}
-          disabled={!diagnostics.buzzerFitted}
           title={
-            !diagnostics.buzzerFitted
-              ? "No buzzer fitted and wired — the aircraft is silent. Add one in Module 3."
-              : buzzerMuted
-                ? "Buzzer wired, but muted. Click to unmute."
-                : "Buzzer wired and audible. Click to mute."
+            muted
+              ? "Sound off. Click to turn it back on."
+              : diagnostics.buzzerFitted
+                ? "Sound on: motors and buzzer. Click to mute everything."
+                : "Sound on: motors only — no buzzer is fitted yet, so the aircraft cannot beep. Click to mute."
           }
-          aria-label={buzzerMuted ? "Unmute buzzer" : "Mute buzzer"}
+          aria-label={muted ? "Turn sound on" : "Mute all sound"}
         >
-          {diagnostics.buzzerFitted && !buzzerMuted ? <SpeakerOn /> : <SpeakerOff />}
+          {muted ? <SpeakerOff /> : <SpeakerOn />}
         </button>
 
         <button

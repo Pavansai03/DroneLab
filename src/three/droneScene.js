@@ -27,6 +27,7 @@ import { GATES } from "../sim/flightSim.js";
 import { FLIGHT_FIELDS, DEFAULT_FIELD } from "./environments.js";
 import { ALTITUDE_LIMIT, ALTITUDE_CAUTION } from "../sim/flightSim.js";
 import { setAlarm, clearAlarms } from "../sim/buzzer.js";
+import { startRotorAudio, stopRotorAudio, updateRotorAudio } from "../sim/rotorAudio.js";
 
 const deg = (d) => (d * Math.PI) / 180;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -396,6 +397,7 @@ export class DroneScene {
     if (this.mode === "flight") {
       this.applyFieldSky();
       this.applyFieldSun();
+      startRotorAudio();
     }
   }
 
@@ -863,12 +865,14 @@ export class DroneScene {
       this.bay.visible = false;
       this.applyFieldSky();
       this.applyFieldSun();
+      startRotorAudio();
       this.setShadowBounds(30, 160);
       this.key.intensity = 1.7;
       // In the flight field 1 unit = 1 metre, so the aircraft is scaled down from
       // bay units. Slightly larger than true scale so students can still see it.
       this.aircraft.scale.setScalar(0.32);
     } else {
+      stopRotorAudio();
       /* The bay has its own lighting rig, so the key light has to come back from
          wherever the field's sun put it. */
       this.key.position.set(4, 6, 3);
@@ -919,7 +923,10 @@ export class DroneScene {
     this.sim = sim;
     this.simAccumulator = 0;
     sim?.setObstacles(this.fieldObstacles);
-    if (!sim) clearAlarms();
+    if (!sim) {
+      clearAlarms();
+      stopRotorAudio();
+    }
   }
 
   setEnvironment(env) {
@@ -1146,7 +1153,12 @@ export class DroneScene {
     /* Audible warnings. Driven from here rather than from React because they
        have to track the aircraft frame-for-frame: a proximity alarm that updates
        at the telemetry rate would still be beeping slowly as the drone arrives. */
-    if (sim) this.updateAlarms(sim);
+    if (sim) {
+      this.updateAlarms(sim);
+      /* Motor noise, from the same RPM array the propellers are drawn from, so
+         what you hear and what you see cannot disagree. */
+      updateRotorAudio(sim.motorRpmArr, { crashed: sim.crashed, dt });
+    }
 
     /* Let the field animate itself: traffic, pedestrians, the crane, birds.
        Driven from the render loop so it stays smooth with the aircraft rather

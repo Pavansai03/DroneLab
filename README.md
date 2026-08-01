@@ -206,6 +206,21 @@ alert cuts off whatever is sounding while a lower-ranked one is dropped rather
 than layered underneath. That is what stops arm and take-off talking over each
 other, and it applies to the repeating alarms too.
 
+**Arm and disarm are rhythm, not melody.** Most FC buzzers are *active* buzzers:
+the disc has one internal drive frequency and the flight controller can only
+switch it on and off. Every distinction a real quad makes, it makes in timing.
+Betaflight's beeper table gives the sequences directly, in units of 10 ms —
+`ARMING = 30, 5, 5, 5` (on 300, off 50, on 50) and `DISARMING = 15, 5, 15, 5`
+(two even 150 ms beeps). Those are now used literally, at a single 2.7 kHz pitch,
+and they are told apart the way you tell them apart on a flight line: long-short
+against even-even. Two earlier attempts here used rising and falling note pairs,
+which is a thing no four-pound quadcopter has ever done.
+
+Notes are also switched rather than enveloped — flat until the last 10 ms, then
+gone. An earlier musical decay starting at 70% of each note both softened the
+hard edge a real buzzer has and stole about 15% off every note, enough to push
+the measured timings visibly off Betaflight's numbers.
+
 **No pitch sweeps.** Real flight controllers describe their tones in MML — the
 QBasic `PLAY` notation — and MML has no way to express a glide: it is notes,
 octaves and durations. ArduPilot's entire tone library is stepped notes, from the
@@ -229,8 +244,8 @@ two short high beeps, take-off is three lower ones with a long tail.
 
 | Event | Tone |
 |---|---|
-| Armed | two crisp rising beeps |
-| Disarmed | the mirror image, two falling |
+| Armed | Betaflight's ARMING sequence: 300 ms beep, 50 ms gap, 50 ms beep |
+| Disarmed | Betaflight's DISARMING sequence: two even 150 ms beeps |
 | Arming denied | three low sawtooth rasps — a pre-arm check failed |
 | Power on | three rising ticks |
 | Take-off | three rising notes, last one held — ArduPilot's "ready" tune |
@@ -238,7 +253,7 @@ two short high beeps, take-off is three lower ones with a long tail.
 | Obstacle ahead | hard alternating two-tone, faster the closer you get |
 | Landing approach | slow low pulse while settling in, speeding up as the ground comes up |
 | Above the height limit | high double-tick, repeating |
-| Low battery | slow triple beep |
+| Low battery | Betaflight BAT_LOW: 250 ms on, 500 ms off, repeating |
 | RTH engaged | three level beeps |
 | Failsafe | fast two-tone warble |
 | Mission gate | bright two-note chime |
@@ -249,6 +264,45 @@ A speaker icon in the top bar mutes it. It is disabled with an explanatory
 tooltip until a buzzer is actually wired in, and the pre-flight checklist reports
 its status the same way it reports GPS: informational, never blocking arming,
 because a real drone flies fine without one.
+
+### The aircraft has a voice of its own
+
+The buzzer is a component bolted to the drone. The *drone* makes noise whether or
+not anyone fitted one, and it is by far the louder of the two — so rotor audio is
+deliberately not gated on the buzzer being wired. Tying them together would have
+taught something false.
+
+A multirotor is two ingredients, and the mix between them is what makes it read
+as an aircraft rather than as a motor or a fan:
+
+1. **Blade pass tones.** A propeller chops the air once per blade per rotation,
+   radiating a tone at BPF = RPM/60 x blades, plus harmonics. A 920 KV motor on 3S
+   hovers near 7000 RPM, so a two-blade prop sits around 230 Hz — the hum you hear
+   standing next to one. It is driven from the simulator's live per-motor RPM, so
+   the pitch rises with throttle on its own; nothing fakes it. Measured at climb
+   power the synth radiates 316 Hz against a predicted 317.
+2. **Broadband noise.** Turbulence off the blade tips — the "whoosh" that grows as
+   the aircraft works harder. Without it a pure tone sounds like a wasp.
+
+And one property worth more than either, which nothing here had to write: the four
+motors run at genuinely different RPM because the mixer is holding the aircraft
+level, so four slightly detuned tones **beat** against each other. That slow
+throbbing warble is the most recognisable thing about multirotor noise, and it
+falls straight out of using the real RPM array — the same one the propellers are
+drawn from, so what you hear and what you see cannot disagree.
+
+Loudness follows mean RPM on a steep curve, because aerodynamic noise rises far
+faster than linearly with tip speed: measured, a climb is about three times the
+level of a hover. A motor that has failed simply stops contributing its tone, so
+you can hear which one stopped. Both filters open under power, which is what makes
+a hard climb sound harsher than a hover.
+
+A recording could not do any of this. It would be one sound at one throttle
+setting, looped.
+
+The speaker button in the top bar is therefore a **master mute**, covering motors
+and buzzer together, and it is never disabled — rotor noise exists from the first
+flight, long before Module 3 adds anything that can beep.
 
 ### The height limit
 
