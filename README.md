@@ -206,9 +206,26 @@ alert cuts off whatever is sounding while a lower-ranked one is dropped rather
 than layered underneath. That is what stops arm and take-off talking over each
 other, and it applies to the repeating alarms too.
 
-Arm and take-off are also told apart by **shape**, not just pitch: arm is two
-discrete steps up, take-off is a single continuous glide up. Even overlapping
-they could not be confused.
+**No pitch sweeps.** Real flight controllers describe their tones in MML — the
+QBasic `PLAY` notation — and MML has no way to express a glide: it is notes,
+octaves and durations. ArduPilot's entire tone library is stepped notes, from the
+startup arpeggio (`MFT240L8O4aO5dcO4aO5dc...`) to the "ready" tune
+(`MFT100L4>G#6A#6B#4`) to the lost-model alarm. A portamento is a synthesiser
+gesture, not a buzzer one, and an early version of the take-off tone used one —
+which is exactly why it sounded wrong.
+
+So take-off is now that real "ready" figure: two short steps up and a longer note
+to settle on, the tone a real machine plays to say it is good to go. Landing is
+the same figure walked back down, which is what PX4 plays on power-down. Rising
+means starting, falling means finishing, and a pilot should not have to think
+about which they just heard.
+
+Both are transposed up an octave from the literal MML, because a 12 mm piezo
+radiates almost nothing at G#5 — the pitches a real board writes down are not the
+pitches it is actually loud at.
+
+Arm and take-off stay apart by rhythm and register rather than direction: arm is
+two short high beeps, take-off is three lower ones with a long tail.
 
 | Event | Tone |
 |---|---|
@@ -216,8 +233,8 @@ they could not be confused.
 | Disarmed | the mirror image, two falling |
 | Arming denied | three low sawtooth rasps — a pre-arm check failed |
 | Power on | three rising ticks |
-| Take-off | one continuous rising sweep |
-| Landed | one continuous falling sweep, softer |
+| Take-off | three rising notes, last one held — ArduPilot's "ready" tune |
+| Landed | the same figure walked back down, softer |
 | Obstacle ahead | hard alternating two-tone, faster the closer you get |
 | Landing approach | slow low pulse while settling in, speeding up as the ground comes up |
 | Above the height limit | high double-tick, repeating |

@@ -139,11 +139,14 @@ export function unlockAudio() {
 /**
  * One note from the disc.
  *
- * `bend` sweeps the pitch across the note. Real piezos drift a little as the
- * drive settles, and a deliberate sweep is also what makes the take-off tone read
- * as one gesture rather than as a row of separate beeps.
+ * Deliberately no pitch sweep. Real flight controllers describe their tones in
+ * MML — the QBasic PLAY notation — and MML has no way to express a glide: it is
+ * notes, octaves and durations. ArduPilot's whole tone library, from the startup
+ * arpeggio to the lost-model alarm, is stepped notes. A portamento is a
+ * synthesiser gesture, not a buzzer one, and it was exactly what made the
+ * take-off tone sound wrong.
  */
-function note(freq, t0, dur, { level = 0.55, bend = 1, detune = 7, type = "square" } = {}) {
+function note(freq, t0, dur, { level = 0.55, detune = 7, type = "square" } = {}) {
   const c = ctx;
   const env = c.createGain();
   env.gain.setValueAtTime(0.0001, t0);
@@ -157,7 +160,6 @@ function note(freq, t0, dur, { level = 0.55, bend = 1, detune = 7, type = "squar
     const osc = c.createOscillator();
     osc.type = type;
     osc.frequency.setValueAtTime(freq, t0);
-    if (bend !== 1) osc.frequency.exponentialRampToValueAtTime(freq * bend, t0 + dur);
     // The pair is detuned against itself, which gives the slight beating a real disc has
     osc.detune.setValueAtTime(i === 0 ? -detune : detune, t0);
     osc.connect(env);
@@ -257,19 +259,36 @@ const TUNES = {
     return 0.3;
   },
 
-  /* TAKE-OFF — one continuous rising sweep, not a row of beeps.
-     Shape is what keeps it clear of the arm tone: arm is two discrete steps up,
-     this is a single glide up. Even overlapping they could not be confused — and
-     the ranking means they never overlap anyway. */
+  /* TAKE-OFF — three rising notes, the last one held.
+     This is ArduPilot's "ready or finished" tune, MML "MFT100L4>G#6A#6B#4": two
+     short steps up and a longer note to settle on. It is the tone a real machine
+     plays to say it is good to go, which is precisely what leaving the ground
+     means, and the held final note is what stops three quick beeps sounding like
+     an error code.
+
+     Transposed up an octave from the literal MML. A 12 mm piezo radiates almost
+     nothing at G#5, so the pitches a real board writes down are not the pitches
+     it is actually loud at — up here the notes sit in the disc's efficient band.
+
+     It stays clear of the arm tone by rhythm and register: arm is two short high
+     beeps, this is three lower ones with a long tail. */
   takeoff: (t) => {
-    note(1700, t, 0.34, { bend: 2.05, level: 0.5 });
-    return 0.36;
+    note(2093, t, 0.075, { level: 0.5 }); // C7
+    note(2349, t + 0.095, 0.075, { level: 0.52 }); // D7
+    note(2637, t + 0.19, 0.2, { level: 0.55 }); // E7, held
+    return 0.42;
   },
 
-  /* LANDED — the same gesture inverted and softer: a single glide down. */
+  /* LANDED — the same figure walked back down, and softer.
+     PX4 plays a descending sequence on power-down for the same reason: rising
+     means starting, falling means finishing, and a pilot should not have to think
+     about which they just heard. Same rhythm as take-off so the two read as a
+     matched pair; opposite direction so they can never be confused. */
   landed: (t) => {
-    note(3400, t, 0.38, { bend: 0.5, level: 0.42 });
-    return 0.4;
+    note(2637, t, 0.075, { level: 0.42 });
+    note(2349, t + 0.095, 0.075, { level: 0.4 });
+    note(2093, t + 0.19, 0.22, { level: 0.38 });
+    return 0.44;
   },
 
   /* The classic slow triple. Deliberately unhurried: low battery means "come home
