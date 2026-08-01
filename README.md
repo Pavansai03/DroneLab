@@ -168,38 +168,79 @@ rather than being quietly steered around it:
 
 There is still an "auto-wire everything" button for teachers who want to skip ahead.
 
-### The buzzer is genuinely silent until it is fitted
+### The buzzer
 
 Module 3 adds a piezo buzzer, and it is not a decoration — it is wired to real
-audio, synthesised with the Web Audio API (no sound files to ship). But it only
-makes a sound once the buzzer is **placed on the airframe and wired to the FC**,
-exactly like a real one. Skip it, and the aircraft is completely silent: arming,
-pre-arm failures, and the crash alarm all happen without a sound, which is the
-honest behaviour of a drone nobody fitted a buzzer to.
+audio, synthesised with the Web Audio API. It only makes a sound once the buzzer
+is **placed on the airframe and wired to the FC**, exactly like a real one. Skip
+it and the aircraft is completely silent: arming, pre-arm failures and the crash
+alarm all happen without a sound, which is the honest behaviour of a drone
+nobody fitted a buzzer to.
 
-| Event | Tune |
+**Why it is synthesised rather than recorded.** No sound files ship here, so
+there is nothing to license, nothing to download, and no second copy of the tones
+to keep in step with the code. The realism has to come from modelling the device
+instead — which is what the synth does.
+
+**Modelling a piezo.** An FC buzzer is a piezoelectric disc and it sounds nothing
+like a raw oscillator. Three properties do almost all the work:
+
+1. It has **no low end at all**. The disc is tiny and stiff, so nothing below
+   about a kilohertz is radiated. A square wave sent straight to the speakers
+   keeps that energy and comes out fat and synthetic.
+2. It has a sharp mechanical **resonance** near 4 kHz, and any tone whose
+   harmonics land on it gets a hard nasal honk. That honk is most of what makes a
+   buzzer sound like a buzzer.
+3. It starts and stops almost instantly, with a mechanical tick on the attack.
+
+So every note is a pair of slightly detuned square oscillators (real discs beat a
+little) through a high-pass that removes the body, into a peaking filter at the
+resonance, into a limiter. Measured on the rendered output, that chain leaves
+roughly a thousandth of the energy below 800 Hz that it leaves at the
+fundamentals — the thin, piercing quality is measured, not asserted.
+
+**One voice at a time.** A real buzzer cannot play two things at once and neither
+can this one. Tones are ranked the way a cockpit ranks alerts — losing the
+aircraft outranks pilot actions, which outrank information — and a higher-ranked
+alert cuts off whatever is sounding while a lower-ranked one is dropped rather
+than layered underneath. That is what stops arm and take-off talking over each
+other, and it applies to the repeating alarms too.
+
+Arm and take-off are also told apart by **shape**, not just pitch: arm is two
+discrete steps up, take-off is a single continuous glide up. Even overlapping
+they could not be confused.
+
+| Event | Tone |
 |---|---|
-| Armed | two rising beeps |
-| Disarmed | two falling beeps |
-| Takeoff | rising three-note sweep, twice, the moment it leaves the ground |
-| Landed | the same shape inverted, twice, and softer |
-| Obstacle ahead | repeating blip, faster the closer you get, solid at contact |
-| Landing approach | slow low beep while descending below 6 m, speeding up as the ground comes up |
-| Arming denied | three harsh beeps — a pre-arm check failed |
-| Power on | three-note rising chirp |
+| Armed | two crisp rising beeps |
+| Disarmed | the mirror image, two falling |
+| Arming denied | three low sawtooth rasps — a pre-arm check failed |
+| Power on | three rising ticks |
+| Take-off | one continuous rising sweep |
+| Landed | one continuous falling sweep, softer |
+| Obstacle ahead | hard alternating two-tone, faster the closer you get |
+| Landing approach | slow low pulse while settling in, speeding up as the ground comes up |
+| Above the height limit | high double-tick, repeating |
 | Low battery | slow triple beep |
 | RTH engaged | three level beeps |
-| Failsafe | rapid urgent buzz |
-| ESC overheat / prop departed | short double blip |
+| Failsafe | fast two-tone warble |
 | Mission gate | bright two-note chime |
 | Mission complete | four-note rising jingle |
-| Crash | the "lost model" alarm — insistent, repeats until you find the wreckage |
+| Crash | the lost-model alarm, pitched **at** the disc's resonance where a real one is loudest |
 
-A speaker icon in the top bar mutes it — for the mid-lesson moment when the whole
-room arms at once. It is disabled with an explanatory tooltip until a buzzer is
-actually wired in, and the pre-flight checklist reports its status the same way
-it reports GPS: informational, never blocking arming, because a real drone flies
-just fine without one.
+A speaker icon in the top bar mutes it. It is disabled with an explanatory
+tooltip until a buzzer is actually wired in, and the pre-flight checklist reports
+its status the same way it reports GPS: informational, never blocking arming,
+because a real drone flies fine without one.
+
+### The height limit
+
+120 m is the ceiling almost every civil aviation authority sets for an uncrewed
+aircraft — the UK CAA, EASA and the FAA all land on 120 m or its imperial twin,
+400 ft. Nothing here enforces it: the aircraft keeps climbing, because a
+simulator that silently refused would teach that the limit is the airframe's
+rather than the law's. The buzzer starts calling at 100 m and runs at full rate
+above 120, and the HUD says which limit you are over.
 
 ### Things you can hit
 
@@ -226,9 +267,34 @@ A few details that matter more than they look:
 - The distance is measured to the **propeller disc**, not the centre of mass,
   because the propeller tips hit things first and end the flight when they do.
 
-The proximity alarm and the collision test read the same signed distance, so the
-alarm can never disagree with the impact that follows it. At 8 m/s into a
-building it gives about 2.4 seconds of warning.
+**The alarm asks the right question.** A pure distance trigger is unusable in
+these fields: a forest has a tree every few metres and a city street has walls on
+both sides, so "something is within 14 m" is true permanently, and an alarm that
+is always on carries no information. Closure rate alone is not enough either —
+flying *past* a building five metres to one side shrinks the gap all the way to
+the corner, and a closure alarm shouts the whole way along a wall you were never
+going to touch.
+
+So the alarm asks what a pilot asks: *if I hold this course, do I hit something,
+and how soon?* That is answered by marching the aircraft's own velocity vector
+forward through the collider field — sphere tracing, where the distance to the
+nearest surface is itself a safe step, so it cannot tunnel through something thin
+the way fixed-interval sampling would miss a street light at cruise speed. A
+second trigger covers anything inside 2.2 m regardless of heading, because at
+that range a gust will close it for you.
+
+Measured behaviour:
+
+| Situation | Alarm |
+|---|---|
+| Hovering 4 m from a tree | silent |
+| 200 m down a city street at 14 m | silent |
+| 200 m over the forest canopy | silent |
+| Flying straight at a building at 8 m/s | calls it 2.4 s out, then crashes |
+| Threading the canopy at 12 m | calls only the trunks actually ahead |
+
+The forward look runs at about 25 Hz rather than on all 240 physics steps a
+second, because no human can hear the difference and it is forty times the work.
 
 The gate course is verified clear in both fields — over 40 random layouts per
 field the tightest clearance anywhere along it is 5.8 m.
@@ -241,6 +307,44 @@ multirotor does exactly one thing after that. There is no soft version of it and
 no recovery, so the simulator says so immediately rather than letting a student
 watch a silent fall and wonder whether they can still save it. The DISARM button
 warns in its tooltip while airborne.
+
+### Making the fields look like places
+
+Two changes did most of the work, and neither was more geometry.
+
+**The sky.** A flat background colour is the single biggest thing that reads as a
+3D model rather than as outside. Real sky is never one colour — pale and warm at
+the horizon where you are looking through a hundred kilometres of atmosphere,
+deep at the zenith where you are looking through five. Both fields now sit under a
+gradient dome with a visible sun and a drifting cloud deck. The gradient is
+useful, not just pretty: it tells a pilot where the horizon is when the aircraft
+is a speck.
+
+The dome re-centres on the camera every frame (you cannot fly closer to the sky)
+while the clouds stay anchored in the world at an altitude a drone can climb
+through — a cloud that followed the camera could never be passed or looked down
+on. The key light is aimed along the sun the sky actually draws, so shadows fall
+the way the visible sun says they should.
+
+**Shared materials.** `mat()` used to mint a new material per call, leaving the
+forest with 780 meshes and **780 distinct materials**. Triangles were never the
+problem — 34k is nothing — but every unique material is its own shader binding.
+Caching by value collapsed that to 33, and that saving is what paid for
+everything else: painted ground textures, wind sway on every tree, a forest floor
+of logs and boulders and ferns, kerbs and zebra crossings, rooftop tanks and air
+handling, parked cars, traffic lights, and distant treelines and skylines so
+neither world ends in mid-air.
+
+Everything with a high count is instanced. The net result:
+
+| | before | after |
+|---|---|---|
+| Forest draw calls | 780 | 773 (+437 instanced objects) |
+| Forest materials | 780 | **33** |
+| City draw calls | 1159 | 1219 (+1805 instanced objects) |
+| City materials | 578 | **133** |
+
+After frustum culling a flight frame issues 86-198 draw calls.
 
 ### Two flight fields
 

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GATES } from "../sim/flightSim.js";
 import { cylinder, box } from "../sim/obstacles.js";
+import { buildSky } from "./sky.js";
 
 /**
  * FLIGHT FIELDS
@@ -71,8 +72,86 @@ function scatter(count, minR, maxR, fn) {
   }
 }
 
-const mat = (color, opts = {}) =>
-  new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.02, ...opts });
+/**
+ * Materials, shared.
+ *
+ * `mat()` used to mint a new MeshStandardMaterial per call, which left the forest
+ * with 780 meshes and 780 distinct materials. Triangles were never the problem
+ * here — 34k is nothing — but every unique material is its own shader binding, so
+ * the renderer could not batch anything. Caching by value collapses that to a
+ * couple of dozen, which is what pays for all the extra scenery below.
+ */
+const matCache = new Map();
+const mat = (color, opts = {}) => {
+  const key = color + "|" + JSON.stringify(opts);
+  let m = matCache.get(key);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.02, ...opts });
+    // Survives the field it was built for — see disposeObject in materials.js
+    m.userData.shared = true;
+    matCache.set(key, m);
+  }
+  return m;
+};
+
+/**
+ * A tileable ground texture, painted rather than loaded.
+ *
+ * Bare vertex colour on a 280 m circle gives the eye nothing to track, so height
+ * and ground speed become almost unreadable — which is the opposite of what a
+ * training field is for. Speckle at this scale is what a real field gives you.
+ */
+function groundTexture(base, speckles, repeat = 60) {
+  // See sky.js: no DOM, no painted texture — the flat base colour still applies.
+  if (typeof document === "undefined") return null;
+  const S = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const g = c.getContext("2d");
+  g.fillStyle = base;
+  g.fillRect(0, 0, S, S);
+
+  // Broad tonal blotches first, then fine grain on top
+  for (let i = 0; i < 26; i++) {
+    g.fillStyle = pick(speckles);
+    g.globalAlpha = 0.18 + Math.random() * 0.22;
+    const r = 6 + Math.random() * 22;
+    g.beginPath();
+    g.arc(Math.random() * S, Math.random() * S, r, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+  for (let i = 0; i < 1400; i++) {
+    g.fillStyle = pick(speckles);
+    g.globalAlpha = 0.1 + Math.random() * 0.5;
+    g.fillRect(Math.random() * S, Math.random() * S, 1 + Math.random() * 2, 1 + Math.random() * 2);
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeat, repeat);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+/** Copies of one geometry drawn in a single call. The only way to afford crowds. */
+function instanced(geo, material, placements) {
+  if (!placements.length) return null;
+  const m = new THREE.InstancedMesh(geo, material, placements.length);
+  const o = new THREE.Object3D();
+  placements.forEach((p, i) => {
+    o.position.set(p.x, p.y, p.z);
+    o.rotation.set(p.rx || 0, p.ry || 0, p.rz || 0);
+    o.scale.set(p.sx ?? 1, p.sy ?? 1, p.sz ?? 1);
+    o.updateMatrix();
+    m.setMatrixAt(i, o.matrix);
+  });
+  m.instanceMatrix.needsUpdate = true;
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
 
 /* ==================================================================== */
 /* FOREST                                                               */
@@ -209,17 +288,35 @@ export function buildForest() {
   g.name = "forest";
   const obstacles = [];
 
-  /* Ground. Two tones so the eye has something to track against for speed. */
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(140, 96), mat(0x2f6b3d));
+  /* Sky first, so the light can be aimed at a sun that is actually up there. */
+  const sky = buildSky({
+    horizon: 0xdcecf4,
+    mid: 0x9ed0ee,
+    zenith: 0x3f86c6,
+    sun: 0xfff6e2,
+    sunAzimuth: 0.75,
+    sunElevation: 0.68,
+    cloudCount: 14,
+    cloudHeight: 210,
+  });
+  g.add(sky);
+
+  /* Ground. Painted grass rather than a flat fill — see groundTexture. */
+  const grass = groundTexture("#2f6b3d", ["#3d8250", "#265c34", "#4a915c", "#1f4f2c"], 72);
+  const ground = new THREE.Mesh(
+    new THREE.CircleGeometry(300, 96),
+    new THREE.MeshStandardMaterial({ map: grass, color: 0x2f6b3d, roughness: 0.96, metalness: 0 })
+  );
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.02;
   ground.receiveShadow = true;
   g.add(ground);
 
+  /* Broad clearings and darker thickets, so the canopy floor is not uniform. */
   scatter(70, 14, 130, (x, z) => {
     const patch = new THREE.Mesh(
       new THREE.CircleGeometry(rand(3, 9), 12),
-      mat(pick([0x35784a, 0x2a6237, 0x3d8250]), { transparent: true, opacity: 0.75 })
+      mat(pick([0x35784a, 0x2a6237, 0x3d8250]), { transparent: true, opacity: 0.7 })
     );
     patch.rotation.x = -Math.PI / 2;
     patch.position.set(x, 0.01, z);
@@ -311,6 +408,7 @@ export function buildForest() {
   g.add(lakeGroup);
 
   const inLake = (x, z) => Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + 4;
+  const swayers = [];
 
   /* Trees. Big ones, as asked — up to 22 m, which is a serious obstacle at the
      altitudes these missions fly. */
@@ -331,6 +429,11 @@ export function buildForest() {
     t.position.set(x, 0, z);
     t.rotation.y = Math.random() * Math.PI;
     g.add(t);
+    /* Wind. A few degrees of lean, at a rate set by the tree's height — a 22 m
+       broadleaf answers a gust slowly and a sapling whips. Static trees are the
+       thing that most gives away a rendered forest, and this costs two sines per
+       tree per frame. */
+    swayers.push({ obj: t, phase: Math.random() * Math.PI * 2, rate: 1.5 - h / 30, amp: 0.006 + h / 3400 });
 
     /* Two colliders, not one. A single canopy-width cylinder would make it
        impossible to fly between the trunks under the canopy — which is exactly
@@ -353,6 +456,63 @@ export function buildForest() {
     bush.scale.y = 0.7;
     g.add(bush);
   });
+
+  /* Forest floor: fallen trunks, boulders and ferns. All instanced — 200 loose
+     meshes here would cost more than every tree in the field put together. */
+  {
+    const logs = [];
+    const rocks = [];
+    const ferns = [];
+    /* Fallen trunks are solid and sit at exactly the height a student flies a low
+       pass, so they get the same course-clearance test the standing trees get.
+       Everything that is BOTH drawn and collidable has to, or the scenery quietly
+       walks back into the gate line one object type at a time. */
+    scatter(26, 16, 120, (x, z) => {
+      if (inLake(x, z) || nearGateCourse(x, z, 3)) return;
+      logs.push({ x, y: 0.35, z, ry: Math.random() * Math.PI, rz: Math.PI / 2, sx: rand(0.7, 1.5) });
+    });
+    scatter(40, 14, 125, (x, z) => {
+      if (inLake(x, z)) return;
+      const s = rand(0.4, 1.5);
+      rocks.push({ x, y: s * 0.3, z, ry: Math.random() * Math.PI, sx: s, sy: s * rand(0.5, 0.8), sz: s });
+    });
+    scatter(120, 13, 110, (x, z) => {
+      if (inLake(x, z)) return;
+      ferns.push({ x, y: 0.3, z, ry: Math.random() * Math.PI, sx: rand(0.7, 1.4), sy: rand(0.7, 1.3), sz: rand(0.7, 1.4) });
+    });
+
+    const logMesh = instanced(
+      new THREE.CylinderGeometry(0.32, 0.4, 5.5, 7),
+      mat(0x5a4632),
+      logs
+    );
+    const rockMesh = instanced(new THREE.DodecahedronGeometry(1, 0), mat(0x7d7a72), rocks);
+    const fernMesh = instanced(
+      new THREE.ConeGeometry(0.75, 1.1, 5),
+      mat(0x2b6b3a),
+      ferns
+    );
+    [logMesh, rockMesh, fernMesh].forEach((m) => m && g.add(m));
+    // Fallen trunks are waist-high and solid; a drone at 1 m will find them
+    for (const l of logs) obstacles.push(cylinder(l.x, l.z, 1.4, 0, 0.8, "a fallen trunk"));
+  }
+
+  /* A distant treeline beyond the play area, so the world does not simply stop at
+     the edge of the ground disc. Two instanced cones, no detail, never reached. */
+  {
+    const far = [];
+    for (let i = 0; i < 260; i++) {
+      const a = (i / 260) * Math.PI * 2 + rand(-0.01, 0.01);
+      const r = rand(150, 275);
+      const h = rand(11, 26);
+      far.push({ x: Math.cos(a) * r, y: h / 2, z: Math.sin(a) * r, sx: rand(2.4, 4.2), sy: h, sz: rand(2.4, 4.2) });
+    }
+    const m = instanced(new THREE.ConeGeometry(1, 1, 6), mat(0x24592f), far);
+    if (m) {
+      m.castShadow = false;
+      g.add(m);
+    }
+  }
 
   /* Animals. */
   const animals = [];
@@ -380,7 +540,15 @@ export function buildForest() {
     animals.push({ obj: b, kind: "bird", radius, phase: Math.random() * Math.PI * 2, speed: rand(0.12, 0.22) });
   }
 
-  g.userData.animate = (t) => {
+  const skyAnimate = sky.userData.animate;
+  g.userData.animate = (t, dt) => {
+    skyAnimate(t, dt);
+    for (const sw of swayers) {
+      // Two frequencies, so it breathes rather than metronomes
+      const w = Math.sin(t * sw.rate + sw.phase) + Math.sin(t * sw.rate * 0.37 + sw.phase) * 0.5;
+      sw.obj.rotation.z = w * sw.amp;
+      sw.obj.rotation.x = Math.cos(t * sw.rate * 0.8 + sw.phase) * sw.amp * 0.6;
+    }
     for (const a of animals) {
       if (a.kind === "bird") {
         const ang = a.phase + t * a.speed;
@@ -401,7 +569,11 @@ export function buildForest() {
   };
 
   g.userData.obstacles = obstacles;
-  g.userData.sky = { background: 0x8fc9ee, fog: 0xa9d6ef, fogDensity: 0.0045 };
+  g.userData.sunDirection = sky.userData.sunDirection;
+  g.userData.skyDome = sky.userData.dome;
+  /* Fog matched to the sky's horizon band, so scenery fades into the sky it is
+     standing in front of rather than into a different colour. */
+  g.userData.sky = { background: 0xdcecf4, fog: 0xcfe4f0, fogDensity: 0.0034 };
   return g;
 }
 
@@ -845,8 +1017,27 @@ export function buildCity() {
   g.name = "city";
   const obstacles = [];
 
-  /* Ground: asphalt. */
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(160, 96), mat(0x3a3f47, { roughness: 1 }));
+  /* A city sky: hazier and greyer than the forest's, because it is. */
+  const sky = buildSky({
+    horizon: 0xdfe6ea,
+    mid: 0xa8c2d6,
+    zenith: 0x5c86ab,
+    sun: 0xfff2d8,
+    sunAzimuth: -0.6,
+    sunElevation: 0.58,
+    cloudCount: 18,
+    cloudHeight: 175,
+    cloudColour: 0xf2f4f6,
+    cloudOpacity: 0.68,
+  });
+  g.add(sky);
+
+  /* Ground: paving between the roads, not bare asphalt. */
+  const paving = groundTexture("#4a4f57", ["#565c65", "#3f444b", "#5f656e"], 90);
+  const ground = new THREE.Mesh(
+    new THREE.CircleGeometry(320, 96),
+    new THREE.MeshStandardMaterial({ map: paving, color: 0x4a4f57, roughness: 1, metalness: 0 })
+  );
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.02;
   ground.receiveShadow = true;
@@ -856,6 +1047,8 @@ export function buildCity() {
      ground reference for judging drift and ground speed. */
   const roadMat = mat(0x22262c, { roughness: 1 });
   const lineMat = new THREE.MeshBasicMaterial({ color: 0xd8d2a8 });
+  const kerbMat = mat(0x8d9199, { roughness: 0.95 });
+  const paintMat = new THREE.MeshBasicMaterial({ color: 0xe8e6dc });
   const ROAD = 11;
   const roads = [];
   for (let i = -3; i <= 3; i++) {
@@ -880,7 +1073,55 @@ export function buildCity() {
         dash.position.set(axis ? d : p, 0.03, axis ? p : d);
         g.add(dash);
       }
+
+      /* Raised kerbs and pavement either side. A street with no kerb reads as a
+         grey stripe painted on a field; the 15 cm step is most of what makes it
+         read as a road from 20 m up. One long box per side, so it is cheap. */
+      [-1, 1].forEach((side) => {
+        const off = side * (ROAD / 2 + 1.9);
+        const walk = new THREE.Mesh(
+          axis ? new THREE.BoxGeometry(300, 0.15, 3.8) : new THREE.BoxGeometry(3.8, 0.15, 300),
+          kerbMat
+        );
+        walk.position.set(axis ? 0 : p + off, 0.075, axis ? p + off : 0);
+        walk.receiveShadow = true;
+        g.add(walk);
+      });
     });
+  }
+
+  /* Zebra crossings on every approach to every junction. Purely visual, and the
+     single cheapest detail that makes the grid look inhabited rather than laid
+     out. */
+  {
+    const stripes = [];
+    for (let i = -3; i <= 3; i++) {
+      for (let j = -3; j <= 3; j++) {
+        const jx = i * 40;
+        const jz = j * 40;
+        if (Math.hypot(jx, jz) > 130) continue;
+        for (const axis of [0, 1]) {
+          for (const side of [-1, 1]) {
+            const base = ROAD / 2 + 1.2;
+            for (let k = 0; k < 7; k++) {
+              const across = -ROAD / 2 + 0.9 + k * 1.5;
+              stripes.push(
+                axis
+                  ? { x: jx + across, y: 0.035, z: jz + side * base }
+                  : { x: jx + side * base, y: 0.035, z: jz + across, ry: Math.PI / 2 }
+              );
+            }
+          }
+        }
+      }
+    }
+    const geo = new THREE.PlaneGeometry(0.75, 2.6);
+    geo.rotateX(-Math.PI / 2);
+    const m = instanced(geo, paintMat, stripes);
+    if (m) {
+      m.castShadow = false;
+      g.add(m);
+    }
   }
 
   /* Buildings on the blocks between roads. The launch pad sits in the middle of
@@ -891,6 +1132,7 @@ export function buildCity() {
     { wall: 0x5c6470, glass: 0x8fc4e8 },
     { wall: 0x7d7a86, glass: 0xa8d8f2 },
   ];
+  const roofs = [];
   for (let bx = -3; bx <= 3; bx++) {
     for (let bz = -3; bz <= 3; bz++) {
       const cx = bx * 40 + 20;
@@ -919,6 +1161,124 @@ export function buildCity() {
       obstacles.push(
         box(px, pz, bw / 2, bd / 2, 0, storeys * STOREY + 0.4, b.rotation.y, "a building")
       );
+      roofs.push({ x: px, z: pz, w: bw, d: bd, top: storeys * STOREY + 0.4, rot: b.rotation.y });
+    }
+  }
+
+  /* Rooftop plant. Every flat roof in a real city carries tanks, air handling and
+     a stair head, and a drone spends most of its time looking down at exactly
+     this. Instanced, so 200 of them cost three draw calls. */
+  {
+    const tanks = [];
+    const units = [];
+    const dishes = [];
+    for (const r of roofs) {
+      const halfW = (r.rot ? r.d : r.w) / 2 - 1.6;
+      const halfD = (r.rot ? r.w : r.d) / 2 - 1.6;
+      const n = 1 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < n; i++) {
+        const px = r.x + rand(-halfW, halfW);
+        const pz = r.z + rand(-halfD, halfD);
+        const roll = Math.random();
+        if (roll < 0.34) {
+          const h = rand(1.6, 2.8);
+          tanks.push({ x: px, y: r.top + h / 2, z: pz, sx: rand(0.8, 1.4), sy: h, sz: rand(0.8, 1.4) });
+        } else if (roll < 0.8) {
+          const h = rand(0.8, 1.8);
+          units.push({
+            x: px, y: r.top + h / 2, z: pz, ry: Math.random() * Math.PI,
+            sx: rand(1.4, 2.8), sy: h, sz: rand(1.2, 2.2),
+          });
+        } else {
+          dishes.push({ x: px, y: r.top + 0.7, z: pz, rx: -0.9, ry: Math.random() * Math.PI, sx: 1.1, sy: 1.1, sz: 1.1 });
+        }
+      }
+    }
+    const tankMesh = instanced(new THREE.CylinderGeometry(1, 1, 1, 10), mat(0x9aa2ad, { metalness: 0.4, roughness: 0.55 }), tanks);
+    const unitMesh = instanced(new THREE.BoxGeometry(1, 1, 1), mat(0x767d88, { metalness: 0.3, roughness: 0.7 }), units);
+    const dishMesh = instanced(new THREE.SphereGeometry(0.9, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat(0xdfe3e8), dishes);
+    [tankMesh, unitMesh, dishMesh].forEach((m) => m && g.add(m));
+  }
+
+  /* Cars parked along the kerbs. A city with only moving traffic looks evacuated. */
+  {
+    const bodies = [];
+    const cabins = [];
+    const carCols = [0x8d3f3f, 0x3f5a8d, 0xb8bcc2, 0x2f3946, 0x6d7a52, 0x8a8f96];
+    for (const r of roads) {
+      for (let along = -132; along < 132; along += rand(9, 26)) {
+        const side = Math.random() < 0.5 ? 1 : -1;
+        const off = side * (ROAD / 2 - 1.1);
+        if (Math.abs(((along + 20) % 40) - 20) < 9) continue; // keep junctions clear
+        const px = r.axis ? along : r.p + off;
+        const pz = r.axis ? r.p + off : along;
+        if (nearGateCourse(px, pz, 1)) continue;
+        const ry = r.axis ? 0 : Math.PI / 2;
+        bodies.push({ x: px, y: 0.55, z: pz, ry, _c: pick(carCols) });
+        cabins.push({ x: px, y: 1.18, z: pz, ry });
+      }
+    }
+    const bodyMesh = instanced(new THREE.BoxGeometry(4.4, 1.1, 1.8), mat(0x6b727c, { roughness: 0.5, metalness: 0.25 }), bodies);
+    if (bodyMesh) {
+      // Per-instance colour, so a row of parked cars is not a row of clones
+      const col = new THREE.Color();
+      bodyMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(bodies.length * 3), 3);
+      bodies.forEach((b, i) => {
+        col.setHex(b._c);
+        bodyMesh.instanceColor.setXYZ(i, col.r, col.g, col.b);
+      });
+      bodyMesh.instanceColor.needsUpdate = true;
+      g.add(bodyMesh);
+    }
+    const cabinMesh = instanced(new THREE.BoxGeometry(2.3, 0.85, 1.65), mat(0x9fc4e0, { roughness: 0.2, metalness: 0.5 }), cabins);
+    if (cabinMesh) g.add(cabinMesh);
+    for (const b of bodies) obstacles.push(box(b.x, b.z, 2.3, 1.0, 0, 1.6, b.ry, "a parked car"));
+  }
+
+  /* Traffic lights on the junction corners. */
+  {
+    const poles = [];
+    const heads = [];
+    for (let i = -3; i <= 3; i++) {
+      for (let j = -3; j <= 3; j++) {
+        const jx = i * 40;
+        const jz = j * 40;
+        if (Math.hypot(jx, jz) > 120 || Math.hypot(jx, jz) < 25) continue;
+        for (const sx of [-1, 1]) {
+          for (const sz of [-1, 1]) {
+            const px = jx + sx * (ROAD / 2 + 1.4);
+            const pz = jz + sz * (ROAD / 2 + 1.4);
+            if (nearGateCourse(px, pz, 1)) continue;
+            poles.push({ x: px, y: 1.8, z: pz });
+            heads.push({ x: px, y: 3.5, z: pz, ry: Math.atan2(-sx, -sz) });
+            obstacles.push(cylinder(px, pz, 0.5, 0, 4, "a traffic light"));
+          }
+        }
+      }
+    }
+    const poleMesh = instanced(new THREE.CylinderGeometry(0.1, 0.13, 3.6, 6), mat(0x3d434b), poles);
+    const headMesh = instanced(new THREE.BoxGeometry(0.42, 1.05, 0.36), mat(0x23282e), heads);
+    [poleMesh, headMesh].forEach((m) => m && g.add(m));
+  }
+
+  /* A skyline beyond the play area: low-detail blocks the drone will never reach,
+     so the city does not end in mid-air at the edge of the ground disc. */
+  {
+    const far = [];
+    for (let i = 0; i < 150; i++) {
+      const a = (i / 150) * Math.PI * 2 + rand(-0.02, 0.02);
+      const r = rand(180, 300);
+      const h = rand(18, 95);
+      far.push({
+        x: Math.cos(a) * r, y: h / 2, z: Math.sin(a) * r,
+        ry: Math.random() * Math.PI,
+        sx: rand(14, 30), sy: h, sz: rand(14, 30),
+      });
+    }
+    const m = instanced(new THREE.BoxGeometry(1, 1, 1), mat(0x69737f, { roughness: 0.85 }), far);
+    if (m) {
+      m.castShadow = false;
+      g.add(m);
     }
   }
 
@@ -995,7 +1355,9 @@ export function buildCity() {
   const slew = site.userData.slew;
   const syncCrane = site.userData.syncColliders;
 
+  const skyAnimate = sky.userData.animate;
   g.userData.animate = (t, dt) => {
+    skyAnimate(t, dt);
     /* Traffic. Vehicles loop the length of their road, which keeps the city
        alive without any pathfinding. */
     for (const v of vehicles) {
@@ -1026,7 +1388,9 @@ export function buildCity() {
   };
 
   g.userData.obstacles = obstacles;
-  g.userData.sky = { background: 0x9fb8cc, fog: 0xb9c8d4, fogDensity: 0.0052 };
+  g.userData.sunDirection = sky.userData.sunDirection;
+  g.userData.skyDome = sky.userData.dome;
+  g.userData.sky = { background: 0xdfe6ea, fog: 0xd2dde4, fogDensity: 0.0041 };
   return g;
 }
 

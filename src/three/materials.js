@@ -223,8 +223,14 @@ export function disposeObject(obj) {
     if (!o.isMesh && !o.isSprite) return;
     o.geometry?.dispose?.();
     const dispose = (m) => {
-      m?.map?.dispose?.();
-      m?.dispose?.();
+      /* Materials flagged as shared outlive the object using them — the flight
+         fields cache one material per colour across every build. Disposing one
+         would throw away a shader program that the NEXT field is about to use,
+         so every switch between forest and city would pay to recompile
+         everything. Geometry is still per-object and still freed. */
+      if (!m || m.userData?.shared) return;
+      m.map?.dispose?.();
+      m.dispose?.();
     };
     Array.isArray(o.material) ? o.material.forEach(dispose) : dispose(o.material);
   });

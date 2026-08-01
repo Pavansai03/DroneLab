@@ -19,12 +19,37 @@
  * can never disagree with the collision that follows it.
  */
 
-/** How far out the proximity alarm starts caring, in metres from the surface. */
-export const WARN_DISTANCE = 14;
+/**
+ * PROXIMITY ALARM THRESHOLDS
+ *
+ * A pure distance trigger is unusable in these fields. A forest has a tree every
+ * few metres and a city street has walls on both sides, so an alarm that fires on
+ * "something is within 14 m" fires permanently — and an alarm that is always on
+ * carries no information at all.
+ *
+ * Nor is it enough to ask whether the gap is shrinking. Flying PAST a building
+ * five metres to one side shrinks the gap all the way to the corner, and a
+ * closure-rate alarm shouts the whole way along a wall you were never going to
+ * touch.
+ *
+ * So the question the alarm actually asks is the one a pilot asks: *if I hold
+ * this course, do I hit something, and how soon?* That is answered by marching
+ * the aircraft's own velocity vector forward through the collider field. Flying
+ * beside a wall predicts no impact and stays silent; pointing at the same wall
+ * predicts one and calls it.
+ */
+export const SNUG_DISTANCE = 2.2; // metres — too close whatever you are doing
+export const WARN_SECONDS = 2.5; // seconds to predicted impact that starts the alarm
+export const PREDICT_MIN_SPEED = 1.2; // m/s below which nothing is predicted at all
 
 /* The broad-phase grid. Anything much larger than a city block wastes memory;
    much smaller and a 24 m building registers in too many cells. */
 const CELL = 24;
+
+/* How far beyond its own footprint each obstacle registers. A query only looks in
+   the single cell it stands in, so this is the radius at which an obstacle can be
+   found at all — it has to comfortably exceed one sphere-tracing step. */
+const GRID_PAD = 16;
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
@@ -110,7 +135,7 @@ export class ObstacleField {
     const i = this.static.length;
     this.static.push(o);
 
-    const reach = (o.kind === "cyl" ? o.r : Math.hypot(o.hw, o.hd)) + WARN_DISTANCE;
+    const reach = (o.kind === "cyl" ? o.r : Math.hypot(o.hw, o.hd)) + GRID_PAD;
     const x0 = Math.floor((o.x - reach) / CELL);
     const x1 = Math.floor((o.x + reach) / CELL);
     const z0 = Math.floor((o.z - reach) / CELL);
@@ -157,8 +182,64 @@ export class ObstacleField {
   }
 }
 
-/** 0 when clear, rising to 1 at contact. What the alarm's urgency is built from. */
-export function proximityLevel(distance) {
-  if (!Number.isFinite(distance)) return 0;
-  return clamp(1 - distance / WARN_DISTANCE, 0, 1);
+/**
+ * March forward along a heading and report the first impact, if there is one.
+ *
+ * This is sphere tracing: at each step the signed distance to the nearest surface
+ * is itself a safe distance to advance, because nothing can be closer than that.
+ * It therefore CANNOT tunnel through a thin obstacle the way fixed-interval
+ * sampling can — and a street light is thin enough that fixed sampling would miss
+ * it at any realistic cruise speed.
+ *
+ * Returns `{ seconds, distance, obstacle }` or null for a clear path.
+ */
+export function predictImpact(field, pos, vel, radius, horizonSeconds) {
+  if (!field) return null;
+  const speed = Math.hypot(vel.x, vel.y, vel.z);
+  if (speed < PREDICT_MIN_SPEED) return null;
+
+  const dx = vel.x / speed;
+  const dy = vel.y / speed;
+  const dz = vel.z / speed;
+  const maxDistance = speed * horizonSeconds;
+
+  let travelled = 0;
+  for (let i = 0; i < 24; i++) {
+    const px = pos.x + dx * travelled;
+    const py = pos.y + dy * travelled;
+    const pz = pos.z + dz * travelled;
+    // Below ground level the ground warning owns it, not this
+    if (py < 0.1) return null;
+
+    const near = field.nearest(px, py, pz);
+    const clear = near.distance - radius;
+    if (clear <= 0.05) {
+      return { seconds: travelled / speed, distance: travelled, obstacle: near.obstacle };
+    }
+    /* Step by the distance to the nearest surface — never further, or the trace
+       could jump over something. Capped, because empty sky reports an unbounded
+       clearance and an unbounded step would end the trace before it reached the
+       building on the far side of the gap. */
+    travelled += Math.min(Math.max(clear, 0.3), 6);
+    if (travelled > maxDistance) return null;
+  }
+  return null;
+}
+
+/**
+ * How alarmed to be: 0 clear, 1 imminent.
+ *
+ * Two independent reasons to sound, whichever is worse: something is close enough
+ * that a gust would close it, or the current course runs into something soon.
+ */
+export function collisionUrgency(clearance, secondsToImpact) {
+  const snug =
+    Number.isFinite(clearance) && clearance < SNUG_DISTANCE
+      ? 1 - Math.max(0, clearance) / SNUG_DISTANCE
+      : 0;
+  const predicted =
+    secondsToImpact != null && secondsToImpact < WARN_SECONDS
+      ? 1 - secondsToImpact / WARN_SECONDS
+      : 0;
+  return clamp(Math.max(snug, predicted), 0, 1);
 }

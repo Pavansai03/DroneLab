@@ -25,7 +25,7 @@ import { buildPart, buildArm } from "./partMeshes.js";
 import { AIRFRAMES } from "../data/airframes.js";
 import { GATES } from "../sim/flightSim.js";
 import { FLIGHT_FIELDS, DEFAULT_FIELD } from "./environments.js";
-import { proximityLevel } from "../sim/obstacles.js";
+import { ALTITUDE_LIMIT, ALTITUDE_CAUTION } from "../sim/flightSim.js";
 import { setAlarm, clearAlarms } from "../sim/buzzer.js";
 
 const deg = (d) => (d * Math.PI) / 180;
@@ -385,16 +385,35 @@ export class DroneScene {
     this.fieldSky = this.fieldObj.userData.sky || null;
     this.fieldAnimate = this.fieldObj.userData.animate || null;
     this.fieldObstacles = this.fieldObj.userData.obstacles || null;
+    this.fieldDome = this.fieldObj.userData.skyDome || null;
+    this.fieldSun = this.fieldObj.userData.sunDirection || null;
     /* The field and the simulator arrive independently, so both paths push the
        colliders across — whichever lands second wins, and neither can leave the
        simulator flying through scenery it cannot see. */
     this.sim?.setObstacles(this.fieldObstacles);
 
     // A field carries its own sky; apply it immediately if we are already flying.
-    if (this.mode === "flight") this.applyFieldSky();
+    if (this.mode === "flight") {
+      this.applyFieldSky();
+      this.applyFieldSun();
+    }
   }
 
   /** Each field sets its own sky and fog — a forest haze is not a city haze. */
+  /**
+   * Point the key light at the sun the field actually draws.
+   *
+   * A visible sun in one corner of the sky and shadows falling as though it were
+   * in the other is the kind of mistake the eye catches instantly even when it
+   * cannot say what is wrong.
+   */
+  applyFieldSun() {
+    if (!this.fieldSun || this.mode !== "flight") return;
+    this.key.position.copy(this.fieldSun).multiplyScalar(60);
+    this.key.target.position.set(0, 0, 0);
+    this.key.target.updateMatrixWorld();
+  }
+
   applyFieldSky() {
     const sky = this.fieldSky || { background: 0x86c9f0, fog: 0x9fd3f2, fogDensity: 0.006 };
     this.scene.background = new THREE.Color(sky.background);
@@ -843,12 +862,18 @@ export class DroneScene {
       this.flight.visible = true;
       this.bay.visible = false;
       this.applyFieldSky();
+      this.applyFieldSun();
       this.setShadowBounds(30, 160);
       this.key.intensity = 1.7;
       // In the flight field 1 unit = 1 metre, so the aircraft is scaled down from
       // bay units. Slightly larger than true scale so students can still see it.
       this.aircraft.scale.setScalar(0.32);
     } else {
+      /* The bay has its own lighting rig, so the key light has to come back from
+         wherever the field's sun put it. */
+      this.key.position.set(4, 6, 3);
+      this.key.target.position.set(0, 0, 0);
+      this.key.target.updateMatrixWorld();
       this.scene.remove(this.aircraft);
       this.bay.add(this.aircraft);
       this.flight.visible = false;
@@ -1053,18 +1078,33 @@ export class DroneScene {
     if (sim.crashed || sim.onGround) {
       setAlarm("obstacle", 0);
       setAlarm("landing", 0);
+      setAlarm("ceiling", 0);
       return;
     }
 
-    setAlarm("obstacle", proximityLevel(sim.obstacleDistance));
+    /* The simulator has already worked out how alarmed to be — it is the only
+       place that knows the closure rate. */
+    setAlarm("obstacle", sim.obstacleUrgency);
 
-    /* Landing approach: armed, descending, and low. Urgency rises as the ground
-       comes up, so the beep rate tells the pilot how much height is left without
-       them having to look away from the aircraft. */
-    const descending = sim.vel.y < -0.15;
+    /* Landing approach: armed, coming down, low, and SLOW.
+       The speed condition is what stops this firing on every descent through six
+       metres mid-course. A landing is a deliberate, gentle arrival; a fast dive
+       between two gates is not one, and beeping through it was noise. */
     const alt = sim.pos.y;
-    const landing = sim.armed && descending && alt < LANDING_CALL_ALT;
+    const groundSpeed = Math.hypot(sim.vel.x, sim.vel.z);
+    const landing =
+      sim.armed && sim.vel.y < -0.25 && alt < LANDING_CALL_ALT && groundSpeed < 3.5;
     setAlarm("landing", landing ? 1 - alt / LANDING_CALL_ALT : 0);
+
+    /* Height limit. Rises through the caution band, then runs at full rate above
+       the limit itself so leaving legal airspace is unmistakable. */
+    const ceiling =
+      alt > ALTITUDE_LIMIT
+        ? 1
+        : alt > ALTITUDE_CAUTION
+          ? (alt - ALTITUDE_CAUTION) / (ALTITUDE_LIMIT - ALTITUDE_CAUTION)
+          : 0;
+    setAlarm("ceiling", sim.armed ? ceiling : 0);
   }
 
   updateFlight(dt) {
@@ -1116,6 +1156,10 @@ export class DroneScene {
       this.fieldAnimate(this.fieldTime, dt);
     }
 
+    /* Sky rides with the camera. Without this the dome would swing past as the
+       drone crosses the field and the horizon would visibly tilt. */
+    if (this.fieldDome) this.fieldDome.position.copy(this.camera.position);
+
     this.aircraft.position.set(t.position.x, t.position.y, t.position.z);
     this.aircraft.rotation.order = "YXZ";
     this.aircraft.rotation.set(t.pitch, t.yaw, t.roll);
@@ -1147,8 +1191,15 @@ export class DroneScene {
       gate.group.rotation.y += dt * (isNext ? 0.5 : 0.12);
     });
 
-    /* Sun follows the aircraft so shadows stay crisp over a large field */
-    this.key.position.set(t.position.x + 12, t.position.y + 22, t.position.z + 9);
+    /* The shadow light tracks the aircraft, so a shadow map sized for a 60 m box
+       stays crisp across a 300 m field. It has to track it ALONG THE SUN'S OWN
+       BEARING, though — a fixed offset meant shadows fell the same way whatever
+       the sky said, and the sky is now drawing a visible sun to compare them to. */
+    const s = this.fieldSun;
+    const ox = s ? s.x * 34 : 12;
+    const oy = s ? s.y * 34 : 22;
+    const oz = s ? s.z * 34 : 9;
+    this.key.position.set(t.position.x + ox, t.position.y + oy, t.position.z + oz);
     this.key.target.position.set(t.position.x, t.position.y, t.position.z);
     this.key.target.updateMatrixWorld();
   }

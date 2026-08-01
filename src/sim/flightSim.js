@@ -32,7 +32,7 @@
 
 import { AIRFRAMES } from "../data/airframes.js";
 import { getMixer, mix } from "./mixer.js";
-import { ObstacleField, WARN_DISTANCE } from "./obstacles.js";
+import { ObstacleField, collisionUrgency, predictImpact, WARN_SECONDS } from "./obstacles.js";
 import {
   g,
   airDensity,
@@ -54,6 +54,19 @@ const KAPPA = 0.016; // prop reaction-torque arm, metres (torque = KAPPA * thrus
    Set just above the skid height so setting down on the pad and then disarming —
    the correct way to end a flight — is never punished. */
 const DISARM_SAFE_ALT = 0.6;
+
+/**
+ * HEIGHT LIMIT
+ *
+ * 120 m is the ceiling almost every civil aviation authority sets for an
+ * uncrewed aircraft — the UK CAA, EASA and the FAA all land on 120 m or its
+ * imperial twin, 400 ft. It is not a physical limit and nothing here enforces it;
+ * the aircraft will happily keep climbing. The buzzer just tells you when you have
+ * left legal airspace, which is the habit worth building.
+ */
+export const ALTITUDE_LIMIT = 120;
+/** Where the "approaching the limit" warning begins. */
+export const ALTITUDE_CAUTION = 100;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -182,6 +195,11 @@ export class FlightSim {
     this.rthActive = false;
     this.obstacleDistance = Infinity;
     this.obstacleLabel = null;
+    this.obstacleEta = null;
+    this.obstacleAhead = null;
+    this.obstacleUrgency = 0;
+    this.predictTimer = 0;
+    this.ceilingBusted = false;
     this.events = [];
 
     // PID integrators
@@ -206,6 +224,9 @@ export class FlightSim {
     this.obstacles = list && list.length ? new ObstacleField(list) : null;
     this.obstacleDistance = Infinity;
     this.obstacleLabel = null;
+    this.obstacleEta = null;
+    this.obstacleAhead = null;
+    this.obstacleUrgency = 0;
   }
 
   on(fn) {
@@ -654,7 +675,30 @@ export class FlightSim {
       // Distance to the propeller disc, not to the centre of mass
       const clearance = near.distance - this.collisionRadius;
       this.obstacleDistance = clearance;
-      this.obstacleLabel = clearance < WARN_DISTANCE ? near.obstacle?.label ?? null : null;
+
+      /* The forward look is throttled to about 25 Hz. It costs a couple of dozen
+         field queries, and running it on every one of the 240 physics steps a
+         second would be forty times more work than an alarm a human can hear
+         could ever use. */
+      this.predictTimer = (this.predictTimer || 0) + dt;
+      if (this.predictTimer >= 0.04) {
+        this.predictTimer = 0;
+        const hit = predictImpact(
+          this.obstacles,
+          this.pos,
+          this.vel,
+          this.collisionRadius,
+          WARN_SECONDS
+        );
+        this.obstacleEta = hit ? hit.seconds : null;
+        this.obstacleAhead = hit ? hit.obstacle : null;
+      }
+
+      this.obstacleUrgency = collisionUrgency(clearance, this.obstacleEta);
+      this.obstacleLabel =
+        this.obstacleUrgency > 0
+          ? (this.obstacleAhead ?? near.obstacle)?.label ?? null
+          : null;
 
       if (clearance <= 0 && this.pos.y > 0.2) {
         const speed = Math.hypot(this.vel.x, this.vel.y, this.vel.z);
@@ -665,6 +709,21 @@ export class FlightSim {
     } else {
       this.obstacleDistance = Infinity;
       this.obstacleLabel = null;
+      this.obstacleEta = null;
+      this.obstacleAhead = null;
+      this.obstacleUrgency = 0;
+    }
+
+    /* ---- Height limit ------------------------------------------------ */
+    /* Announced once on the way up, and re-armed on the way back down so a second
+       climb is called again. Nothing is enforced — the aircraft keeps climbing,
+       because a simulator that silently refused to would teach the student that
+       the limit is the airframe's rather than the law's. */
+    if (this.armed && this.pos.y > ALTITUDE_LIMIT && !this.ceilingBusted) {
+      this.ceilingBusted = true;
+      this.emit("altitudeLimit", { altitude: this.pos.y, limit: ALTITUDE_LIMIT });
+    } else if (this.ceilingBusted && this.pos.y < ALTITUDE_CAUTION) {
+      this.ceilingBusted = false;
     }
 
     /* ---- Crash conditions ------------------------------------------- */
@@ -798,6 +857,10 @@ export class FlightSim {
       satellites: this.satellites,
       obstacleDistance: this.obstacleDistance,
       obstacleLabel: this.obstacleLabel,
+      obstacleEta: this.obstacleEta,
+      obstacleUrgency: this.obstacleUrgency,
+      altitudeLimit: ALTITUDE_LIMIT,
+      overCeiling: this.pos.y > ALTITUDE_LIMIT,
       gatesPassed: this.gatesPassed.size,
       gatesTotal: GATES.length,
       achievements: new Set(this.achievements),

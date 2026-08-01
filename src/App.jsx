@@ -413,6 +413,12 @@ export default function App() {
          tune would fall out of step with that the moment anything else disarms. */
       if (type === "armed") playBuzzer("armed");
       if (type === "disarmed") playBuzzer("disarmed");
+      if (type === "altitudeLimit") {
+        setNotice(
+          `Above ${payload.limit} m — the legal ceiling for an uncrewed aircraft in most of the world. Nothing stops you climbing; the rules do.`
+        );
+        playBuzzer("altitudeLimit");
+      }
       if (type === "takeoff") playBuzzer("takeoff");
       if (type === "landed") playBuzzer("landed");
       if (type === "rth") playBuzzer("rth");

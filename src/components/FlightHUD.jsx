@@ -1,6 +1,6 @@
 import React from "react";
 import { BATTERY_SPEC, ESC_LIMIT_C } from "../sim/physics.js";
-import { WARN_DISTANCE } from "../sim/obstacles.js";
+
 
 /** Flight instruments, drawn over the 3D view. */
 export default function FlightHUD({ telemetry, diagnostics, frame, keys }) {
@@ -26,15 +26,17 @@ export default function FlightHUD({ telemetry, diagnostics, frame, keys }) {
     failsafe: "FAILSAFE",
   }[t.flightMode] || t.flightMode.toUpperCase();
 
-  /* Distance is to the propeller disc and can go slightly negative on contact,
-     so clamp it before it is shown — "-0.2 m to a tree" is not a useful reading. */
-  const clearance = t.obstacleDistance;
+  /* The pill mirrors the buzzer exactly — same urgency, same trigger — because a
+     build with no buzzer fitted has nothing else to fly by, and two warnings that
+     disagreed would be worse than one. Distance is measured to the propeller disc
+     and can go slightly negative on contact, so it is clamped before display.  */
   const obstacleWarn =
-    Number.isFinite(clearance) && clearance < WARN_DISTANCE
+    t.obstacleUrgency > 0
       ? {
-          metres: Math.max(0, clearance).toFixed(1),
-          contact: clearance <= 0,
-          tone: clearance < WARN_DISTANCE * 0.3 ? "bad" : "warn",
+          metres: Math.max(0, t.obstacleDistance).toFixed(1),
+          contact: t.obstacleDistance <= 0,
+          eta: t.obstacleEta,
+          tone: t.obstacleUrgency > 0.55 ? "bad" : "warn",
         }
       : null;
 
@@ -61,7 +63,14 @@ export default function FlightHUD({ telemetry, diagnostics, frame, keys }) {
           <span className={`mode-pill ${obstacleWarn.tone} proximity`}>
             {obstacleWarn.contact
               ? `IMPACT — ${t.obstacleLabel ?? "obstacle"}`
-              : `${t.obstacleLabel ?? "OBSTACLE"} ${obstacleWarn.metres} m`}
+              : obstacleWarn.eta != null
+                ? `PULL UP — ${t.obstacleLabel ?? "obstacle"} in ${obstacleWarn.eta.toFixed(1)}s`
+                : `${t.obstacleLabel ?? "OBSTACLE"} ${obstacleWarn.metres} m`}
+          </span>
+        )}
+        {!t.crashed && t.overCeiling && (
+          <span className="mode-pill bad proximity">
+            ABOVE {t.altitudeLimit} m — LEGAL CEILING
           </span>
         )}
         {t.deadMotors.length > 0 && (
