@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase, isConfigured } from "../../lib/supabase.js";
 import { HeroDrone, DroneBackdrop, Icon } from "../../components/DroneArt.jsx";
+import { useAuthProviders } from "../../lib/providers.js";
 
 /**
  * Turn whatever Supabase threw into something a human can act on.
@@ -65,8 +66,11 @@ function LoginForm() {
   const [fullName, setFullName] = useState("");
   const [classCode, setClassCode] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
+  /* Seeded from the query string so a failure bounced back from the OAuth
+     callback is shown here, rather than vanishing on the redirect. */
+  const [error, setError] = useState(params.get("error"));
   const [notice, setNotice] = useState(null);
+  const providers = useAuthProviders();
 
   if (!isConfigured()) {
     return (
@@ -78,6 +82,34 @@ function LoginForm() {
         </div>
       </main>
     );
+  }
+
+  /**
+   * Hand off to a social provider.
+   *
+   * `redirectTo` points at our own callback route rather than at a page,
+   * because the PKCE code has to be exchanged on the server — see
+   * app/auth/callback/route.js. The intended destination rides along as a query
+   * parameter so a student who was sent to sign in ends up where they were
+   * going, not on the home page.
+   */
+  async function signInWith(provider) {
+    setBusy(true);
+    setError(null);
+    try {
+      const { error } = await supabase().auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        },
+      });
+      if (error) throw error;
+      /* On success the browser is navigating away, so `busy` deliberately stays
+         true — re-enabling the button would invite a second click mid-redirect. */
+    } catch (err) {
+      setError(describeAuthError(err));
+      setBusy(false);
+    }
   }
 
   async function submit(e) {
@@ -163,6 +195,23 @@ function LoginForm() {
                 ? "Sign in to pick up where you left off."
                 : "Students, teachers and administrators all start here. Roles are granted afterwards."}
             </p>
+
+            {providers?.google && (
+              <>
+                <button
+                  type="button"
+                  className="btn oauth"
+                  onClick={() => signInWith("google")}
+                  disabled={busy}
+                >
+                  <Icon.Google />
+                  Continue with Google
+                </button>
+                <div className="divider">
+                  <span>or use your email</span>
+                </div>
+              </>
+            )}
 
             <form onSubmit={submit} className="card">
               {mode === "signup" && (

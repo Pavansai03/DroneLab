@@ -895,3 +895,45 @@ label {
   width: 15px;
   height: 15px;
 }
+
+/* ------------------------------------------------------ social sign-in */
+/* White, because every platform's Google button is white and users recognise
+   it faster than they read it. It is the only light surface in the interface
+   and that is the point — it is not ours. */
+.btn.oauth {
+  width: 100%;
+  justify-content: center;
+  background: #fff;
+  color: #1f2430;
+  border-color: #fff;
+  font-weight: 700;
+  padding: 13px 18px;
+}
+.btn.oauth:hover:not(:disabled) {
+  background: #f1f4f8;
+  border-color: #f1f4f8;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.btn.oauth svg {
+  width: 18px;
+  height: 18px;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 20px 0;
+  color: var(--faint);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}

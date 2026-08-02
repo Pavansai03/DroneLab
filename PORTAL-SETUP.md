@@ -165,3 +165,75 @@ code is shown at the top of the teacher panel.
 The server refuses to boot if any of its three keys is missing, and says which.
 That is deliberate — an API that starts happily and then 500s on the first admin
 request is much harder to diagnose.
+
+---
+
+## 6. Google sign-in
+
+Supabase supports Google, GitHub, Microsoft, Apple and others. The portal already
+has the code: a **Continue with Google** button appears automatically the moment
+the server reports Google as enabled, and stays hidden until then. Nothing needs
+rebuilding — the login page asks `/auth/v1/settings` at runtime, which is the
+same public endpoint Supabase's own UI reads.
+
+Showing a button for an unconfigured provider is worse than showing none: it
+fails with a raw provider error a student cannot act on.
+
+### 6.1 Google Cloud Console
+
+1. <https://console.cloud.google.com> → create or pick a project
+2. **APIs & Services → OAuth consent screen** → External → fill in the app name
+   and support email. Add your own address under Test users while it is unverified.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID**
+   - Application type: **Web application**
+   - **Authorised redirect URI** — this must be your *Supabase* callback, not the
+     portal's:
+     ```
+     https://YOUR-SUPABASE-DOMAIN/auth/v1/callback
+     ```
+     Google redirects to Supabase, and Supabase then redirects to the portal.
+     Pointing this at the portal is the single most common mistake and produces
+     `redirect_uri_mismatch`.
+4. Copy the **Client ID** and **Client secret**.
+
+### 6.2 Supabase (Dokploy → Environment)
+
+Add these, then **Redeploy**:
+
+```
+ENABLE_GOOGLE_SIGNUP=true
+GOTRUE_EXTERNAL_GOOGLE_ENABLED=true
+GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID=<client id>
+GOTRUE_EXTERNAL_GOOGLE_SECRET=<client secret>
+GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI=https://YOUR-SUPABASE-DOMAIN/auth/v1/callback
+```
+
+Also make sure the portal's origin is allowed to be redirected back to:
+
+```
+SITE_URL=http://localhost:3000
+ADDITIONAL_REDIRECT_URLS=http://localhost:3000/auth/callback,https://your-portal-domain/auth/callback
+```
+
+Without that, sign-in succeeds and then bounces to the wrong place.
+
+### 6.3 Check it
+
+```bash
+curl -s https://YOUR-SUPABASE-DOMAIN/auth/v1/settings -H "apikey: YOUR-ANON-KEY"
+```
+
+`"google": true` in the `external` block means it is on, and the button will be
+there on the next page load.
+
+### How the flow works
+
+The browser client uses PKCE, so Google returns a one-time **code**, not a
+session. The code verifier lives in an http-only cookie the browser cannot read,
+so the exchange happens server-side in `portal/app/auth/callback/route.js`. Doing
+it client-side fails with *"both auth code and code verifier should be
+non-empty"*, which is not an obvious message to work backwards from.
+
+New Google accounts get a profile automatically: Google supplies `full_name` in
+the user metadata, and the `handle_new_user()` trigger from `schema.sql` copies it
+across — so a student arrives with their real name already filled in.
