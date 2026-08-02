@@ -1,0 +1,17 @@
+{
+  "name": "dronelab-api",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Express API for the DroneLab portal — student, teacher and admin panels.",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.9",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1"
+  }
+}

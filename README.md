@@ -14,6 +14,22 @@ Then open http://localhost:5173.
 
 ---
 
+## Repository layout
+
+The simulator is the original app and is unchanged. The portal and its API are
+new, and deploy separately.
+
+| Directory | What it is | Runs on |
+|---|---|---|
+| `src/` | The simulator — Vite + React + three.js | 5173 |
+| `portal/` | Student, school and administration panels — Next.js 14 | 3000 |
+| `server/` | The portal's API — Express | 4000 |
+| `supabase/` | `schema.sql`, then `portal-schema.sql` | — |
+
+Setting the portal up, including exactly which keys to copy out of the Supabase
+console and where each one may appear, is in **[PORTAL-SETUP.md](PORTAL-SETUP.md)**.
+
+
 ## What makes this different from an animation
 
 Nothing about the failure behaviour is scripted. The simulator runs a real

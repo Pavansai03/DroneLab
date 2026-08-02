@@ -10,3 +10,8 @@ dist/
 # Editor / OS noise
 .DS_Store
 *.log
+
+# Portal + API secrets — the service role key must never be committed
+server/.env
+portal/.env.local
+portal/.next

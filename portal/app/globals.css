@@ -1,0 +1,338 @@
+/* The portal borrows the simulator's palette so the two do not look like
+   different products when a student moves between them. */
+:root {
+  --bg: #0b0e13;
+  --panel: #12161d;
+  --panel2: #171c25;
+  --border: #262d39;
+  --text: #e7ecf2;
+  --dim: #8a94a6;
+  --faint: #7d8798;
+  --cyan: #46e6cf;
+  --amber: #ffab4a;
+  --ok: #39d98a;
+  --bad: #ff5c62;
+  --info: #7aa2ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--cyan);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+.mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* ------------------------------------------------------------- layout */
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 20px;
+  height: 56px;
+  background: linear-gradient(180deg, #10141b, #0d1116);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.brand {
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.brand span {
+  color: var(--cyan);
+}
+.topbar nav {
+  display: flex;
+  gap: 4px;
+  margin-left: 10px;
+  flex-wrap: wrap;
+}
+.topbar nav a {
+  padding: 7px 12px;
+  border-radius: 8px;
+  color: var(--dim);
+  font-size: 13px;
+  font-weight: 600;
+}
+.topbar nav a:hover {
+  background: var(--panel2);
+  color: var(--text);
+  text-decoration: none;
+}
+.topbar nav a.active {
+  background: rgba(70, 230, 207, 0.12);
+  color: var(--cyan);
+}
+.spacer {
+  flex: 1;
+}
+
+main {
+  flex: 1;
+  padding: 26px 20px 60px;
+  max-width: 1180px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+h2 {
+  font-size: 15px;
+  margin: 28px 0 12px;
+  letter-spacing: 0.02em;
+}
+.sub {
+  color: var(--dim);
+  font-size: 13.5px;
+  margin: 0 0 22px;
+  line-height: 1.6;
+}
+
+/* -------------------------------------------------------------- pieces */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.grid {
+  display: grid;
+  gap: 14px;
+}
+.grid.cols-2 {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+.grid.cols-3 {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+.grid.cols-4 {
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+}
+
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.stat b {
+  display: block;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+.stat small {
+  display: block;
+  color: var(--dim);
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin-top: 5px;
+}
+
+.bar {
+  height: 8px;
+  border-radius: 99px;
+  background: #0b0e13;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.bar > i {
+  display: block;
+  height: 100%;
+  background: var(--cyan);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+th {
+  text-align: left;
+  color: var(--dim);
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+}
+td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+tr:last-child td {
+  border-bottom: none;
+}
+.table-wrap {
+  overflow-x: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.pill {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 99px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  border: 1px solid;
+}
+.pill.ok {
+  color: var(--ok);
+  border-color: var(--ok);
+  background: rgba(57, 217, 138, 0.12);
+}
+.pill.warn {
+  color: var(--amber);
+  border-color: var(--amber);
+  background: rgba(255, 171, 74, 0.12);
+}
+.pill.bad {
+  color: var(--bad);
+  border-color: var(--bad);
+  background: rgba(255, 92, 98, 0.12);
+}
+.pill.info {
+  color: var(--info);
+  border-color: var(--info);
+  background: rgba(122, 162, 255, 0.12);
+}
+.pill.muted {
+  color: var(--dim);
+  border-color: var(--border);
+}
+
+input,
+select,
+button {
+  font: inherit;
+}
+input,
+select {
+  background: #0b0e13;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 9px 11px;
+  width: 100%;
+}
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--cyan);
+}
+label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+.field {
+  margin-bottom: 14px;
+}
+
+.btn {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 9px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13.5px;
+  width: auto;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--cyan);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn.primary {
+  background: var(--cyan);
+  border-color: var(--cyan);
+  color: #06231f;
+}
+.btn.small {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.note {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--dim);
+  background: var(--panel);
+}
+.note.bad {
+  border-color: rgba(255, 92, 98, 0.45);
+  background: rgba(255, 92, 98, 0.07);
+  color: #ffc7c9;
+}
+.note.ok {
+  border-color: rgba(57, 217, 138, 0.45);
+  background: rgba(57, 217, 138, 0.07);
+  color: #b6f2d3;
+}
+
+.spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 54px;
+}
+.spark > i {
+  flex: 1;
+  background: var(--cyan);
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+  opacity: 0.85;
+}
