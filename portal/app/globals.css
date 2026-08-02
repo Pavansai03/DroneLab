@@ -878,3 +878,20 @@ label {
 ::-webkit-scrollbar-thumb:hover {
   background: #33404f;
 }
+
+/* The simulator link leaves the portal for another application, so it is
+   marked out from the in-app navigation beside it rather than blending in. */
+.sim-link {
+  border-color: rgba(46, 230, 196, 0.4);
+  color: var(--accent);
+  background: var(--grad-soft);
+  text-decoration: none;
+}
+.sim-link:hover {
+  text-decoration: none;
+  box-shadow: 0 0 22px rgba(46, 230, 196, 0.22);
+}
+.sim-link svg {
+  width: 15px;
+  height: 15px;
+}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
 import { HeroDrone, Icon } from "../../components/DroneArt.jsx";
+import { simulatorUrl } from "../../lib/simulator.js";
 
 /**
  * THE STUDENT PANEL
@@ -58,16 +59,22 @@ function Panel({ me }) {
                 </>
               )}
             </p>
-            <div className="row" style={{ marginTop: 20 }}>
+            <div className="row" style={{ marginTop: 22 }}>
               <div className="ring" style={{ "--pct": summary.percent }}>
                 <span>{summary.percent}%</span>
               </div>
               <div>
-                <div style={{ fontSize: 13, color: "var(--dim)", lineHeight: 1.7 }}>
+                <div style={{ fontSize: 13, color: "var(--dim)", lineHeight: 1.7, marginBottom: 12 }}>
                   <strong style={{ color: "var(--text)" }}>{summary.flights}</strong> flights flown
                   <br />
                   <strong style={{ color: "var(--text)" }}>{summary.streak}</strong> day streak
                 </div>
+                {/* The point of the whole portal is to get someone into the
+                    simulator, so it is the one primary button on the page. */}
+                <a className="btn primary" href={simulatorUrl()} target="_blank" rel="noopener noreferrer">
+                  <Icon.Play />
+                  {next ? `Continue module ${next.number}` : "Open the simulator"}
+                </a>
               </div>
             </div>
           </div>

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { supabase } from "../lib/supabase.js";
 import { api } from "../lib/api.js";
 import { DroneBackdrop, Icon } from "./DroneArt.jsx";
+import { simulatorUrl } from "../lib/simulator.js";
 
 /**
  * The signed-in frame around every panel.
@@ -118,6 +119,21 @@ function TopBar({ me, pathname }) {
         ))}
       </nav>
       <div className="spacer" />
+      {/* The simulator is a separate application on another origin, so this is a
+          real link rather than a route. Opened in a new tab deliberately: a
+          student mid-flight should not lose the aircraft by pressing Back, and
+          the portal session stays where it was. */}
+      <a
+        className="btn small sim-link"
+        href={simulatorUrl()}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Open the flight simulator in a new tab"
+      >
+        <Icon.Play />
+        Simulator
+        <Icon.External style={{ width: 12, height: 12, opacity: 0.7 }} />
+      </a>
       <span className={`pill ${me.role === "admin" ? "info" : me.role === "teacher" ? "warn" : "muted"}`}>
         {me.role}
       </span>
