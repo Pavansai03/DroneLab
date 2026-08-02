@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
+import { HeroDrone, Icon } from "../../components/DroneArt.jsx";
 
 /**
  * THE SUPER ADMIN PANEL
@@ -25,8 +26,23 @@ function Panel() {
   const [tab, setTab] = useState("overview");
   return (
     <>
-      <h1>Administration</h1>
-      <p className="sub">Every school and every account on this deployment.</p>
+      <section className="hero rise">
+        <div className="hero-inner">
+          <div className="hero-copy">
+            <h1>
+              <em>Administration</em>
+            </h1>
+            <p>
+              Every school and every account on this deployment. This is the only place roles are
+              granted and schools are created — neither can be done from a browser without the
+              server, which is what stops a student promoting themselves.
+            </p>
+          </div>
+          <div className="hero-art">
+            <HeroDrone />
+          </div>
+        </div>
+      </section>
 
       <div className="row" style={{ marginBottom: 20 }}>
         {[
@@ -69,38 +85,19 @@ function Overview() {
   return (
     <>
       <div className="grid cols-4">
-        <div className="stat">
-          <b>{t.activeSchools}</b>
-          <small>Active schools</small>
-        </div>
-        <div className="stat">
-          <b>{t.students}</b>
-          <small>Students</small>
-        </div>
-        <div className="stat">
-          <b>{t.teachers}</b>
-          <small>Teachers</small>
-        </div>
-        <div className="stat">
-          <b>{t.activeThisWeek}</b>
-          <small>Active this week</small>
-        </div>
-        <div className="stat">
-          <b>{t.modulesCompleted}</b>
-          <small>Modules completed</small>
-        </div>
-        <div className="stat">
-          <b>{t.admins}</b>
-          <small>Administrators</small>
-        </div>
-        <div className="stat">
-          <b style={{ color: t.unassigned ? "var(--amber)" : undefined }}>{t.unassigned}</b>
-          <small>Not in a school</small>
-        </div>
-        <div className="stat">
-          <b>{t.schools}</b>
-          <small>Schools total</small>
-        </div>
+        <Stat icon={<Icon.School />} value={t.activeSchools} label="Active schools" />
+        <Stat icon={<Icon.Users />} value={t.students} label="Students" />
+        <Stat icon={<Icon.Users />} value={t.teachers} label="Teachers" />
+        <Stat icon={<Icon.Bolt />} value={t.activeThisWeek} label="Active this week" />
+        <Stat icon={<Icon.Chart />} value={t.modulesCompleted} label="Modules completed" />
+        <Stat icon={<Icon.Shield />} value={t.admins} label="Administrators" />
+        <Stat
+          icon={<Icon.Rocket />}
+          value={t.unassigned}
+          label="Not in a school"
+          tone={t.unassigned ? "warn" : null}
+        />
+        <Stat icon={<Icon.School />} value={t.schools} label="Schools total" />
       </div>
 
       <h2>Flights, last 14 days</h2>
@@ -233,7 +230,7 @@ function Schools() {
                       <div style={{ color: "var(--dim)", fontSize: 12 }}>{s.region}</div>
                     )}
                   </td>
-                  <td className="mono" style={{ color: "var(--cyan)" }}>
+                  <td className="mono" style={{ color: "var(--accent)" }}>
                     {s.join_code}
                   </td>
                   <td className="mono">{s.stats.students}</td>
@@ -386,5 +383,21 @@ function People() {
         another administrator.
       </p>
     </>
+  );
+}
+
+/**
+ * A stat tile. The icon carries the meaning at a glance; the number carries it
+ * on a second look. Both matter — a wall of bare numbers takes real effort to
+ * scan, and a wall of icons says nothing.
+ */
+function Stat({ icon, value, label, tone }) {
+  return (
+    <div className="stat">
+      <i className="accentbar" />
+      <div className="ico">{icon}</div>
+      <b style={tone ? { color: `var(--${tone})` } : undefined}>{value}</b>
+      <small>{label}</small>
+    </div>
   );
 }

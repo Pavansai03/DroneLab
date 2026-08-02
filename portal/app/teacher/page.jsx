@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
+import { HeroDrone, Icon } from "../../components/DroneArt.jsx";
 
 /**
  * THE TEACHER / SCHOOL PANEL
@@ -49,40 +50,43 @@ function Panel({ me }) {
 
   return (
     <>
-      <h1>{school?.name ?? "My school"}</h1>
-      <p className="sub">
-        {school?.join_code ? (
-          <>
-            Students join with the code{" "}
-            <strong className="mono" style={{ color: "var(--cyan)" }}>
-              {school.join_code}
-            </strong>
-            . {me.role === "admin" && "You are viewing this as an administrator."}
-          </>
-        ) : (
-          "Class overview."
-        )}
-      </p>
+      <section className="hero rise">
+        <div className="hero-inner">
+          <div className="hero-copy">
+            <h1>{school?.name ?? "My school"}</h1>
+            <p>
+              {school?.join_code ? (
+                <>
+                  Students join with the code{" "}
+                  <strong
+                    className="mono"
+                    style={{ color: "var(--accent)", fontSize: 17, letterSpacing: "0.06em" }}
+                  >
+                    {school.join_code}
+                  </strong>
+                  {me.role === "admin" ? " — you are viewing this as an administrator." : "."}
+                </>
+              ) : (
+                "Class overview."
+              )}
+            </p>
+          </div>
+          <div className="hero-art">
+            <HeroDrone />
+          </div>
+        </div>
+      </section>
 
       <div className="grid cols-4">
-        <div className="stat">
-          <b>{data.summary.students}</b>
-          <small>Students</small>
-        </div>
-        <div className="stat">
-          <b>{data.summary.activeThisWeek}</b>
-          <small>Active this week</small>
-        </div>
-        <div className="stat">
-          <b>{data.summary.averageModules}</b>
-          <small>Avg modules done</small>
-        </div>
-        <div className="stat">
-          <b style={{ color: data.summary.needHelp ? "var(--amber)" : undefined }}>
-            {data.summary.needHelp}
-          </b>
-          <small>May need help</small>
-        </div>
+        <Stat icon={<Icon.Users />} value={data.summary.students} label="Students" />
+        <Stat icon={<Icon.Bolt />} value={data.summary.activeThisWeek} label="Active this week" />
+        <Stat icon={<Icon.Chart />} value={data.summary.averageModules} label="Avg modules done" />
+        <Stat
+          icon={<Icon.Shield />}
+          value={data.summary.needHelp}
+          label="May need help"
+          tone={data.summary.needHelp ? "warn" : null}
+        />
       </div>
 
       <div className="row" style={{ margin: "26px 0 12px", justifyContent: "space-between" }}>
@@ -130,7 +134,7 @@ function Panel({ me }) {
                       </span>
                     </td>
                     <td className="mono">{r.total_flights ?? 0}</td>
-                    <td className="mono" style={{ color: stale ? "var(--amber)" : "var(--dim)" }}>
+                    <td className="mono" style={{ color: stale ? "var(--warn)" : "var(--dim)" }}>
                       {r.last_active ? new Date(r.last_active).toLocaleDateString() : "never"}
                     </td>
                     <td style={{ color: "var(--dim)", fontSize: 12.5 }}>{r.stuck_on ?? "—"}</td>
@@ -217,5 +221,21 @@ function StudentDetail({ id, onClose }) {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * A stat tile. The icon carries the meaning at a glance; the number carries it
+ * on a second look. Both matter — a wall of bare numbers takes real effort to
+ * scan, and a wall of icons says nothing.
+ */
+function Stat({ icon, value, label, tone }) {
+  return (
+    <div className="stat">
+      <i className="accentbar" />
+      <div className="ico">{icon}</div>
+      <b style={tone ? { color: `var(--${tone})` } : undefined}>{value}</b>
+      <small>{label}</small>
+    </div>
   );
 }

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../lib/supabase.js";
 import { api } from "../lib/api.js";
+import { DroneBackdrop, Icon } from "./DroneArt.jsx";
 
 /**
  * The signed-in frame around every panel.
@@ -58,31 +59,40 @@ export default function Shell({ children, requireRole }) {
   }
   if (!me) {
     return (
-      <main>
-        <p className="sub">Loading…</p>
-      </main>
+      <>
+        <DroneBackdrop />
+        <main>
+          <p className="sub">Loading…</p>
+        </main>
+      </>
     );
   }
 
   const rank = { student: 0, teacher: 1, admin: 2 };
   if (requireRole && rank[me.role] < rank[requireRole]) {
     return (
-      <div className="shell">
-        <TopBar me={me} pathname={pathname} />
-        <main>
-          <div className="note bad">
-            This area needs the {requireRole} role. You are signed in as {me.role}.
-          </div>
-        </main>
-      </div>
+      <>
+        <DroneBackdrop />
+        <div className="shell">
+          <TopBar me={me} pathname={pathname} />
+          <main>
+            <div className="note bad">
+              This area needs the {requireRole} role. You are signed in as {me.role}.
+            </div>
+          </main>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="shell">
-      <TopBar me={me} pathname={pathname} />
-      <main>{typeof children === "function" ? children(me) : children}</main>
-    </div>
+    <>
+      <DroneBackdrop />
+      <div className="shell">
+        <TopBar me={me} pathname={pathname} />
+        <main>{typeof children === "function" ? children(me) : children}</main>
+      </div>
+    </>
   );
 }
 
@@ -95,7 +105,10 @@ function TopBar({ me, pathname }) {
   return (
     <header className="topbar">
       <div className="brand">
-        DRONE<span>LAB</span>
+        <span className="mark">
+          <Icon.Bolt />
+        </span>
+        DRONE<em>LAB</em>
       </div>
       <nav>
         {links.map((l) => (

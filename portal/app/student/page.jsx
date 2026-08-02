@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
+import { HeroDrone, Icon } from "../../components/DroneArt.jsx";
 
 /**
  * THE STUDENT PANEL
@@ -34,41 +35,53 @@ function Panel({ me }) {
 
   return (
     <>
-      <h1>Hello{me.profile?.full_name ? `, ${me.profile.full_name.split(" ")[0]}` : ""}</h1>
-      <p className="sub">
-        {me.school ? (
-          <>
-            {me.school.name}
-            {me.profile?.class_code ? ` · class ${me.profile.class_code}` : ""}
-          </>
-        ) : (
-          <>
-            You have not joined a school yet — <Link href="/student/profile">add your join code</Link> so your
-            teacher can see your progress.
-          </>
-        )}
-      </p>
+      {/* The hero states, in one glance, who you are and how far through you
+          are. The ring is the headline because "how much is left" is the
+          question a student actually opens this page with. */}
+      <section className="hero rise">
+        <div className="hero-inner">
+          <div className="hero-copy">
+            <h1>
+              Hello{me.profile?.full_name ? <>, <em>{me.profile.full_name.split(" ")[0]}</em></> : ""}
+            </h1>
+            <p>
+              {me.school ? (
+                <>
+                  {me.school.name}
+                  {me.profile?.class_code ? ` · class ${me.profile.class_code}` : ""} — you have finished{" "}
+                  {summary.modulesCompleted} of {summary.modulesTotal} modules.
+                </>
+              ) : (
+                <>
+                  You have not joined a school yet. <Link href="/student/profile">Add your join code</Link> so
+                  your teacher can see your progress.
+                </>
+              )}
+            </p>
+            <div className="row" style={{ marginTop: 20 }}>
+              <div className="ring" style={{ "--pct": summary.percent }}>
+                <span>{summary.percent}%</span>
+              </div>
+              <div>
+                <div style={{ fontSize: 13, color: "var(--dim)", lineHeight: 1.7 }}>
+                  <strong style={{ color: "var(--text)" }}>{summary.flights}</strong> flights flown
+                  <br />
+                  <strong style={{ color: "var(--text)" }}>{summary.streak}</strong> day streak
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="hero-art">
+            <HeroDrone />
+          </div>
+        </div>
+      </section>
 
       <div className="grid cols-4">
-        <div className="stat">
-          <b>
-            {summary.modulesCompleted}
-            <span style={{ color: "var(--dim)", fontSize: 16 }}>/{summary.modulesTotal}</span>
-          </b>
-          <small>Modules complete</small>
-        </div>
-        <div className="stat">
-          <b>{summary.percent}%</b>
-          <small>Course progress</small>
-        </div>
-        <div className="stat">
-          <b>{summary.flights}</b>
-          <small>Flights flown</small>
-        </div>
-        <div className="stat">
-          <b>{summary.streak}</b>
-          <small>Day streak</small>
-        </div>
+        <Stat icon={<Icon.Rocket />} value={`${summary.modulesCompleted}/${summary.modulesTotal}`} label="Modules complete" />
+        <Stat icon={<Icon.Chart />} value={`${summary.percent}%`} label="Course progress" />
+        <Stat icon={<Icon.Bolt />} value={summary.flights} label="Flights flown" />
+        <Stat icon={<Icon.Shield />} value={summary.streak} label="Day streak" />
       </div>
 
       {next && (
@@ -97,7 +110,7 @@ function Panel({ me }) {
         {modules.map((m) => {
           const pct = m.tasksTotal ? Math.round((m.tasksDone / m.tasksTotal) * 100) : m.completed ? 100 : 0;
           return (
-            <div className="card" key={m.id}>
+            <div className="card hover" key={m.id}>
               <div className="row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
                 <strong>
                   {m.number}. {m.title}
@@ -147,5 +160,21 @@ function Panel({ me }) {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * A stat tile. The icon carries the meaning at a glance; the number carries it
+ * on a second look. Both matter — a wall of bare numbers takes real effort to
+ * scan, and a wall of icons says nothing.
+ */
+function Stat({ icon, value, label, tone }) {
+  return (
+    <div className="stat">
+      <i className="accentbar" />
+      <div className="ico">{icon}</div>
+      <b style={tone ? { color: `var(--${tone})` } : undefined}>{value}</b>
+      <small>{label}</small>
+    </div>
   );
 }

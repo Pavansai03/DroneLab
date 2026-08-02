@@ -18,6 +18,39 @@ import adminRoutes from "./routes/admin.js";
  */
 assertConfigured();
 
+/**
+ * SELF-SIGNED TLS ESCAPE HATCH — local development only.
+ *
+ * A self-hosted Supabase behind a reverse proxy with no certificate issued
+ * yet serves the proxy's default self-signed cert, and Node refuses the
+ * connection outright. That is Node behaving correctly: an unverified
+ * certificate means the connection could be intercepted, and this one
+ * carries a service role key.
+ *
+ * Setting ALLOW_SELF_SIGNED_TLS=true turns verification off so you can work
+ * against your own server while the certificate is being sorted out. It is
+ * refused outright in production, and it announces itself loudly, because
+ * the failure mode it enables is silent: everything keeps working and
+ * nothing tells you the connection is no longer authenticated.
+ */
+if (process.env.ALLOW_SELF_SIGNED_TLS === "true") {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "ALLOW_SELF_SIGNED_TLS cannot be used with NODE_ENV=production. " +
+        "Issue a real certificate for your Supabase domain instead."
+    );
+  }
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  console.warn(
+    [
+      "",
+      "  !!  TLS certificate verification is OFF (ALLOW_SELF_SIGNED_TLS=true).",
+      "  !!  Local development only. Remove this before deploying.",
+      "",
+    ].join("\n")
+  );
+}
+
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "256kb" }));
