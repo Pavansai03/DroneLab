@@ -956,12 +956,12 @@ export default function App() {
             deployed without one. */}
         {hasPortal() && (
           <button
-            className="btn icon back-to-portal"
+            className="btn back-to-portal"
             onClick={goToPortal}
-            title="Back to the portal"
-            aria-label="Back to the portal"
+            title="Back to the portal — your progress, class and profile"
           >
             <ArrowLeft />
+            <span>Portal</span>
           </button>
         )}
         <div className="brand">

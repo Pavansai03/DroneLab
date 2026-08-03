@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { isSupabaseConfigured, supabaseConfigNote } from "../lib/supabase.js";
 import { signIn, signUp, signOut } from "../lib/useCloudSync.js";
+import { hasPortal, goToPortal } from "../lib/portal.js";
 
 /**
  * Sign in / sign up, and the signed-in summary.
@@ -34,6 +35,22 @@ export default function AccountPanel({ auth, syncStatus, syncError, onSignedIn }
           <b>build arguments</b> (not runtime variables — Vite bakes them into the
           bundle at build time).
         </div>
+
+        {/* The Account tab is where a student looks for anything to do with their
+            account, so when this simulator has no account layer of its own it
+            should still point at the place that does, rather than being a dead
+            end that only explains why it is empty. */}
+        {hasPortal() && (
+          <>
+            <div className="cat-row" style={{ marginTop: 18 }}>Your account lives in the portal</div>
+            <div className="sect-note" style={{ marginBottom: 12 }}>
+              Sign in there to see your progress, your class and your profile.
+            </div>
+            <button className="btn go" style={{ width: "100%" }} onClick={goToPortal}>
+              Open the portal
+            </button>
+          </>
+        )}
       </div>
     );
   }
