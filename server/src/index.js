@@ -87,11 +87,19 @@ for (const a of allowed) {
   if (!a.startsWith("*")) continue;
   const rest = a.slice(1);
   if (!/^[.-]/.test(rest)) {
-    throw new Error(
-      `Refusing to start: CORS pattern "${a}" has no separator after the "*". ` +
-        `Use "*.example.com" or "*-my-team.vercel.app" so the match cannot ` +
-        `be satisfied by an unrelated domain.`
+    /* Skip it loudly rather than refusing to boot.
+       An earlier version threw here, which meant one mistyped character in an
+       allow-list took the entire API offline — every route, for every user,
+       including the ones that had nothing to do with CORS. Failing fast is
+       right for the Supabase keys, because nothing works without them. It is
+       badly wrong here: the rest of the service is perfectly functional, and a
+       dead API is far harder to diagnose than a rejected origin. */
+    console.error(
+      `[api] IGNORING CORS pattern "${a}" — no separator after the "*". ` +
+        `Use "*.example.com" or "*-my-team.vercel.app", so the match cannot be ` +
+        `satisfied by an unrelated domain. Requests from that origin will be refused.`
     );
+    continue;
   }
   suffixes.push(rest);
 }
