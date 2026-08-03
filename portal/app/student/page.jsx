@@ -5,7 +5,7 @@ import Link from "next/link";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
 import { HeroDrone, Icon, Loader, Skeleton } from "../../components/DroneArt.jsx";
-import { simulatorUrl } from "../../lib/simulator.js";
+import { simulatorUrl, openSimulator } from "../../lib/simulator.js";
 
 /**
  * THE STUDENT PANEL
@@ -71,7 +71,7 @@ function Panel({ me }) {
                 </div>
                 {/* The point of the whole portal is to get someone into the
                     simulator, so it is the one primary button on the page. */}
-                <a className="btn primary" href={simulatorUrl()}>
+                <a className="btn primary" href={simulatorUrl()} onClick={openSimulator}>
                   <Icon.Play />
                   {next ? `Continue module ${next.number}` : "Open the simulator"}
                 </a>

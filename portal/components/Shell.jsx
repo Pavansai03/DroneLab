@@ -6,7 +6,7 @@ import Link from "next/link";
 import { supabase } from "../lib/supabase.js";
 import { api } from "../lib/api.js";
 import { DroneBackdrop, Icon, Loader } from "./DroneArt.jsx";
-import { simulatorUrl } from "../lib/simulator.js";
+import { simulatorUrl, openSimulator } from "../lib/simulator.js";
 import { apiUrl } from "../lib/api.js";
 
 /**
@@ -70,7 +70,7 @@ export default function Shell({ children, requireRole }) {
               DRONE<em>LAB</em>
             </div>
             <div className="spacer" />
-            <a className="btn small sim-link" href={simulatorUrl()}>
+            <a className="btn small sim-link" href={simulatorUrl()} onClick={openSimulator}>
               <Icon.Play />
               Simulator
             </a>
@@ -185,6 +185,7 @@ function TopBar({ me, pathname }) {
       <a
         className="btn small sim-link"
         href={simulatorUrl()}
+        onClick={openSimulator}
         title="Open the flight simulator"
       >
         <Icon.Play />
