@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { isSupabaseConfigured, supabaseConfigNote } from "../lib/supabase.js";
+import { isSupabaseConfigured, supabaseConfigNote, buildEnvReport } from "../lib/supabase.js";
 import { signIn, signUp, signOut } from "../lib/useCloudSync.js";
 import { hasPortal, goToPortal } from "../lib/portal.js";
 
@@ -34,6 +34,34 @@ export default function AccountPanel({ auth, syncStatus, syncError, onSignedIn }
           <b className="mono">VITE_SUPABASE_ANON_KEY</b> set as{" "}
           <b>build arguments</b> (not runtime variables — Vite bakes them into the
           bundle at build time).
+        </div>
+
+        {/* Exactly what the build received. Without this, "the variables are set
+            but the app says they are not" is unfalsifiable from the outside —
+            you cannot tell a wrong project from a stale build from a typo. */}
+        <div className="cat-row" style={{ marginTop: 18 }}>
+          VITE_ variables this build received
+        </div>
+        <div className="sect-note" style={{ marginBottom: 10 }}>
+          {buildEnvReport.length === 0 ? (
+            <>
+              <b>None.</b> This bundle was compiled with no VITE_ variables at all. Either they were
+              added to a different Vercel project, or this deployment was built before they were
+              added — Vite bakes them in at build time, so a redeploy is required after any change.
+            </>
+          ) : (
+            <>
+              <ul style={{ margin: "0 0 8px", paddingLeft: 18 }}>
+                {buildEnvReport.map((v) => (
+                  <li key={v.name} className="mono" style={{ fontSize: 11.5 }}>
+                    {v.name} <span style={{ color: "var(--faint)" }}>({v.chars} chars)</span>
+                  </li>
+                ))}
+              </ul>
+              If a name here looks slightly wrong, that is the problem — Vite only exposes exact
+              matches beginning <b className="mono">VITE_</b>.
+            </>
+          )}
         </div>
 
         {/* The Account tab is where a student looks for anything to do with their

@@ -32,6 +32,27 @@ export const supabaseConfigNote = isSupabaseConfigured
       ? "VITE_SUPABASE_URL is missing."
       : "VITE_SUPABASE_ANON_KEY is missing.";
 
+/**
+ * What this build was actually given.
+ *
+ * Vite replaces `import.meta.env` wholesale at build time, so this object is a
+ * literal record of the VITE_* variables that existed when the bundle was
+ * compiled — which is precisely the question you need answered when the app
+ * insists it is unconfigured and the hosting dashboard insists it is not.
+ *
+ * It answers three failures that are otherwise indistinguishable from the
+ * outside: the variables were set on a different project, the build ran before
+ * they were added, or a name was mistyped (a stray character shows up here as
+ * an unfamiliar entry rather than as silence).
+ *
+ * Names only. Values are reduced to their length, because the anon key is
+ * public but there is no reason to paint it across the interface.
+ */
+export const buildEnvReport = Object.entries(import.meta.env)
+  .filter(([k]) => k.startsWith("VITE_"))
+  .map(([k, v]) => ({ name: k, chars: typeof v === "string" ? v.trim().length : 0 }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+
 /* A common deployment mistake worth catching early: pointing the app at a
    plain-HTTP Supabase from an HTTPS page. The browser blocks that as mixed
    content and every request fails with no useful error. */
