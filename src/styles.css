@@ -2133,3 +2133,14 @@ input[type="range"]::-moz-range-thumb {
     display: none;
   }
 }
+
+/* Back to the portal. Sits left of the brand, where a back control belongs, and
+   is deliberately quiet — it is an exit, not an action within the simulator. */
+.back-to-portal {
+  margin-right: -6px;
+  color: var(--dim);
+}
+.back-to-portal:hover {
+  color: var(--cyan);
+  border-color: var(--cyan);
+}

@@ -40,6 +40,7 @@ import AccountPanel from "./components/AccountPanel.jsx";
 import TeacherDashboard from "./components/TeacherDashboard.jsx";
 import { Arrow, ArrowLeft, Reset, Bolt, Warn, Undo, Redo, SpeakerOn, SpeakerOff, Sun, Moon } from "./components/Icons.jsx";
 import { initialTheme, applyTheme } from "./lib/theme.js";
+import { hasPortal, goToPortal } from "./lib/portal.js";
 import {
   setBuzzerEnabled,
   setBuzzerMuted,
@@ -950,6 +951,19 @@ export default function App() {
     <div className="app">
       {/* ============================================= top bar */}
       <header className="topbar">
+        {/* Only rendered when a portal is configured — the simulator is a
+            complete product on its own and must not show a dead control when
+            deployed without one. */}
+        {hasPortal() && (
+          <button
+            className="btn icon back-to-portal"
+            onClick={goToPortal}
+            title="Back to the portal"
+            aria-label="Back to the portal"
+          >
+            <ArrowLeft />
+          </button>
+        )}
         <div className="brand">
           <span className="dot">&#9670;</span>
           <b>DRONELAB</b>

@@ -71,7 +71,7 @@ function Panel({ me }) {
                 </div>
                 {/* The point of the whole portal is to get someone into the
                     simulator, so it is the one primary button on the page. */}
-                <a className="btn primary" href={simulatorUrl()} target="_blank" rel="noopener noreferrer">
+                <a className="btn primary" href={simulatorUrl()}>
                   <Icon.Play />
                   {next ? `Continue module ${next.number}` : "Open the simulator"}
                 </a>

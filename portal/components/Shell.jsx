@@ -126,9 +126,7 @@ function TopBar({ me, pathname }) {
       <a
         className="btn small sim-link"
         href={simulatorUrl()}
-        target="_blank"
-        rel="noopener noreferrer"
-        title="Open the flight simulator in a new tab"
+        title="Open the flight simulator"
       >
         <Icon.Play />
         Simulator
