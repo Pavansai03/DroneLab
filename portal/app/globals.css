@@ -937,3 +937,79 @@ label {
   height: 1px;
   background: var(--line);
 }
+
+/* ============================================================== loading */
+/* A flying drone instead of the word "Loading". On a cold start this is
+   several seconds of screen time; a dead word wastes all of it. */
+.loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 46px 0;
+  color: var(--dim);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+.loader span::after {
+  /* Three dots that fill in, so it is obvious the page is still working even
+     when the animation is off for reduced motion. */
+  content: "";
+  animation: dots 1.4s steps(4, end) infinite;
+}
+@keyframes dots {
+  to {
+    content: "...";
+  }
+}
+.loader-craft {
+  animation: loader-bob 2.4s ease-in-out infinite;
+  transform-origin: 60px 44px;
+}
+@keyframes loader-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1.5deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(1.5deg);
+  }
+}
+.loader-shadow {
+  animation: loader-shadow 2.4s ease-in-out infinite;
+}
+@keyframes loader-shadow {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scaleX(1);
+  }
+  50% {
+    opacity: 0.22;
+    transform: scaleX(0.82);
+  }
+}
+.loader-prop {
+  animation: prop-spin 0.5s linear infinite;
+}
+@keyframes prop-spin {
+  to {
+    transform: rotateY(360deg);
+  }
+}
+
+/* Skeletons: hold the shape of what is coming, so the page does not jump when
+   the data lands. A spinner says "wait"; this says "wait, and it will look
+   like this". */
+.skeleton {
+  border-radius: var(--r);
+  background: linear-gradient(100deg, var(--panel) 30%, var(--panel-2) 48%, var(--panel) 66%);
+  background-size: 280% 100%;
+  border: 1px solid var(--line-soft);
+  animation: shimmer 1.5s linear infinite;
+}
+@keyframes shimmer {
+  to {
+    background-position: -280% 0;
+  }
+}

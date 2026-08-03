@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
-import { HeroDrone, Icon } from "../../components/DroneArt.jsx";
+import { HeroDrone, Icon, Loader, Skeleton } from "../../components/DroneArt.jsx";
 import { simulatorUrl } from "../../lib/simulator.js";
 
 /**
@@ -29,7 +29,7 @@ function Panel({ me }) {
   }, []);
 
   if (error) return <div className="note bad">{error}</div>;
-  if (!data) return <p className="sub">Loading your progress…</p>;
+  if (!data) return <Loader label="Loading your progress" />;
 
   const { summary, modules, activity } = data;
   const next = modules.find((m) => !m.completed);

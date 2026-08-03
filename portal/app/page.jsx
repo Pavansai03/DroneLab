@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, isConfigured } from "../lib/supabase.js";
 import { api } from "../lib/api.js";
+import { Loader } from "../components/DroneArt.jsx";
 
 /**
  * The front door. Sends each role to the panel it actually uses.
@@ -74,7 +75,7 @@ export default function Home() {
 
   return (
     <main>
-      <p className="sub">Signing you in…</p>
+      <Loader label="Signing you in" />
     </main>
   );
 }

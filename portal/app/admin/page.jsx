@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
-import { HeroDrone, Icon } from "../../components/DroneArt.jsx";
+import { HeroDrone, Icon, Loader } from "../../components/DroneArt.jsx";
 
 /**
  * THE SUPER ADMIN PANEL
@@ -77,7 +77,7 @@ function Overview() {
   }, []);
 
   if (err) return <div className="note bad">{err}</div>;
-  if (!d) return <p className="sub">Loading…</p>;
+  if (!d) return <Loader />;
 
   const t = d.totals;
   const max = Math.max(...d.daily.map((x) => x.flights), 1);
@@ -204,7 +204,7 @@ function Schools() {
       </form>
 
       {!schools ? (
-        <p className="sub">Loading…</p>
+        <Loader />
       ) : schools.length === 0 ? (
         <div className="note">No schools yet. Create the first one above.</div>
       ) : (
@@ -326,7 +326,7 @@ function People() {
       </div>
 
       {!users ? (
-        <p className="sub">Loading…</p>
+        <Loader />
       ) : (
         <div className="table-wrap">
           <table>

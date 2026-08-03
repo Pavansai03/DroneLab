@@ -2,109 +2,240 @@
  * DRONE ARTWORK
  * =============
  * Every drone on this site is drawn here, as vector art, rather than
- * photographed or downloaded.
+ * photographed or downloaded. Stock photography would mean licensing images
+ * forever or quietly using someone else's; and a photograph of a consumer
+ * drone above a page about assembling your own 450-class quadcopter teaches
+ * the wrong thing.
  *
- * That is a deliberate choice, not a limitation. Stock photography would mean
- * either paying for licences forever or quietly using images belonging to
- * somebody else; and a photograph of a DJI Mavic sitting above a page about
- * building your own 450-class quadcopter teaches the wrong thing. These are
- * drawn to match the aircraft students actually assemble in the simulator —
- * four arms, exposed electronics, a visible flight controller.
+ * WHAT MAKES THIS ONE READ AS REAL
+ * --------------------------------
+ * The previous version was a flat schematic — a top-down cross with ellipses
+ * for propellers — and it looked like a diagram because it *was* one. Four
+ * things change that, and none of them is detail for its own sake:
  *
- * Vectors also stay sharp on a projector at the front of a classroom, animate
- * without a video file, recolour with the theme, and add about 4 kB to the page
- * instead of two megabytes.
+ *   1. PERSPECTIVE. Seen from three-quarters above, the two near arms are
+ *      longer and lower on the canvas than the two far ones. Equal arms are the
+ *      single biggest giveaway of a flat drawing.
+ *   2. SHADING ALONG THE FORM. Every cylinder carries a gradient across its
+ *      width, light on one side and dark on the other. A flat-filled cylinder
+ *      reads as a rectangle no matter how well it is proportioned.
+ *   3. REAL BLADES. Propellers are tapered aerofoils with curve, not ellipses.
+ *      Three near-transparent copies at different angles, over a blur disc,
+ *      give the smear a spinning prop actually produces.
+ *   4. CONTACT SHADOW. A soft ellipse under the aircraft, offset toward the
+ *      light. Without it the drone floats in a void rather than hovering over
+ *      something.
+ *
+ * It stays sharp on a projector, animates without a video file, recolours with
+ * the theme, and costs about 8 kB.
  */
 
 /* ------------------------------------------------------------------ hero */
-/**
- * A quadcopter seen from three-quarters above — the angle that reads as "drone"
- * fastest, because you can see all four rotors at once and the body still has
- * depth. Propellers spin via CSS, so the page is alive without a video.
- */
 export function HeroDrone({ className = "" }) {
-  const arm = (rot, key) => (
-    <g key={key} transform={`rotate(${rot} 200 150)`}>
-      {/* arm */}
-      <rect x="196" y="60" width="8" height="92" rx="4" fill="url(#armGrad)" />
-      {/* motor bell */}
-      <ellipse cx="200" cy="62" rx="17" ry="10" fill="#2a3140" />
-      <ellipse cx="200" cy="58" rx="17" ry="10" fill="url(#motorGrad)" />
-      <ellipse cx="200" cy="57" rx="7" ry="4" fill="#0e1219" />
-      {/* propeller disc — the blur a spinning prop actually makes */}
-      <g className="prop">
-        <ellipse cx="200" cy="53" rx="62" ry="15" fill="url(#propGrad)" opacity="0.34" />
-        <ellipse cx="200" cy="53" rx="62" ry="15" fill="none" stroke="var(--accent)" strokeWidth="1" opacity="0.5" />
-      </g>
-    </g>
-  );
+  /* Arm geometry, in draw order back-to-front so the near arms overlap the
+     body and the far ones sit behind it. `s` scales everything on that arm:
+     the far pair are smaller because they are further away. */
+  const arms = [
+    { x: 148, y: 150, s: 0.78, back: true }, // far left
+    { x: 372, y: 150, s: 0.78, back: true }, // far right
+    { x: 108, y: 236, s: 1.0, back: false }, // near left
+    { x: 412, y: 236, s: 1.0, back: false }, // near right
+  ];
 
   return (
-    <svg viewBox="0 0 400 300" className={className} role="img" aria-label="Quadcopter">
+    <svg viewBox="0 0 520 400" className={className} role="img" aria-label="Quadcopter">
       <defs>
-        <linearGradient id="armGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#3c4657" />
-          <stop offset="100%" stopColor="#232a36" />
+        {/* Carbon fibre shell: dark, with a cool highlight along the top-left */}
+        <linearGradient id="shell" x1="0.1" y1="0" x2="0.9" y2="1">
+          <stop offset="0%" stopColor="#4a5769" />
+          <stop offset="38%" stopColor="#2a3341" />
+          <stop offset="100%" stopColor="#141a23" />
         </linearGradient>
-        <linearGradient id="motorGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#6e7b8f" />
-          <stop offset="100%" stopColor="#39424f" />
+        <linearGradient id="shellTop" x1="0" y1="0" x2="0.6" y2="1">
+          <stop offset="0%" stopColor="#67768c" />
+          <stop offset="55%" stopColor="#394453" />
+          <stop offset="100%" stopColor="#222a35" />
         </linearGradient>
-        <radialGradient id="propGrad">
-          <stop offset="40%" stopColor="var(--accent)" stopOpacity="0" />
-          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.9" />
+        {/* Arms are tubes: light edge, mid, dark edge — the gradient runs ACROSS
+            the tube, which is what makes it look round rather than flat. */}
+        <linearGradient id="tube" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#5d6b7f" />
+          <stop offset="30%" stopColor="#39434f" />
+          <stop offset="72%" stopColor="#1c232c" />
+          <stop offset="100%" stopColor="#2b3440" />
+        </linearGradient>
+        <linearGradient id="bell" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#8b97a8" />
+          <stop offset="42%" stopColor="#5a6675" />
+          <stop offset="100%" stopColor="#2e3641" />
+        </linearGradient>
+        <linearGradient id="bellTop" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#aab5c4" />
+          <stop offset="100%" stopColor="#5b6675" />
+        </linearGradient>
+        <linearGradient id="blade" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#8e9bad" stopOpacity="0.95" />
+          <stop offset="100%" stopColor="#4a5462" stopOpacity="0.25" />
+        </linearGradient>
+        <radialGradient id="disc">
+          <stop offset="55%" stopColor="#9fb0c4" stopOpacity="0" />
+          <stop offset="88%" stopColor="#9fb0c4" stopOpacity="0.16" />
+          <stop offset="100%" stopColor="#9fb0c4" stopOpacity="0.03" />
         </radialGradient>
-        <linearGradient id="bodyGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#2b3342" />
-          <stop offset="100%" stopColor="#161c26" />
-        </linearGradient>
-        <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
-          <feGaussianBlur stdDeviation="7" result="b" />
+        <radialGradient id="lensGrad">
+          <stop offset="0%" stopColor="#0b1420" />
+          <stop offset="62%" stopColor="#16283d" />
+          <stop offset="100%" stopColor="#3d5871" />
+        </radialGradient>
+        <radialGradient id="shadowGrad">
+          <stop offset="0%" stopColor="#000" stopOpacity="0.5" />
+          <stop offset="100%" stopColor="#000" stopOpacity="0" />
+        </radialGradient>
+        <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="5" />
+        </filter>
+        <filter id="ledGlow" x="-300%" y="-300%" width="700%" height="700%">
+          <feGaussianBlur stdDeviation="3.4" result="b" />
           <feMerge>
+            <feMergeNode in="b" />
             <feMergeNode in="b" />
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
       </defs>
 
-      {/* ground shadow, so it reads as hovering rather than floating in a void */}
-      <ellipse cx="200" cy="258" rx="86" ry="13" fill="#000" opacity="0.35" />
+      {/* Contact shadow, offset away from the key light */}
+      <ellipse cx="268" cy="356" rx="132" ry="22" fill="url(#shadowGrad)" />
 
       <g className="drone-body">
-        {[45, 135, 225, 315].map((r, i) => arm(r, i))}
+        {/* ---- far arms and rotors, drawn first so the body overlaps them ---- */}
+        {arms.filter((a) => a.back).map((a, i) => (
+          <Rotor key={"b" + i} {...a} bodyX={260} bodyY={196} />
+        ))}
 
-        {/* centre stack: battery under, frame plate, flight controller on top */}
-        <rect x="168" y="128" width="64" height="46" rx="9" fill="url(#bodyGrad)" />
-        <rect x="174" y="134" width="52" height="12" rx="3" fill="#3d4757" />
-        <rect x="176" y="152" width="48" height="18" rx="3" fill="#11161e" />
-        {/* FC status LEDs */}
-        <circle cx="186" cy="161" r="3.2" fill="var(--accent)" filter="url(#glow)" />
-        <circle cx="200" cy="161" r="3.2" fill="#ffab4a" opacity="0.85" />
-        <circle cx="214" cy="161" r="3.2" fill="#ff5c62" className="blink" />
+        {/* ------------------------------- fuselage ------------------------------- */}
+        {/* Lower shell */}
+        <path
+          d="M198 196 L238 172 L282 172 L322 196 L322 216 L282 240 L238 240 L198 216 Z"
+          fill="url(#shell)"
+        />
+        {/* Top plate, lifted so the shell edge below stays visible as thickness */}
+        <path d="M198 190 L238 166 L282 166 L322 190 L282 214 L238 214 Z" fill="url(#shellTop)" />
+        {/* Specular line along the leading edge */}
+        <path d="M238 167 L282 167 L318 189" fill="none" stroke="#93a2b6" strokeWidth="1.6" opacity="0.55" />
+
+        {/* Flight controller stack, visible through the top plate cutout */}
+        <path d="M240 186 L280 186 L266 194 L254 194 Z" fill="#0d131b" />
+        <rect x="248" y="187" width="6" height="2.6" rx="1" fill="var(--accent)" filter="url(#ledGlow)" />
+        <rect x="258" y="187" width="6" height="2.6" rx="1" fill="#ffb648" opacity="0.9" />
+        <rect x="268" y="187" width="5" height="2.6" rx="1" fill="#ff5c62" className="blink" />
+
         {/* GPS mast */}
-        <rect x="198.5" y="112" width="3" height="18" fill="#4a5464" />
-        <circle cx="200" cy="110" r="7" fill="#59637a" />
-        <circle cx="200" cy="110" r="3" fill="var(--accent)" opacity="0.8" />
+        <rect x="258" y="150" width="4" height="18" rx="2" fill="#3f4a58" />
+        <ellipse cx="260" cy="149" rx="13" ry="5" fill="#5e6b7d" />
+        <ellipse cx="260" cy="147.5" rx="13" ry="5" fill="#79899d" />
+        <circle cx="260" cy="147" r="2.6" fill="var(--accent)" opacity="0.85" />
+
+        {/* ---- near arms and rotors, over the body ---- */}
+        {arms.filter((a) => !a.back).map((a, i) => (
+          <Rotor key={"f" + i} {...a} bodyX={260} bodyY={210} />
+        ))}
+
+        {/* ------------------------------- camera -------------------------------- */}
+        <path d="M247 236 L273 236 L270 250 L250 250 Z" fill="#222b36" />
+        <circle cx="260" cy="256" r="13" fill="#2c3644" />
+        <circle cx="260" cy="256" r="10.5" fill="url(#lensGrad)" />
+        <circle cx="260" cy="256" r="5" fill="#0a121c" />
+        {/* Two highlights: a hard glint and a soft sky reflection. One alone
+            reads as a sticker; two make it read as glass. */}
+        <ellipse cx="256" cy="251" rx="3.4" ry="2.2" fill="#dceaf7" opacity="0.75" transform="rotate(-28 256 251)" />
+        <ellipse cx="264" cy="261" rx="2" ry="1.3" fill="#7fd7ff" opacity="0.4" />
+
+        {/* ------------------------------- landing legs -------------------------- */}
+        {[
+          [222, 232, 200, 300],
+          [298, 232, 320, 300],
+        ].map(([x1, y1, x2, y2], i) => (
+          <g key={i}>
+            <path
+              d={`M${x1} ${y1} Q${x1 + (x2 - x1) * 0.35} ${y1 + 46} ${x2} ${y2}`}
+              stroke="url(#tube)"
+              strokeWidth="7"
+              fill="none"
+              strokeLinecap="round"
+            />
+            <ellipse cx={x2} cy={y2 + 2} rx="13" ry="4.5" fill="#1b222c" />
+          </g>
+        ))}
       </g>
     </svg>
+  );
+}
+
+/**
+ * One arm, motor and propeller.
+ *
+ * Drawn as its own group so the near and far pairs can be composited on either
+ * side of the fuselage — which is the whole trick to the perspective.
+ */
+function Rotor({ x, y, s, bodyX, bodyY }) {
+  const bellH = 17 * s;
+  const bladeLen = 74 * s;
+
+  return (
+    <g>
+      {/* Arm, from the shell out to the motor */}
+      <path
+        d={`M${bodyX} ${bodyY} L${x} ${y}`}
+        stroke="url(#tube)"
+        strokeWidth={13 * s}
+        strokeLinecap="round"
+      />
+
+      {/* Motor: bell side, then the top face as an ellipse */}
+      <rect x={x - 15 * s} y={y - bellH} width={30 * s} height={bellH} rx={3 * s} fill="url(#bell)" />
+      <ellipse cx={x} cy={y - bellH} rx={15 * s} ry={5.5 * s} fill="url(#bellTop)" />
+      <ellipse cx={x} cy={y - bellH} rx={6 * s} ry={2.2 * s} fill="#111820" />
+      {/* Stator slots — three short darker bands read as windings at this size */}
+      {[-8, 0, 8].map((o) => (
+        <rect key={o} x={x + o * s - 1 * s} y={y - bellH + 4 * s} width={1.8 * s} height={bellH - 6 * s} fill="#1e2530" opacity="0.55" />
+      ))}
+
+      {/* Propeller: blur disc, then three ghosted blades at different angles */}
+      <g className="prop" style={{ transformOrigin: `${x}px ${y - bellH - 4 * s}px` }}>
+        <ellipse cx={x} cy={y - bellH - 4 * s} rx={bladeLen} ry={bladeLen * 0.2} fill="url(#disc)" />
+        {[0, 62, 124].map((a, i) => (
+          <g key={a} transform={`rotate(${a} ${x} ${y - bellH - 4 * s})`} opacity={0.5 - i * 0.13}>
+            {/* A tapered, curved blade — the leading edge bows, the tip narrows */}
+            <path
+              d={`M${x} ${y - bellH - 4 * s}
+                  q ${bladeLen * 0.5} ${-7 * s} ${bladeLen} ${-1 * s}
+                  q ${-bladeLen * 0.5} ${5 * s} ${-bladeLen} ${1 * s} Z`}
+              fill="url(#blade)"
+            />
+            <path
+              d={`M${x} ${y - bellH - 4 * s}
+                  q ${-bladeLen * 0.5} ${7 * s} ${-bladeLen} ${1 * s}
+                  q ${bladeLen * 0.5} ${-5 * s} ${bladeLen} ${-1 * s} Z`}
+              fill="url(#blade)"
+            />
+          </g>
+        ))}
+        {/* Prop nut */}
+        <ellipse cx={x} cy={y - bellH - 4 * s} rx={4.5 * s} ry={2 * s} fill="#8d99a9" />
+      </g>
+    </g>
   );
 }
 
 /* ------------------------------------------------------- silhouettes */
 /**
  * A flat top-down silhouette, for scattering across a background at low
- * opacity. Deliberately simple: at 40px and 8% opacity, detail is wasted bytes.
+ * opacity. Deliberately simple: at 40px and 6% opacity, detail is wasted bytes.
  */
 export function DroneMark({ size = 40, className = "", style }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 64 64"
-      className={className}
-      style={style}
-      aria-hidden="true"
-    >
+    <svg width={size} height={size} viewBox="0 0 64 64" className={className} style={style} aria-hidden="true">
       <g fill="currentColor">
         <rect x="29" y="22" width="6" height="20" rx="3" transform="rotate(45 32 32)" />
         <rect x="29" y="22" width="6" height="20" rx="3" transform="rotate(-45 32 32)" />
@@ -126,12 +257,12 @@ export function DroneMark({ size = 40, className = "", style }) {
 }
 
 /**
- * The animated backdrop: a slow grid, a couple of colour blooms, and drone
- * silhouettes drifting across at different speeds.
+ * The animated backdrop: a slow grid, colour blooms, and drone silhouettes
+ * drifting across at different speeds.
  *
- * Parallax by speed rather than by scroll listener — nothing here reacts to
- * input, so it costs no JavaScript at all once painted, and it keeps moving on
- * a page the student is reading rather than scrolling.
+ * Parallax by speed rather than by scroll listener — nothing reacts to input,
+ * so it costs no JavaScript once painted and keeps moving on a page the student
+ * is reading rather than scrolling.
  */
 export function DroneBackdrop({ dense = false }) {
   const marks = dense
@@ -166,6 +297,79 @@ export function DroneBackdrop({ dense = false }) {
             animationDelay: `${m.delay}s`,
           }}
         />
+      ))}
+    </div>
+  );
+}
+
+/* ============================================================== loading */
+/**
+ * A hovering drone with spinning rotors, instead of the word "Loading".
+ *
+ * Text tells you the page is busy. A drone that is visibly *flying* tells you
+ * the same thing and says what the product is while it does it — and on a slow
+ * cold start, which this deployment has, that is several seconds of screen time
+ * that would otherwise be a dead word.
+ */
+export function Loader({ label = "Loading", size = 88 }) {
+  return (
+    <div className="loader" role="status" aria-live="polite">
+      <svg width={size} height={size * 0.72} viewBox="0 0 120 86" aria-hidden="true">
+        <defs>
+          <linearGradient id="ldTube" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#5d6b7f" />
+            <stop offset="70%" stopColor="#1e252f" />
+          </linearGradient>
+        </defs>
+        <ellipse className="loader-shadow" cx="60" cy="79" rx="26" ry="4.5" fill="#000" opacity="0.4" />
+        <g className="loader-craft">
+          {[
+            [24, 30],
+            [96, 30],
+            [24, 52],
+            [96, 52],
+          ].map(([x, y], i) => (
+            <g key={i}>
+              <path d={`M60 44 L${x} ${y}`} stroke="url(#ldTube)" strokeWidth="5" strokeLinecap="round" />
+              <rect x={x - 6} y={y - 8} width="12" height="8" rx="2" fill="#5a6675" />
+              <ellipse cx={x} cy={y - 8} rx="6" ry="2.4" fill="#8996a8" />
+              <ellipse
+                className="loader-prop"
+                cx={x}
+                cy={y - 10}
+                rx="21"
+                ry="3.6"
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth="2"
+                opacity="0.75"
+                style={{ transformOrigin: `${x}px ${y - 10}px` }}
+              />
+            </g>
+          ))}
+          <path d="M42 44 L52 36 L68 36 L78 44 L68 52 L52 52 Z" fill="#39434f" />
+          <path d="M42 44 L52 36 L68 36 L78 44" fill="none" stroke="#8996a8" strokeWidth="1.2" opacity="0.6" />
+          <circle cx="60" cy="44" r="3.4" fill="var(--accent)" />
+        </g>
+      </svg>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+/**
+ * A shimmering placeholder in the shape of the thing that is coming.
+ *
+ * Used where the layout is known in advance — stat tiles, table rows. Holding
+ * the space stops the page jumping when data lands, which is more valuable than
+ * any spinner: a spinner says "wait", a skeleton says "wait, and it will look
+ * like this".
+ */
+export function Skeleton({ rows = 3, height = 74, className = "" }) {
+  return (
+    <div className={`grid ${className}`} aria-hidden="true">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="skeleton" style={{ height }} />
       ))}
     </div>
   );

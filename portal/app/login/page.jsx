@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase, isConfigured } from "../../lib/supabase.js";
-import { HeroDrone, DroneBackdrop, Icon } from "../../components/DroneArt.jsx";
+import { HeroDrone, DroneBackdrop, Icon, Loader } from "../../components/DroneArt.jsx";
 import { useAuthProviders } from "../../lib/providers.js";
 
 /**
@@ -307,7 +307,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <main>
-          <p className="sub">Loading…</p>
+          <Loader />
         </main>
       }
     >

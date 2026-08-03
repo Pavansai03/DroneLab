@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Shell from "../../../components/Shell.jsx";
 import { api } from "../../../lib/api.js";
+import { Loader } from "../../../components/DroneArt.jsx";
 
 /**
  * THE PROFILE PAGE
@@ -167,7 +168,7 @@ function Profile({ me }) {
           </table>
         </div>
       ) : (
-        <p className="sub">Loading…</p>
+        <Loader />
       )}
     </>
   );

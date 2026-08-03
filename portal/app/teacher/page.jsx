@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
-import { HeroDrone, Icon } from "../../components/DroneArt.jsx";
+import { HeroDrone, Icon, Loader } from "../../components/DroneArt.jsx";
 
 /**
  * THE TEACHER / SCHOOL PANEL
@@ -39,7 +39,7 @@ function Panel({ me }) {
   }, []);
 
   if (error) return <div className="note bad">{error}</div>;
-  if (!data) return <p className="sub">Loading your class…</p>;
+  if (!data) return <Loader label="Loading your class" />;
 
   const week = Date.now() - 7 * 864e5;
   const rows = [...data.roster].sort((a, b) => {
@@ -170,7 +170,7 @@ function StudentDetail({ id, onClose }) {
       <h2>Student detail</h2>
       <div className="card">
         {err && <div className="note bad">{err}</div>}
-        {!d && !err && <p className="sub">Loading…</p>}
+        {!d && !err && <Loader size={64} />}
         {d && (
           <>
             <div className="row" style={{ justifyContent: "space-between", marginBottom: 14 }}>

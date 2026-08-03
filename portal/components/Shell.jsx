@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../lib/supabase.js";
 import { api } from "../lib/api.js";
-import { DroneBackdrop, Icon } from "./DroneArt.jsx";
+import { DroneBackdrop, Icon, Loader } from "./DroneArt.jsx";
 import { simulatorUrl } from "../lib/simulator.js";
 
 /**
@@ -63,7 +63,7 @@ export default function Shell({ children, requireRole }) {
       <>
         <DroneBackdrop />
         <main>
-          <p className="sub">Loading…</p>
+          <Loader label="Signing you in" />
         </main>
       </>
     );
