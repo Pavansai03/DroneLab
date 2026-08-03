@@ -57,18 +57,67 @@ app.use(express.json({ limit: "256kb" }));
 
 /* CORS is an allow-LIST, not a wildcard. These endpoints are reached with a
    bearer token from a browser, and `origin: true` would let any site on the
-   internet call them with a token it had managed to obtain. */
+   internet call them with a token it had managed to obtain.
+
+   One concession: an entry may start with `*` to match a suffix. Vercel gives
+   every branch and every deployment its own URL, and — importantly — those are
+   NOT subdomains. `drone-lab-fgev-git-main-my-team.vercel.app` is a single
+   hostname label joined by hyphens, so a subdomain rule can never match it and
+   every preview deploy fails with a CORS error that looks like the backend is
+   down.
+
+   So the suffix is matched literally, INCLUDING its leading separator. That
+   separator is what makes it safe:
+
+     *-my-team.vercel.app   matches  anything-my-team.vercel.app
+                            rejects  my-team.vercel.app.attacker.com
+     *.example.com          matches  api.example.com
+                            rejects  evil-example.com
+
+   A pattern must therefore begin `*.` or `*-`; a bare `*` or `*foo` is refused
+   at startup rather than silently allowing far more than intended. */
 const allowed = (process.env.CORS_ORIGINS ?? "http://localhost:3000")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+
+const exact = new Set(allowed.filter((a) => !a.startsWith("*")));
+const suffixes = [];
+for (const a of allowed) {
+  if (!a.startsWith("*")) continue;
+  const rest = a.slice(1);
+  if (!/^[.-]/.test(rest)) {
+    throw new Error(
+      `Refusing to start: CORS pattern "${a}" has no separator after the "*". ` +
+        `Use "*.example.com" or "*-my-team.vercel.app" so the match cannot ` +
+        `be satisfied by an unrelated domain.`
+    );
+  }
+  suffixes.push(rest);
+}
+
+function originAllowed(origin) {
+  if (exact.has(origin)) return true;
+  if (!suffixes.length) return false;
+  let host;
+  try {
+    const u = new URL(origin);
+    if (u.protocol !== "https:") return false; // patterns are https-only
+    host = u.host;
+  } catch {
+    return false;
+  }
+  return suffixes.some((s) => host.endsWith(s));
+}
 
 app.use(
   cors({
     origin(origin, cb) {
       // Same-origin and server-to-server requests send no Origin header
       if (!origin) return cb(null, true);
-      cb(null, allowed.includes(origin));
+      const ok = originAllowed(origin);
+      if (!ok) console.warn(`[api] CORS rejected origin: ${origin}`);
+      cb(null, ok);
     },
     credentials: true,
   })

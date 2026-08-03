@@ -7,6 +7,7 @@ import { supabase } from "../lib/supabase.js";
 import { api } from "../lib/api.js";
 import { DroneBackdrop, Icon, Loader } from "./DroneArt.jsx";
 import { simulatorUrl } from "../lib/simulator.js";
+import { apiUrl } from "../lib/api.js";
 
 /**
  * The signed-in frame around every panel.
@@ -25,6 +26,7 @@ export default function Shell({ children, requireRole }) {
   const pathname = usePathname();
   const [me, setMe] = useState(null);
   const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -49,13 +51,70 @@ export default function Shell({ children, requireRole }) {
     return () => {
       alive = false;
     };
-  }, [router, pathname]);
+  }, [router, pathname, attempt]);
 
   if (error) {
+    /* A dead end is not an acceptable error state.
+       This used to render the message alone, with no top bar — which meant no
+       navigation, no sign-out, and no way back except the browser's own Back
+       button. An error screen has to leave the user somewhere they can act. */
     return (
-      <main>
-        <div className="note bad">{error}</div>
-      </main>
+      <>
+        <DroneBackdrop />
+        <div className="shell">
+          <header className="topbar">
+            <div className="brand">
+              <span className="mark">
+                <Icon.Bolt />
+              </span>
+              DRONE<em>LAB</em>
+            </div>
+            <div className="spacer" />
+            <a className="btn small sim-link" href={simulatorUrl()}>
+              <Icon.Play />
+              Simulator
+            </a>
+            <button
+              className="btn small"
+              onClick={async () => {
+                await supabase().auth.signOut();
+                router.replace("/login");
+              }}
+            >
+              Sign out
+            </button>
+          </header>
+          <main>
+            <h1>Cannot reach the server</h1>
+            <p className="sub">
+              You are signed in, but the portal could not load your data.
+            </p>
+            <div className="note bad" style={{ marginBottom: 16 }}>
+              {error}
+            </div>
+            <div className="note" style={{ marginBottom: 20 }}>
+              {/failed to fetch|networkerror|load failed/i.test(error) ? (
+                <>
+                  The browser could not reach the API at <code>{apiUrl()}</code>. Two things cause this
+                  most often: the API is asleep and still waking up, or this exact address is not on
+                  the API&apos;s allowed list — note that a Vercel preview URL is a different address
+                  from the production one.
+                </>
+              ) : (
+                <>The API answered, but with an error. Trying again may be enough.</>
+              )}
+            </div>
+            <div className="row">
+              <button className="btn primary" onClick={() => { setError(null); setAttempt((n) => n + 1); }}>
+                Try again
+              </button>
+              <a className="btn" href="/student">
+                Back to my learning
+              </a>
+            </div>
+          </main>
+        </div>
+      </>
     );
   }
   if (!me) {

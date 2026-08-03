@@ -13,6 +13,10 @@ import { supabase } from "./supabase.js";
 
 const base = () => process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
+/** Where this build points its API calls. Shown in error states, because
+    "cannot reach the server" is not actionable without knowing which one. */
+export const apiUrl = base;
+
 async function request(path, { method = "GET", body } = {}) {
   const {
     data: { session },
