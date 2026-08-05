@@ -12,11 +12,11 @@ import { HeroDrone, Icon, Loader } from "../../components/DroneArt.jsx";
  * that exist nowhere else in the product — creating a school and granting a
  * role.
  *
- * Those two are here rather than in the teacher panel for a structural
+ * Those two are here rather than in the school panel for a structural
  * reason. `user_roles` and `schools` have no client-writable RLS policy at
  * all, so the only way to write them is through the service role key, which
  * lives on the Express server. That is what stops a student promoting
- * themselves to teacher by editing a request.
+ * themselves to school staff by editing a request.
  */
 export default function AdminPage() {
   return <Shell requireRole="admin">{() => <Panel />}</Shell>;
@@ -293,7 +293,7 @@ function Overview() {
       <div className="grid cols-4">
         <Stat icon={<Icon.School />} value={t.activeSchools} label="Active schools" />
         <Stat icon={<Icon.Users />} value={t.students} label="Students" />
-        <Stat icon={<Icon.Users />} value={t.teachers} label="Teachers" />
+        <Stat icon={<Icon.School />} value={t.schoolAccounts} label="School accounts" />
         <Stat icon={<Icon.Bolt />} value={t.activeThisWeek} label="Active this week" />
         <Stat icon={<Icon.Chart />} value={t.modulesCompleted} label="Modules completed" />
         <Stat icon={<Icon.Shield />} value={t.admins} label="Administrators" />
@@ -333,7 +333,7 @@ function Overview() {
       {t.unassigned > 0 && (
         <div className="note" style={{ marginTop: 18 }}>
           {t.unassigned} account{t.unassigned === 1 ? " is" : "s are"} not attached to a school. Their progress
-          is saved but invisible to any teacher — assign them under <strong>People</strong>.
+          is saved but invisible to any school — assign them under <strong>People</strong>.
         </div>
       )}
     </>
@@ -421,7 +421,7 @@ function Schools() {
                 <th>School</th>
                 <th>Join code</th>
                 <th>Students</th>
-                <th>Teachers</th>
+                <th>Staff</th>
                 <th>Active/wk</th>
                 <th>Status</th>
                 <th />
@@ -440,7 +440,7 @@ function Schools() {
                     {s.join_code}
                   </td>
                   <td className="mono">{s.stats.students}</td>
-                  <td className="mono">{s.stats.teachers}</td>
+                  <td className="mono">{s.stats.staff}</td>
                   <td className="mono">{s.stats.active}</td>
                   <td>
                     <span className={`pill ${s.active ? "ok" : "muted"}`}>
@@ -526,7 +526,7 @@ function People() {
         <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} style={{ maxWidth: 180 }}>
           <option value="">All roles</option>
           <option value="student">Students</option>
-          <option value="teacher">Teachers</option>
+          <option value="school">Schools</option>
           <option value="admin">Administrators</option>
         </select>
       </div>
@@ -570,7 +570,7 @@ function People() {
                       style={{ maxWidth: 150 }}
                     >
                       <option value="student">student</option>
-                      <option value="teacher">teacher</option>
+                      <option value="school">school</option>
                       <option value="admin">admin</option>
                     </select>
                   </td>

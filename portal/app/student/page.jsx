@@ -55,7 +55,7 @@ function Panel({ me }) {
               ) : (
                 <>
                   You have not joined a school yet. <Link href="/student/profile">Add your join code</Link> so
-                  your teacher can see your progress.
+                  your school can see your progress.
                 </>
               )}
             </p>

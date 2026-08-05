@@ -41,16 +41,47 @@ export default function PendingPage() {
     return () => { alive = false; clearInterval(id); };
   }, [router]);
 
-  if (error) return <main><div className="note bad">{error}</div></main>;
-  if (app === undefined) return <main><Loader label="Checking your application" /></main>;
+  /**
+   * Sign out and go back.
+   *
+   * This page has no navigation of its own, and the home route sends a school
+   * account straight back here — so without an explicit way out, an applicant
+   * who wants to sign in as someone else is stuck on this screen no matter what
+   * they type in the address bar. That is not a hypothetical: it is exactly what
+   * happened.
+   */
+  async function leave() {
+    await supabase().auth.signOut();
+    router.replace("/login");
+  }
+
+  const Frame = ({ children }) => (
+    <>
+      <DroneBackdrop />
+      <div className="shell">
+        <header className="topbar">
+          <div className="brand">
+            <span className="mark"><Icon.Bolt /></span>
+            DRONE<em>LAB</em>
+          </div>
+          <div className="spacer" />
+          <button className="btn small" onClick={leave}>Sign out</button>
+        </header>
+        <main style={{ maxWidth: 760 }}>{children}</main>
+      </div>
+    </>
+  );
+
+  if (error) return <Frame><div className="note bad">{error}</div></Frame>;
+  if (app === undefined) return <Frame><Loader label="Checking your application" /></Frame>;
 
   if (!app) {
     return (
-      <main style={{ maxWidth: 640 }}>
+      <Frame>
         <h1>No application found</h1>
         <p className="sub">This account has not registered a school.</p>
-        <a className="btn primary" href="/login">Back to sign in</a>
-      </main>
+        <button className="btn primary" onClick={leave}>Back to sign in</button>
+      </Frame>
     );
   }
 
@@ -58,10 +89,8 @@ export default function PendingPage() {
   const rejected = app.status === "rejected";
 
   return (
-    <>
-      <DroneBackdrop />
-      <main style={{ maxWidth: 760 }}>
-        <section className="hero rise">
+    <Frame>
+      <section className="hero rise">
           <div className="hero-inner">
             <div className="hero-copy">
               <span className={`pill ${approved ? "ok" : rejected ? "bad" : "warn"}`}>
@@ -80,7 +109,7 @@ export default function PendingPage() {
           </div>
         </section>
 
-        {approved ? (
+      {approved ? (
           <>
             <div className="joincode-card rise d1">
               <small>Your join code</small>
@@ -125,13 +154,15 @@ export default function PendingPage() {
                 body={`We email it to ${app.contact_email}. Give it to your students and they are in.`} />
             </div>
             <div className="note" style={{ marginTop: 20 }}>
-              You can close this page. This screen updates on its own, and the code arrives by email
-              either way — nothing is lost if you sign out.
+              You can close this page. This screen updates on its own, and nothing is lost if you
+              sign out — the decision is attached to your account, not to this tab.
+            </div>
+            <div className="row" style={{ marginTop: 18 }}>
+              <button className="btn" onClick={leave}>Sign out</button>
             </div>
           </>
         )}
-      </main>
-    </>
+    </Frame>
   );
 }
 

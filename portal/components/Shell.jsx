@@ -14,7 +14,7 @@ import { apiUrl } from "../lib/api.js";
  *
  * It resolves the caller's role once and hands it to the page, so a page
  * never has to guess who is looking at it. Navigation is built from the
- * role: a student is not shown a teacher link that would 403, which is
+ * role: a student is not shown a school link that would 403, which is
  * kinder than letting them find out by clicking.
  *
  * The role is authoritative from the API (which reads the database), not

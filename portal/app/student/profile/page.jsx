@@ -9,7 +9,7 @@ import { Loader } from "../../../components/DroneArt.jsx";
  * THE PROFILE PAGE
  * ================
  * Name, class, school membership — the things a student owns about
- * themselves — plus a plain statement of what their teacher can see.
+ * themselves — plus a plain statement of what their school can see.
  *
  * That last part is deliberate. A student can be told their progress is
  * visible to staff in a privacy notice nobody reads, or they can be told it
@@ -106,7 +106,7 @@ function Profile({ me }) {
                 You are a member of <strong style={{ color: "var(--text)" }}>{school.name}</strong>.
               </p>
               <div className="note">
-                Your teacher can see your name, your class, which modules you have finished and when you last
+                Your school can see your name, your class, which modules you have finished and when you last
                 practised. They cannot see your password, and nobody outside your school can see you at all.
               </div>
             </>
@@ -114,7 +114,7 @@ function Profile({ me }) {
             <form onSubmit={join}>
               <p className="sub" style={{ marginBottom: 12 }}>
                 You have not joined a school. Until you do, your progress is saved to your account but no
-                teacher can see it.
+                school can see it.
               </p>
               <div className="field">
                 <label htmlFor="jc">Join code</label>

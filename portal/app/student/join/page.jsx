@@ -14,7 +14,7 @@ import { HeroDrone, Icon } from "../../../components/DroneArt.jsx";
  * That is the point of the gate: the join code is what proves this person is
  * actually at an approved school, and it is what puts their progress on that
  * school's dashboard. Skipping it would give anyone with an email address a
- * free simulator and give their teacher no way to see them.
+ * free simulator and give their school no way to see them.
  *
  * The screen is deliberately singular — one field, one action, and a plain
  * statement of what happens next. Anything else here is a distraction from the
@@ -75,7 +75,7 @@ function Join({ me }) {
           <div className="hero-copy">
             <h1>One more step</h1>
             <p>
-              Enter your school's <strong>join code</strong> to unlock the simulator. Your teacher
+              Enter your school's <strong>join code</strong> to unlock the simulator. Your school
               has it — it looks like <span className="mono">ABCD-2345</span>.
             </p>
           </div>
@@ -110,10 +110,10 @@ function Join({ me }) {
           <div className="sub" style={{ margin: 0, lineHeight: 1.8 }}>
             <p style={{ margin: "0 0 12px" }}>
               The code confirms you are at a school that has been approved, and it is what puts your
-              progress on your teacher's dashboard.
+              progress on your school's dashboard.
             </p>
             <p style={{ margin: 0 }}>
-              Do not have one? Ask your teacher. If your school has not registered yet, they can do
+              Do not have one? Ask your school. If your school has not registered yet, they can do
               it from the sign-in page — it takes a minute and an administrator approves it.
             </p>
           </div>

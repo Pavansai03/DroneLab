@@ -167,8 +167,8 @@ router.get(
     const byShool = new Map();
     for (const r of roster ?? []) {
       if (!r.school_id) continue;
-      const s = byShool.get(r.school_id) ?? { students: 0, teachers: 0, modules: 0, active: 0 };
-      if (r.role === "teacher") s.teachers++;
+      const s = byShool.get(r.school_id) ?? { students: 0, staff: 0, modules: 0, active: 0 };
+      if (r.role === "teacher" || r.role === "school") s.staff++;
       else {
         s.students++;
         s.modules += r.modules_completed ?? 0;
@@ -180,7 +180,7 @@ router.get(
     res.json({
       schools: (schools ?? []).map((s) => ({
         ...s,
-        stats: byShool.get(s.id) ?? { students: 0, teachers: 0, modules: 0, active: 0 },
+        stats: byShool.get(s.id) ?? { students: 0, staff: 0, modules: 0, active: 0 },
       })),
     });
   })
@@ -251,8 +251,8 @@ router.post(
   "/users/:id/role",
   route(async (req, res) => {
     const role = String(req.body?.role ?? "");
-    if (!["student", "teacher", "admin"].includes(role)) {
-      return res.status(400).json({ error: "Role must be student, teacher or admin." });
+    if (!["student", "school", "teacher", "admin"].includes(role)) {
+      return res.status(400).json({ error: "Role must be student, school or admin." });
     }
 
     /* An admin must not be able to demote themselves. It is a one-click way
@@ -319,7 +319,9 @@ router.get(
         schools: (schools ?? []).length,
         activeSchools: (schools ?? []).filter((s) => s.active).length,
         students: students.length,
-        teachers: rows.filter((r) => r.role === "teacher").length,
+        /* 'teacher' predates the school role and is kept so existing accounts keep
+           working; both mean the same thing to everything downstream. */
+        schoolAccounts: rows.filter((r) => r.role === "teacher" || r.role === "school").length,
         admins: rows.filter((r) => r.role === "admin").length,
         unassigned: rows.filter((r) => !r.school_id).length,
         activeThisWeek: students.filter((r) => r.last_active && Date.parse(r.last_active) > week).length,

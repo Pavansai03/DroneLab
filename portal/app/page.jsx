@@ -9,9 +9,9 @@ import { Loader } from "../components/DroneArt.jsx";
 /**
  * The front door. Sends each role to the panel it actually uses.
  *
- * A teacher landing on the student panel every morning and clicking through to
- * their class is a small tax paid on every single sign-in, so the redirect is
- * worth the extra request it costs.
+ * A school account landing on the student panel every morning and clicking
+ * through to its class is a small tax paid on every single sign-in, so the
+ * redirect is worth the extra request it costs.
  *
  * The error handling here is not decoration. `supabase()` throws when the
  * project is not configured, and an earlier version let that rejection escape
