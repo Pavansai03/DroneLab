@@ -3,21 +3,17 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase, isConfigured } from "../../lib/supabase.js";
+import { api } from "../../lib/api.js";
 import { HeroDrone, DroneBackdrop, Icon, Loader } from "../../components/DroneArt.jsx";
 import { useAuthProviders } from "../../lib/providers.js";
 
 /**
  * Turn whatever Supabase threw into something a human can act on.
  *
- * supabase-js does not guarantee the shape of an auth error: sometimes
- * `message` is a string, sometimes the useful text is on `error_description`
- * or nested in the response body, and a self-hosted instance can surface a
- * bare 500. Rendering `err.message` alone once produced a red box containing
- * "{}", which is worse than no message at all — it tells the user something
- * failed and denies them any way to find out what.
- *
- * The three failures named outright are the ones a self-hosted deployment
- * actually hits, and none of them is the user's fault.
+ * supabase-js does not guarantee the shape of an auth error, and a self-hosted
+ * instance can surface a bare 500. Rendering `err.message` alone once produced
+ * a red box containing "{}" — worse than no message, because it says something
+ * failed and denies any way to find out what.
  */
 function describeAuthError(err) {
   const raw =
@@ -31,67 +27,87 @@ function describeAuthError(err) {
   if (/confirmation email|sending.*email|smtp/i.test(text)) {
     return (
       "The server could not send the confirmation email, so the account was not created. " +
-      "An administrator needs to either configure SMTP, or turn on auto-confirm so accounts " +
-      "work without email."
+      "An administrator needs to configure SMTP, or turn on auto-confirm."
     );
   }
   if (/database error|saving new user/i.test(text)) {
-    return (
-      "The database rejected the new account. This usually means the setup SQL has not been " +
-      "run on this Supabase instance."
-    );
+    return "The database rejected the new account. The setup SQL may not have been run on this instance.";
   }
   if (/failed to fetch|networkerror|load failed/i.test(text)) {
-    return (
-      "Could not reach the server. If it was working a moment ago, the address may have " +
-      "switched between http and https — those are different origins to a browser."
-    );
+    return "Could not reach the server. Check your connection and try again.";
+  }
+  if (/already registered|already exists/i.test(text)) {
+    return "An account already exists with that email. Sign in instead.";
   }
   if (text) return text;
-
   const status = err?.status ?? err?.code;
-  return status
-    ? `Sign-in failed (error ${status}). Check the browser console for details.`
-    : "Sign-in failed, and the server gave no reason. Check the browser console for details.";
+  return status ? `Sign-in failed (error ${status}).` : "Sign-in failed, and the server gave no reason.";
 }
+
+/* Who is signing in. The choice changes the form, not just a label — a school
+   registers an organisation and waits for approval, a student joins one that
+   already exists, and an administrator is created by another administrator. */
+const ROLES = [
+  {
+    id: "student",
+    label: "Student",
+    blurb: "Learn to build and fly. You will need your school's join code.",
+    icon: Icon.Rocket,
+  },
+  {
+    id: "school",
+    label: "School",
+    blurb: "Register your school. An administrator reviews it before it goes live.",
+    icon: Icon.School,
+  },
+  {
+    id: "admin",
+    label: "Administrator",
+    blurb: "Approve schools and manage the platform.",
+    icon: Icon.Shield,
+  },
+];
 
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/";
 
+  const [role, setRole] = useState("student");
   const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [fullName, setFullName] = useState("");
-  const [classCode, setClassCode] = useState("");
+  const [schoolName, setSchoolName] = useState("");
+  const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
-  /* Seeded from the query string so a failure bounced back from the OAuth
-     callback is shown here, rather than vanishing on the redirect. */
   const [error, setError] = useState(params.get("error"));
   const [notice, setNotice] = useState(null);
   const providers = useAuthProviders();
+
+  const isSchoolSignup = role === "school" && mode === "signup";
 
   if (!isConfigured()) {
     return (
       <main style={{ maxWidth: 620 }}>
         <h1>Portal not configured</h1>
         <div className="note bad">
-          Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in{" "}
-          <code>portal/.env.local</code>, then restart the dev server.
+          Set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>, then
+          redeploy — they are compiled in at build time.
         </div>
       </main>
     );
   }
 
   /**
-   * Hand off to a social provider.
+   * Google is offered to students only.
    *
-   * `redirectTo` points at our own callback route rather than at a page,
-   * because the PKCE code has to be exchanged on the server — see
-   * app/auth/callback/route.js. The intended destination rides along as a query
-   * parameter so a student who was sent to sign in ends up where they were
-   * going, not on the home page.
+   * Not a technical limit — it is about what the account means. A school
+   * account is an organisation with a contact address and a phone number that
+   * an administrator will vet; letting someone create one with a personal
+   * Google account in two clicks makes that review meaningless. Administrators
+   * are never self-serve at all.
    */
   async function signInWith(provider) {
     setBusy(true);
@@ -104,8 +120,7 @@ function LoginForm() {
         },
       });
       if (error) throw error;
-      /* On success the browser is navigating away, so `busy` deliberately stays
-         true — re-enabling the button would invite a second click mid-redirect. */
+      /* Navigating away; `busy` stays true so a second click cannot fire. */
     } catch (err) {
       setError(describeAuthError(err));
       setBusy(false);
@@ -114,40 +129,61 @@ function LoginForm() {
 
   async function submit(e) {
     e.preventDefault();
-    setBusy(true);
     setError(null);
     setNotice(null);
+
+    if (mode === "signup" && password !== confirm) {
+      return setError("The two passwords do not match.");
+    }
+    if (isSchoolSignup && schoolName.trim().length < 2) {
+      return setError("Enter the school's name.");
+    }
+
+    setBusy(true);
     try {
       if (mode === "signin") {
         const { error } = await supabase().auth.signInWithPassword({ email, password });
         if (error) throw error;
         router.replace(next);
-      } else {
-        const { data, error } = await supabase().auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: fullName, class_code: classCode } },
-        });
-        if (error) throw error;
-        /* With email confirmation on, Supabase returns a user but no session.
-           Saying "check your email" only when that actually happened avoids
-           telling a confirmed user to wait for mail that will never arrive. */
-        if (data.session) router.replace(next);
-        else setNotice("Account created. Check your email to confirm it, then sign in.");
+        return;
       }
+
+      const { data, error } = await supabase().auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: isSchoolSignup ? schoolName : fullName } },
+      });
+      if (error) throw error;
+
+      if (!data.session) {
+        setNotice("Account created. Confirm it from your email, then sign in.");
+        setBusy(false);
+        return;
+      }
+
+      if (isSchoolSignup) {
+        /* File the application immediately, on the session we just received.
+           Splitting it into a second visit would leave accounts that are
+           school-shaped but have no application, which an administrator would
+           have no way to interpret. */
+        await api.school.apply({ name: schoolName.trim(), phone: phone.trim() });
+        router.replace("/school/pending");
+        return;
+      }
+
+      router.replace(next);
     } catch (err) {
       setError(describeAuthError(err));
-    } finally {
       setBusy(false);
     }
   }
+
+  const activeRole = ROLES.find((r) => r.id === role);
 
   return (
     <>
       <DroneBackdrop dense />
       <div className="auth-wrap">
-        {/* The showcase half. Hidden below 900px, where the form is all that
-            matters and a decorative column would only push it off screen. */}
         <section className="auth-show">
           <div className="brand rise">
             <span className="mark">
@@ -165,8 +201,7 @@ function LoginForm() {
           </h2>
           <p className="rise d2">
             A classroom simulator where the physics are real, the failures are real, and every
-            component decision has a consequence you can hear and see. This portal is where the
-            learning gets tracked.
+            component decision has a consequence you can hear and see.
           </p>
 
           <div className="features rise d2">
@@ -174,10 +209,10 @@ function LoginForm() {
               <Icon.Rocket /> Progress that follows you
             </span>
             <span className="feature">
-              <Icon.School /> Class dashboards
+              <Icon.School /> School dashboards
             </span>
             <span className="feature">
-              <Icon.Shield /> School-scoped privacy
+              <Icon.Shield /> Approved schools only
             </span>
           </div>
 
@@ -186,24 +221,47 @@ function LoginForm() {
           </div>
         </section>
 
-        {/* The form half. */}
         <section className="auth-form">
           <div className="auth-card rise d1">
-            <h1 style={{ fontSize: 28 }}>{mode === "signin" ? "Welcome back" : "Create your account"}</h1>
-            <p className="sub">
-              {mode === "signin"
-                ? "Sign in to pick up where you left off."
-                : "Students, teachers and administrators all start here. Roles are granted afterwards."}
+            <h1 style={{ fontSize: 27 }}>
+              {mode === "signin" ? "Sign in" : isSchoolSignup ? "Register your school" : "Create your account"}
+            </h1>
+            <p className="sub" style={{ marginBottom: 18 }}>
+              {mode === "signin" ? "Choose how you are signing in." : activeRole.blurb}
             </p>
 
-            {providers?.google && (
-              <>
+            {/* The role selector. Cards rather than a <select> — this decides
+                which of three quite different journeys you are starting, and a
+                collapsed dropdown hides that from someone seeing it once. */}
+            <div className="role-picker">
+              {ROLES.map((r) => (
                 <button
+                  key={r.id}
                   type="button"
-                  className="btn oauth"
-                  onClick={() => signInWith("google")}
-                  disabled={busy}
+                  className={`role-opt ${role === r.id ? "active" : ""}`}
+                  onClick={() => {
+                    setRole(r.id);
+                    setError(null);
+                    setNotice(null);
+                    if (r.id === "admin") setMode("signin");
+                  }}
                 >
+                  <r.icon />
+                  <span>{r.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {role === "admin" && mode === "signup" && (
+              <div className="note" style={{ marginBottom: 16 }}>
+                Administrator accounts are not self-serve. An existing administrator grants the role.
+              </div>
+            )}
+
+            {/* Google, students only, and only when the server has it enabled. */}
+            {role === "student" && providers?.google && (
+              <>
+                <button type="button" className="btn oauth" onClick={() => signInWith("google")} disabled={busy}>
                   <Icon.Google />
                   Continue with Google
                 </button>
@@ -214,14 +272,40 @@ function LoginForm() {
             )}
 
             <form onSubmit={submit} className="card">
-              {mode === "signup" && (
+              {mode === "signup" && !isSchoolSignup && (
                 <div className="field">
                   <label htmlFor="name">Full name</label>
                   <input id="name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
                 </div>
               )}
+
+              {isSchoolSignup && (
+                <>
+                  <div className="field">
+                    <label htmlFor="sname">School name</label>
+                    <input
+                      id="sname"
+                      value={schoolName}
+                      onChange={(e) => setSchoolName(e.target.value)}
+                      placeholder="e.g. RajUddan Public School"
+                      required
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="phone">Phone</label>
+                    <input
+                      id="phone"
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+91 9xxxxxxxxx"
+                    />
+                  </div>
+                </>
+              )}
+
               <div className="field">
-                <label htmlFor="email">Email</label>
+                <label htmlFor="email">{isSchoolSignup ? "School email" : "Email"}</label>
                 <input
                   id="email"
                   type="email"
@@ -230,7 +314,11 @@ function LoginForm() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
+                {isSchoolSignup && (
+                  <div className="hint">Your join code will be sent here once you are approved.</div>
+                )}
               </div>
+
               <div className="field">
                 <label htmlFor="password">Password</label>
                 <input
@@ -243,53 +331,57 @@ function LoginForm() {
                   required
                 />
               </div>
+
               {mode === "signup" && (
                 <div className="field">
-                  <label htmlFor="class">Class code (optional)</label>
+                  <label htmlFor="confirm">Confirm password</label>
                   <input
-                    id="class"
-                    value={classCode}
-                    onChange={(e) => setClassCode(e.target.value)}
-                    placeholder="e.g. 9B"
+                    id="confirm"
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirm}
+                    onChange={(e) => setConfirm(e.target.value)}
+                    minLength={6}
+                    required
                   />
                 </div>
               )}
 
-              {error && (
-                <div className="note bad" style={{ marginBottom: 14 }}>
-                  {error}
-                </div>
-              )}
-              {notice && (
-                <div className="note ok" style={{ marginBottom: 14 }}>
-                  {notice}
-                </div>
-              )}
+              {error && <div className="note bad" style={{ marginBottom: 14 }}>{error}</div>}
+              {notice && <div className="note ok" style={{ marginBottom: 14 }}>{notice}</div>}
 
-              <button
-                className="btn primary"
-                style={{ width: "100%", justifyContent: "center" }}
-                disabled={busy}
-              >
-                {busy ? "Working…" : mode === "signin" ? "Sign in" : "Create account"}
+              <button className="btn primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
+                {busy
+                  ? "Working…"
+                  : mode === "signin"
+                    ? "Sign in"
+                    : isSchoolSignup
+                      ? "Submit for approval"
+                      : "Create account"}
               </button>
             </form>
 
-            <div className="row" style={{ marginTop: 18, justifyContent: "center" }}>
-              <span className="sub" style={{ margin: 0 }}>
-                {mode === "signin" ? "No account yet?" : "Already have one?"}
-              </span>
-              <button
-                className="btn small ghost"
-                onClick={() => {
-                  setMode(mode === "signin" ? "signup" : "signin");
-                  setError(null);
-                  setNotice(null);
-                }}
-              >
-                {mode === "signin" ? "Create one" : "Sign in"}
-              </button>
-            </div>
+            {role !== "admin" && (
+              <div className="row" style={{ marginTop: 18, justifyContent: "center" }}>
+                <span className="sub" style={{ margin: 0 }}>
+                  {mode === "signin"
+                    ? role === "school"
+                      ? "Not registered yet?"
+                      : "No account yet?"
+                    : "Already have one?"}
+                </span>
+                <button
+                  className="btn small ghost"
+                  onClick={() => {
+                    setMode(mode === "signin" ? "signup" : "signin");
+                    setError(null);
+                    setNotice(null);
+                  }}
+                >
+                  {mode === "signin" ? (role === "school" ? "Register a school" : "Create one") : "Sign in"}
+                </button>
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -297,11 +389,6 @@ function LoginForm() {
   );
 }
 
-/**
- * useSearchParams() opts a route into client-side rendering, and Next refuses
- * to prerender the page unless the part reading it sits behind a Suspense
- * boundary.
- */
 export default function LoginPage() {
   return (
     <Suspense

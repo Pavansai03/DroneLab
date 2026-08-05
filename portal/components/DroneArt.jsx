@@ -47,35 +47,35 @@ export function HeroDrone({ className = "" }) {
       <defs>
         {/* Carbon fibre shell: dark, with a cool highlight along the top-left */}
         <linearGradient id="shell" x1="0.1" y1="0" x2="0.9" y2="1">
-          <stop offset="0%" stopColor="#4a5769" />
-          <stop offset="38%" stopColor="#2a3341" />
-          <stop offset="100%" stopColor="#141a23" />
+          <stop offset="0%" stopColor="#8c9aa8" />
+          <stop offset="38%" stopColor="#5b6b7a" />
+          <stop offset="100%" stopColor="#39434e" />
         </linearGradient>
         <linearGradient id="shellTop" x1="0" y1="0" x2="0.6" y2="1">
-          <stop offset="0%" stopColor="#67768c" />
-          <stop offset="55%" stopColor="#394453" />
-          <stop offset="100%" stopColor="#222a35" />
+          <stop offset="0%" stopColor="#a7b3bf" />
+          <stop offset="55%" stopColor="#6b7a88" />
+          <stop offset="100%" stopColor="#4a5563" />
         </linearGradient>
         {/* Arms are tubes: light edge, mid, dark edge — the gradient runs ACROSS
             the tube, which is what makes it look round rather than flat. */}
         <linearGradient id="tube" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#5d6b7f" />
-          <stop offset="30%" stopColor="#39434f" />
-          <stop offset="72%" stopColor="#1c232c" />
-          <stop offset="100%" stopColor="#2b3440" />
+          <stop offset="0%" stopColor="#93a1ad" />
+          <stop offset="30%" stopColor="#69777f" />
+          <stop offset="72%" stopColor="#48535c" />
+          <stop offset="100%" stopColor="#5c6772" />
         </linearGradient>
         <linearGradient id="bell" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#8b97a8" />
-          <stop offset="42%" stopColor="#5a6675" />
-          <stop offset="100%" stopColor="#2e3641" />
+          <stop offset="0%" stopColor="#b3bec8" />
+          <stop offset="42%" stopColor="#8a959f" />
+          <stop offset="100%" stopColor="#5a656f" />
         </linearGradient>
         <linearGradient id="bellTop" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#aab5c4" />
-          <stop offset="100%" stopColor="#5b6675" />
+          <stop offset="0%" stopColor="#c8d1d9" />
+          <stop offset="100%" stopColor="#8d98a2" />
         </linearGradient>
         <linearGradient id="blade" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#8e9bad" stopOpacity="0.95" />
-          <stop offset="100%" stopColor="#4a5462" stopOpacity="0.25" />
+          <stop offset="0%" stopColor="#aeb9c3" stopOpacity="0.95" />
+          <stop offset="100%" stopColor="#7a8590" stopOpacity="0.25" />
         </linearGradient>
         <radialGradient id="disc">
           <stop offset="55%" stopColor="#9fb0c4" stopOpacity="0" />
@@ -83,12 +83,12 @@ export function HeroDrone({ className = "" }) {
           <stop offset="100%" stopColor="#9fb0c4" stopOpacity="0.03" />
         </radialGradient>
         <radialGradient id="lensGrad">
-          <stop offset="0%" stopColor="#0b1420" />
-          <stop offset="62%" stopColor="#16283d" />
-          <stop offset="100%" stopColor="#3d5871" />
+          <stop offset="0%" stopColor="#26323d" />
+          <stop offset="62%" stopColor="#33465a" />
+          <stop offset="100%" stopColor="#5d7690" />
         </radialGradient>
         <radialGradient id="shadowGrad">
-          <stop offset="0%" stopColor="#000" stopOpacity="0.5" />
+          <stop offset="0%" stopColor="#2b3a47" stopOpacity="0.28" />
           <stop offset="100%" stopColor="#000" stopOpacity="0" />
         </radialGradient>
         <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
@@ -122,16 +122,16 @@ export function HeroDrone({ className = "" }) {
         {/* Top plate, lifted so the shell edge below stays visible as thickness */}
         <path d="M198 190 L238 166 L282 166 L322 190 L282 214 L238 214 Z" fill="url(#shellTop)" />
         {/* Specular line along the leading edge */}
-        <path d="M238 167 L282 167 L318 189" fill="none" stroke="#93a2b6" strokeWidth="1.6" opacity="0.55" />
+        <path d="M238 167 L282 167 L318 189" fill="none" stroke="#b9c3cd" strokeWidth="1.6" opacity="0.55" />
 
         {/* Flight controller stack, visible through the top plate cutout */}
-        <path d="M240 186 L280 186 L266 194 L254 194 Z" fill="#0d131b" />
+        <path d="M240 186 L280 186 L266 194 L254 194 Z" fill="#39434d" />
         <rect x="248" y="187" width="6" height="2.6" rx="1" fill="var(--accent)" filter="url(#ledGlow)" />
         <rect x="258" y="187" width="6" height="2.6" rx="1" fill="#ffb648" opacity="0.9" />
         <rect x="268" y="187" width="5" height="2.6" rx="1" fill="#ff5c62" className="blink" />
 
         {/* GPS mast */}
-        <rect x="258" y="150" width="4" height="18" rx="2" fill="#3f4a58" />
+        <rect x="258" y="150" width="4" height="18" rx="2" fill="#727c88" />
         <ellipse cx="260" cy="149" rx="13" ry="5" fill="#5e6b7d" />
         <ellipse cx="260" cy="147.5" rx="13" ry="5" fill="#79899d" />
         <circle cx="260" cy="147" r="2.6" fill="var(--accent)" opacity="0.85" />
@@ -142,10 +142,10 @@ export function HeroDrone({ className = "" }) {
         ))}
 
         {/* ------------------------------- camera -------------------------------- */}
-        <path d="M247 236 L273 236 L270 250 L250 250 Z" fill="#222b36" />
-        <circle cx="260" cy="256" r="13" fill="#2c3644" />
+        <path d="M247 236 L273 236 L270 250 L250 250 Z" fill="#4d5762" />
+        <circle cx="260" cy="256" r="13" fill="#57616c" />
         <circle cx="260" cy="256" r="10.5" fill="url(#lensGrad)" />
-        <circle cx="260" cy="256" r="5" fill="#0a121c" />
+        <circle cx="260" cy="256" r="5" fill="#2b3540" />
         {/* Two highlights: a hard glint and a soft sky reflection. One alone
             reads as a sticker; two make it read as glass. */}
         <ellipse cx="256" cy="251" rx="3.4" ry="2.2" fill="#dceaf7" opacity="0.75" transform="rotate(-28 256 251)" />
@@ -164,7 +164,7 @@ export function HeroDrone({ className = "" }) {
               fill="none"
               strokeLinecap="round"
             />
-            <ellipse cx={x2} cy={y2 + 2} rx="13" ry="4.5" fill="#1b222c" />
+            <ellipse cx={x2} cy={y2 + 2} rx="13" ry="4.5" fill="#4b555f" />
           </g>
         ))}
       </g>
@@ -198,7 +198,7 @@ function Rotor({ x, y, s, bodyX, bodyY }) {
       <ellipse cx={x} cy={y - bellH} rx={6 * s} ry={2.2 * s} fill="#111820" />
       {/* Stator slots — three short darker bands read as windings at this size */}
       {[-8, 0, 8].map((o) => (
-        <rect key={o} x={x + o * s - 1 * s} y={y - bellH + 4 * s} width={1.8 * s} height={bellH - 6 * s} fill="#1e2530" opacity="0.55" />
+        <rect key={o} x={x + o * s - 1 * s} y={y - bellH + 4 * s} width={1.8 * s} height={bellH - 6 * s} fill="#4a545e" opacity="0.55" />
       ))}
 
       {/* Propeller: blur disc, then three ghosted blades at different angles */}
@@ -317,11 +317,11 @@ export function Loader({ label = "Loading", size = 88 }) {
       <svg width={size} height={size * 0.72} viewBox="0 0 120 86" aria-hidden="true">
         <defs>
           <linearGradient id="ldTube" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#5d6b7f" />
+            <stop offset="0%" stopColor="#93a1ad" />
             <stop offset="70%" stopColor="#1e252f" />
           </linearGradient>
         </defs>
-        <ellipse className="loader-shadow" cx="60" cy="79" rx="26" ry="4.5" fill="#000" opacity="0.4" />
+        <ellipse className="loader-shadow" cx="60" cy="79" rx="26" ry="4.5" fill="#2b3a47" opacity="0.22" />
         <g className="loader-craft">
           {[
             [24, 30],
@@ -331,7 +331,7 @@ export function Loader({ label = "Loading", size = 88 }) {
           ].map(([x, y], i) => (
             <g key={i}>
               <path d={`M60 44 L${x} ${y}`} stroke="url(#ldTube)" strokeWidth="5" strokeLinecap="round" />
-              <rect x={x - 6} y={y - 8} width="12" height="8" rx="2" fill="#5a6675" />
+              <rect x={x - 6} y={y - 8} width="12" height="8" rx="2" fill="#8a959f" />
               <ellipse cx={x} cy={y - 8} rx="6" ry="2.4" fill="#8996a8" />
               <ellipse
                 className="loader-prop"
@@ -347,7 +347,7 @@ export function Loader({ label = "Loading", size = 88 }) {
               />
             </g>
           ))}
-          <path d="M42 44 L52 36 L68 36 L78 44 L68 52 L52 52 Z" fill="#39434f" />
+          <path d="M42 44 L52 36 L68 36 L78 44 L68 52 L52 52 Z" fill="#69777f" />
           <path d="M42 44 L52 36 L68 36 L78 44" fill="none" stroke="#8996a8" strokeWidth="1.2" opacity="0.6" />
           <circle cx="60" cy="44" r="3.4" fill="var(--accent)" />
         </g>

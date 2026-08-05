@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { route } from "../auth.js";
+import { adminClient } from "../supabase.js";
 
 /**
  * STUDENT ROUTES
@@ -37,11 +38,18 @@ router.get(
     if (schoolId) {
       const { data } = await db
         .from("schools")
-        .select("id, name, join_code, region")
+        .select("id, name, join_code, region, status, active")
         .eq("id", schoolId)
         .maybeSingle();
       school = data ?? null;
     }
+
+    /* `admitted` is the single flag the whole product gates on: it means this
+       account belongs to a school that an administrator approved and has not
+       since paused. It is computed from the school on every request rather than
+       stored on the profile, so revoking a school locks its students out
+       immediately instead of needing a backfill. */
+    const admitted = Boolean(school && school.status === "approved" && school.active);
 
     res.json({
       id: user.id,
@@ -49,6 +57,7 @@ router.get(
       role,
       profile: profile ?? null,
       school,
+      admitted,
     });
   })
 );
@@ -77,29 +86,47 @@ router.patch(
 );
 
 /**
- * Join a school by its code.
+ * Join a school with its code.
  *
  * The lookup runs as the SERVICE ROLE, deliberately: a student who has not
- * joined yet cannot see any school under RLS, so they could never resolve
- * the code themselves. Only the id of the matched school is used, and only
- * to write the caller's own profile — nothing else leaks out of the lookup.
+ * joined yet cannot see any school under RLS, so they could never resolve the
+ * code themselves. Only the matched school's id is used, and only to write the
+ * caller's own profile — nothing else escapes the lookup.
+ *
+ * A code belonging to a school that is pending, rejected or paused is refused
+ * with the reason, rather than a flat "invalid code". A student holding a real
+ * code from a school still awaiting approval has done nothing wrong and needs
+ * to know it is not their mistake.
  */
 router.post(
   "/me/school",
   route(async (req, res) => {
     const code = String(req.body?.join_code ?? "").trim().toUpperCase();
-    if (!code) return res.status(400).json({ error: "Enter a join code." });
+    if (!code) return res.status(400).json({ error: "Enter your school's join code." });
 
-    const { adminClient } = await import("../supabase.js");
     const admin = adminClient();
     const { data: school } = await admin
       .from("schools")
-      .select("id, name, active")
+      .select("id, name, status, active")
       .eq("join_code", code)
       .maybeSingle();
 
-    if (!school) return res.status(404).json({ error: "No school has that join code." });
-    if (!school.active) return res.status(403).json({ error: `${school.name} is not currently active.` });
+    if (!school) {
+      return res.status(404).json({
+        error: "That code does not match any school. Check it with your teacher — codes look like ABCD-2345.",
+      });
+    }
+    if (school.status === "pending") {
+      return res.status(403).json({
+        error: `${school.name} has applied but has not been approved yet. Your code will start working as soon as it is.`,
+      });
+    }
+    if (school.status === "rejected") {
+      return res.status(403).json({ error: `${school.name} is not an approved school on DroneLab.` });
+    }
+    if (!school.active) {
+      return res.status(403).json({ error: `${school.name} is not currently active. Ask your teacher to get in touch.` });
+    }
 
     const { error } = await req.auth.db
       .from("profiles")
@@ -107,7 +134,7 @@ router.post(
       .eq("id", req.auth.user.id);
     if (error) return res.status(400).json({ error: error.message });
 
-    res.json({ joined: { id: school.id, name: school.name } });
+    res.json({ joined: { id: school.id, name: school.name }, admitted: true });
   })
 );
 

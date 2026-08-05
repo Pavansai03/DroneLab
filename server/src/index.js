@@ -6,6 +6,7 @@ import { assertConfigured } from "./supabase.js";
 import { requireAuth } from "./auth.js";
 import studentRoutes from "./routes/student.js";
 import teacherRoutes from "./routes/teacher.js";
+import schoolRoutes from "./routes/school.js";
 import adminRoutes from "./routes/admin.js";
 
 /**
@@ -137,6 +138,7 @@ app.get("/health", (_req, res) => res.json({ ok: true, service: "dronelab-api" }
 app.use("/api", requireAuth);
 app.use("/api", studentRoutes);
 app.use("/api/teacher", teacherRoutes);
+app.use("/api/school", schoolRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.use((req, res) => res.status(404).json({ error: `No route for ${req.method} ${req.path}` }));

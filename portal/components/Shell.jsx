@@ -128,7 +128,7 @@ export default function Shell({ children, requireRole }) {
     );
   }
 
-  const rank = { student: 0, teacher: 1, admin: 2 };
+  const rank = { student: 0, teacher: 1, school: 1, admin: 2 };
   if (requireRole && rank[me.role] < rank[requireRole]) {
     return (
       <>
@@ -158,8 +158,13 @@ export default function Shell({ children, requireRole }) {
 
 function TopBar({ me, pathname }) {
   const router = useRouter();
-  const links = [{ href: "/student", label: "My learning" }, { href: "/student/profile", label: "Profile" }];
-  if (me.role === "teacher" || me.role === "admin") links.push({ href: "/teacher", label: "My school" });
+  const staff = me.role === "teacher" || me.role === "school" || me.role === "admin";
+  /* A school account is not a student and has no learning of its own, so it is
+     not shown a student panel it would only find empty. */
+  const links = staff
+    ? []
+    : [{ href: "/student", label: "My learning" }, { href: "/student/profile", label: "Profile" }];
+  if (staff) links.push({ href: "/school", label: "My school" });
   if (me.role === "admin") links.push({ href: "/admin", label: "Administration" });
 
   return (
@@ -182,16 +187,26 @@ function TopBar({ me, pathname }) {
           real link rather than a route. Opened in a new tab deliberately: a
           student mid-flight should not lose the aircraft by pressing Back, and
           the portal session stays where it was. */}
-      <a
-        className="btn small sim-link"
-        href={simulatorUrl()}
-        onClick={openSimulator}
-        title="Open the flight simulator"
-      >
-        <Icon.Play />
-        Simulator
-        <Icon.External style={{ width: 12, height: 12, opacity: 0.7 }} />
-      </a>
+      {/* Only once admitted. Offering the simulator to a student who has not
+          entered a join code sends them somewhere they will be turned away
+          from, which is worse than not offering it. */}
+      {me.admitted || me.role === "admin" ? (
+        <a
+          className="btn small sim-link"
+          href={simulatorUrl()}
+          onClick={openSimulator}
+          title="Open the flight simulator"
+        >
+          <Icon.Play />
+          Simulator
+          <Icon.External style={{ width: 12, height: 12, opacity: 0.7 }} />
+        </a>
+      ) : (
+        <a className="btn small" href="/student/join" title="Enter your school's join code to unlock the simulator">
+          <Icon.Play />
+          Unlock simulator
+        </a>
+      )}
       <span className={`pill ${me.role === "admin" ? "info" : me.role === "teacher" ? "warn" : "muted"}`}>
         {me.role}
       </span>

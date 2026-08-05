@@ -23,7 +23,7 @@ export default function AdminPage() {
 }
 
 function Panel() {
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState("approvals");
   return (
     <>
       <section className="hero rise">
@@ -46,6 +46,7 @@ function Panel() {
 
       <div className="row" style={{ marginBottom: 20 }}>
         {[
+          ["approvals", "Approvals"],
           ["overview", "Overview"],
           ["schools", "Schools"],
           ["people", "People"],
@@ -60,9 +61,214 @@ function Panel() {
         ))}
       </div>
 
+      {tab === "approvals" && <Approvals />}
       {tab === "overview" && <Overview />}
       {tab === "schools" && <Schools />}
       {tab === "people" && <People />}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------ approvals */
+
+/**
+ * The approval queue.
+ *
+ * Pending applications come first and oldest first, because this is a queue to
+ * be worked through rather than a list to be browsed — a school waiting three
+ * days should not sit below one that applied this morning.
+ *
+ * Approving mints the join code and emails it. The result of that email is
+ * REPORTED rather than assumed: if SMTP is unconfigured or the send failed, the
+ * code is shown here so it can be passed on by hand. An approval that silently
+ * produced a code nobody received would look like success and leave a school
+ * stuck waiting for an email that never existed.
+ */
+function Approvals() {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [result, setResult] = useState(null);
+  const [rejecting, setRejecting] = useState(null);
+  const [note, setNote] = useState("");
+
+  const load = () => api.admin.applications().then(setData).catch((e) => setErr(e.message));
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function approve(a) {
+    setBusy(a.id);
+    setErr(null);
+    try {
+      const r = await api.admin.approve(a.id);
+      setResult({ kind: "approved", school: r.school, mail: r.mail });
+      await load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function reject(a) {
+    setBusy(a.id);
+    setErr(null);
+    try {
+      const r = await api.admin.reject(a.id, note);
+      setResult({ kind: "rejected", name: a.name, mail: r.mail });
+      setRejecting(null);
+      setNote("");
+      await load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (err) return <div className="note bad">{err}</div>;
+  if (!data) return <Loader label="Loading applications" />;
+
+  const pending = data.applications.filter((a) => a.status === "pending");
+  const decided = data.applications.filter((a) => a.status !== "pending").reverse();
+
+  return (
+    <>
+      {result && (
+        <div className={`note ${result.kind === "approved" ? "ok" : ""}`} style={{ marginBottom: 18 }}>
+          {result.kind === "approved" ? (
+            <>
+              <strong>{result.school.name} approved.</strong> Join code{" "}
+              <b className="mono" style={{ fontSize: 16 }}>
+                {result.school.join_code}
+              </b>
+              .{" "}
+              {result.mail?.sent
+                ? `Emailed to ${result.school.contact_email}.`
+                : `The email did NOT go out (${result.mail?.reason}) — pass this code on yourself.`}
+            </>
+          ) : (
+            <>
+              <strong>{result.name} rejected.</strong>{" "}
+              {result.mail?.sent ? "The school has been told." : `No email was sent (${result.mail?.reason}).`}
+            </>
+          )}
+        </div>
+      )}
+
+      {!data.mailConfigured && (
+        <div className="note" style={{ marginBottom: 18 }}>
+          SMTP is not configured, so approval emails cannot be sent. Approving still works and the
+          join code is shown here — you will need to pass it on yourself.
+        </div>
+      )}
+
+      <h2 style={{ marginTop: 0 }}>
+        Waiting for a decision {pending.length > 0 && <span className="pill warn">{pending.length}</span>}
+      </h2>
+
+      {pending.length === 0 ? (
+        <div className="note">Nothing waiting. New school registrations appear here.</div>
+      ) : (
+        <div className="grid cols-2">
+          {pending.map((a) => (
+            <div className="card hover" key={a.id}>
+              <div className="row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
+                <strong style={{ fontSize: 16 }}>{a.name}</strong>
+                <span className="pill warn">pending</span>
+              </div>
+              <div className="sub" style={{ margin: "0 0 14px", lineHeight: 1.8, fontSize: 13 }}>
+                <div>{a.contact_email}</div>
+                {a.phone && <div className="mono">{a.phone}</div>}
+                {a.region && <div>{a.region}</div>}
+                <div style={{ color: "var(--faint)" }}>
+                  Applied {new Date(a.applied_at).toLocaleString()}
+                </div>
+              </div>
+
+              {rejecting === a.id ? (
+                <>
+                  <div className="field">
+                    <label htmlFor={`n${a.id}`}>Reason (sent to the school)</label>
+                    <input
+                      id={`n${a.id}`}
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <div className="row">
+                    <button className="btn danger" disabled={busy === a.id} onClick={() => reject(a)}>
+                      Confirm rejection
+                    </button>
+                    <button className="btn ghost" onClick={() => setRejecting(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="row">
+                  <button className="btn primary" disabled={busy === a.id} onClick={() => approve(a)}>
+                    {busy === a.id ? "Approving…" : "Approve & send code"}
+                  </button>
+                  <button
+                    className="btn ghost"
+                    onClick={() => {
+                      setRejecting(a.id);
+                      setNote("");
+                    }}
+                  >
+                    Reject
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <h2>Decided</h2>
+      {decided.length === 0 ? (
+        <div className="note">No decisions yet.</div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>School</th>
+                <th>Contact</th>
+                <th>Status</th>
+                <th>Join code</th>
+                <th>Members</th>
+                <th>Decided</th>
+              </tr>
+            </thead>
+            <tbody>
+              {decided.map((a) => (
+                <tr key={a.id}>
+                  <td>
+                    <strong>{a.name}</strong>
+                  </td>
+                  <td className="sub" style={{ margin: 0, fontSize: 12.5 }}>
+                    {a.contact_email}
+                  </td>
+                  <td>
+                    <span className={`pill ${a.status === "approved" ? "ok" : "bad"}`}>{a.status}</span>
+                  </td>
+                  <td className="mono" style={{ color: "var(--accent-2)" }}>
+                    {a.join_code ?? "—"}
+                  </td>
+                  <td className="mono">{a.member_count ?? 0}</td>
+                  <td className="mono" style={{ color: "var(--dim)" }}>
+                    {a.decided_at ? new Date(a.decided_at).toLocaleDateString() : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 }

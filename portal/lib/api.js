@@ -59,6 +59,11 @@ export const api = {
   joinSchool: (join_code) => request("/api/me/school", { method: "POST", body: { join_code } }),
   progress: () => request("/api/progress"),
 
+  school: {
+    apply: (body) => request("/api/school/apply", { method: "POST", body }),
+    application: () => request("/api/school/application"),
+  },
+
   teacher: {
     school: () => request("/api/teacher/school"),
     roster: (schoolId) => request(`/api/teacher/roster${schoolId ? `?school=${schoolId}` : ""}`),
@@ -67,6 +72,11 @@ export const api = {
 
   admin: {
     stats: () => request("/api/admin/stats"),
+    applications: (status) =>
+      request(`/api/admin/applications${status ? `?status=${status}` : ""}`),
+    approve: (id) => request(`/api/admin/applications/${id}/approve`, { method: "POST" }),
+    reject: (id, note) =>
+      request(`/api/admin/applications/${id}/reject`, { method: "POST", body: { note } }),
     schools: () => request("/api/admin/schools"),
     createSchool: (body) => request("/api/admin/schools", { method: "POST", body }),
     updateSchool: (id, body) => request(`/api/admin/schools/${id}`, { method: "PATCH", body }),

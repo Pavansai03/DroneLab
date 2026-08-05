@@ -34,9 +34,13 @@ export default function Home() {
 
         try {
           const me = await api.me();
-          router.replace(
-            me.role === "admin" ? "/admin" : me.role === "teacher" ? "/teacher" : "/student"
-          );
+          if (me.role === "admin") router.replace("/admin");
+          else if (me.role === "school" || me.role === "teacher") {
+            /* A school account with an undecided application belongs on the
+               pending screen, not on a dashboard with nothing in it. */
+            const { application } = await api.school.application().catch(() => ({ application: null }));
+            router.replace(application && application.status !== "approved" ? "/school/pending" : "/school");
+          } else router.replace(me.admitted ? "/student" : "/student/join");
         } catch {
           /* Signed in, but the API is unreachable or slow to wake. The student
              panel handles that state itself and shows a real message. */
