@@ -66,8 +66,16 @@ router.post(
 
     if (error) return res.status(400).json({ error: error.message });
 
-    // The applicant becomes a school account; they see the school panel once approved.
-    await db.from("user_roles").upsert({ user_id: user.id, role: "school" }, { onConflict: "user_id" });
+    /* The applicant becomes a school account — unless they are already an
+       administrator.
+       Upserting unconditionally meant an admin who tried the registration flow
+       DEMOTED THEMSELVES to 'school' and lost the panel that approves schools.
+       On a deployment with one administrator, that locks approvals out entirely
+       and the only way back is editing the database by hand. Testing your own
+       sign-up flow should never be able to do that. */
+    if (req.auth.role !== "admin") {
+      await db.from("user_roles").upsert({ user_id: user.id, role: "school" }, { onConflict: "user_id" });
+    }
 
     res.status(201).json({ application: data });
   })
