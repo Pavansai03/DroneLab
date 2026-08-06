@@ -192,8 +192,6 @@ function LoginForm() {
             DRONE<em>LAB</em>
           </div>
 
-          <span className="kicker rise d1">For schools · Ages 12+</span>
-
           {/* Deliberately a <p>, not an <h2>. The site-wide h2 is the small
               uppercase section heading — display:flex with a gap and a trailing
               rule — and inheriting that here turned the three lines of this
