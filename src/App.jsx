@@ -41,6 +41,7 @@ import TeacherDashboard from "./components/TeacherDashboard.jsx";
 import { Arrow, ArrowLeft, Reset, Bolt, Warn, Undo, Redo, SpeakerOn, SpeakerOff, Sun, Moon } from "./components/Icons.jsx";
 import { initialTheme, applyTheme } from "./lib/theme.js";
 import { hasPortal, goToPortal } from "./lib/portal.js";
+import { loadEarned, saveEarned } from "./lib/achievements.js";
 import {
   setBuzzerEnabled,
   setBuzzerMuted,
@@ -174,6 +175,10 @@ export default function App() {
   const [inspectorTab, setInspectorTab] = useState("diagnostics");
   const [selectedTree, setSelectedTree] = useState("fc");
   const [telemetry, setTelemetry] = useState(null);
+  /* Flight achievements, accumulated. Telemetry is null in the assembly bay, so
+     a set read straight off it loses everything the moment a student stops
+     flying — see flightAchieved() in progress.js. */
+  const [earned, setEarned] = useState(() => loadEarned(null));
   const [crashReport, setCrashReport] = useState(null);
   const [notice, setNotice] = useState(null);
   const [testing, setTesting] = useState(false);
@@ -275,16 +280,57 @@ export default function App() {
   }, [diagnostics.buzzerFitted]);
 
   /* --------------------------------------------------------- progress */
+  /* Fold whatever the current flight has demonstrated into the permanent
+     record. Flights end; the fact that you flew does not. */
+  useEffect(() => {
+    const live = telemetry?.achievements;
+    if (!live || live.size === 0) return;
+    setEarned((prev) => {
+      let novel = false;
+      for (const k of live) {
+        if (!prev.has(k)) {
+          novel = true;
+          break;
+        }
+      }
+      if (!novel) return prev;
+      const next = new Set(prev);
+      for (const k of live) next.add(k);
+      saveEarned(auth.user?.id, next);
+      return next;
+    });
+  }, [telemetry, auth.user?.id]);
+
+  /* Signing in adopts this machine's signed-out work and adds whatever the
+     account already had, so a student who practised before logging in does not
+     lose the flight — and one who logs in on a fresh machine keeps their ticks. */
+  useEffect(() => {
+    const stored = loadEarned(auth.user?.id);
+    setEarned((prev) => {
+      const next = new Set(prev);
+      let novel = false;
+      for (const k of stored) {
+        if (!next.has(k)) {
+          next.add(k);
+          novel = true;
+        }
+      }
+      if (next.size > stored.size || novel) saveEarned(auth.user?.id, next);
+      return novel ? next : prev;
+    });
+  }, [auth.user?.id]);
+
   const progressApi = useMemo(
     () =>
       buildProgressApi({
+        earned,
         build,
         frame,
         telemetry,
         diagnostics,
         completedModules,
       }),
-    [build, frame, telemetry, diagnostics, completedModules]
+    [build, frame, telemetry, diagnostics, completedModules, earned]
   );
 
   const progress = useMemo(

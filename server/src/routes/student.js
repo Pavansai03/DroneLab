@@ -193,6 +193,99 @@ router.get(
   })
 );
 
+/* --------------------------------------------------------------- help */
+/**
+ * ASKING FOR HELP
+ * ---------------
+ * The school panel counts students who "may need help" by inferring it from
+ * silence. These routes let a student say it outright, in their own words, and
+ * that is always better evidence than an inference.
+ *
+ * A student may have one open request at a time. This is not a limitation to
+ * work around — it is what keeps the school's list readable, and it pushes the
+ * student to describe the one thing actually blocking them rather than filing a
+ * queue of half-thoughts.
+ */
+router.get(
+  "/help",
+  route(async (req, res) => {
+    const { db, user } = req.auth;
+    const { data, error } = await db
+      .from("help_requests")
+      .select("id, module_id, message, status, reply, answered_at, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (error) return res.status(400).json({ error: error.message });
+
+    const rows = data ?? [];
+    res.json({ requests: rows, open: rows.find((r) => r.status === "open") ?? null });
+  })
+);
+
+router.post(
+  "/help",
+  route(async (req, res) => {
+    const { db, user, schoolId } = req.auth;
+
+    const message = String(req.body?.message ?? "").trim().slice(0, 1000);
+    const moduleId = req.body?.module_id ? String(req.body.module_id).slice(0, 20) : null;
+    if (message.length < 5) {
+      return res.status(400).json({
+        error: "Tell your teacher what is going wrong — even one sentence is enough to act on.",
+      });
+    }
+    if (!schoolId) {
+      return res.status(409).json({
+        error: "Join your school with its code first, so your question reaches someone.",
+      });
+    }
+
+    const { data: existing } = await db
+      .from("help_requests")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("status", "open")
+      .maybeSingle();
+
+    /* Reword rather than pile up: a second request while one is open replaces
+       it, so the teacher reads the current problem, not the history of it. */
+    if (existing) {
+      const { data, error } = await db
+        .from("help_requests")
+        .update({ message, module_id: moduleId, updated_at: new Date().toISOString() })
+        .eq("id", existing.id)
+        .select()
+        .maybeSingle();
+      if (error) return res.status(400).json({ error: error.message });
+      return res.json({ request: data, replaced: true });
+    }
+
+    const { data, error } = await db
+      .from("help_requests")
+      .insert({ user_id: user.id, school_id: schoolId, module_id: moduleId, message })
+      .select()
+      .maybeSingle();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ request: data, replaced: false });
+  })
+);
+
+/** Withdraw it — "actually, I worked it out". */
+router.delete(
+  "/help/:id",
+  route(async (req, res) => {
+    const { db, user } = req.auth;
+    const { error } = await db
+      .from("help_requests")
+      .delete()
+      .eq("id", req.params.id)
+      .eq("user_id", user.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ ok: true });
+  })
+);
+
 /** Consecutive days ending today (or yesterday — a streak survives until midnight tomorrow). */
 function streakFrom(rows) {
   const days = new Set(rows.map((r) => r.day));

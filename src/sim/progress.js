@@ -11,7 +11,7 @@ import { PARTS, requiredQty } from "../data/parts.js";
 import { wiringStatus } from "../data/wiring.js";
 import { MODULE_BY_ID } from "../data/curriculum.js";
 
-export function buildProgressApi({ build, frame, telemetry, diagnostics, completedModules }) {
+export function buildProgressApi({ build, frame, telemetry, diagnostics, completedModules, earned }) {
   const links = build.links instanceof Set ? build.links : new Set(build.links || []);
   const flags = build.flags || {};
   const placed = build.placed || {};
@@ -67,7 +67,18 @@ export function buildProgressApi({ build, frame, telemetry, diagnostics, complet
     // could never tick and the checklist would contradict the health panel.
     satellites: () =>
       diagnostics?.contexts?.gps?.satellites ?? telemetry?.satellites ?? 0,
-    flightAchieved: (key) => Boolean(telemetry?.achievements?.has(key)),
+    /**
+     * Was this ever demonstrated?
+     *
+     * `telemetry` is null in the assembly bay, so reading achievements from it
+     * alone meant every flight task silently un-ticked the moment the student
+     * walked back to the bench — and the recorded progress followed them down,
+     * so a finished module reverted to one task short. `earned` accumulates and
+     * never shrinks: flying is a thing you did, not a thing you are currently
+     * doing.
+     */
+    flightAchieved: (key) =>
+      Boolean(earned?.has(key)) || Boolean(telemetry?.achievements?.has(key)),
     altitude: () => telemetry?.altitude ?? 0,
 
     /* ---- curriculum ---- */

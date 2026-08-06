@@ -222,9 +222,58 @@ export function useProgressSync({ user, moduleId, progress }) {
   /* The most recent snapshot, kept in a ref so the cleanup can flush it without
      re-subscribing the effect on every keystroke of progress. */
   const pendingRef = useRef(null);
+  /* Per-module high-water mark: the best this student has ever reached.
+     Seeded from the database so it survives a reload, not just a tab. */
+  const best = useRef(new Map());
+  const seededFor = useRef(null);
+
+  /* Read the existing marks once per signed-in user. Until this resolves the
+     map is empty, which only ever means "no floor yet" — never a false floor. */
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user) {
+      seededFor.current = null;
+      best.current = new Map();
+      return;
+    }
+    if (seededFor.current === user.id) return;
+    seededFor.current = user.id;
+
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("module_progress")
+        .select("module_id, tasks_done, completed")
+        .eq("user_id", user.id);
+      if (cancelled) return;
+      for (const r of data ?? []) {
+        best.current.set(r.module_id, {
+          done: r.tasks_done ?? 0,
+          complete: Boolean(r.completed),
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const write = useCallback(async (row) => {
     if (!isSupabaseConfigured || !row) return;
+
+    /* PROGRESS ONLY EVER GOES UP.
+       A module's task list is re-evaluated continuously against live state, so
+       any state a finished module depended on going away — a part unfitted to
+       try something, a flight ended, the aircraft reset — briefly drops the
+       count. Writing that would tell the school a student had un-learnt
+       something, which is not a thing that happens. Record the high-water mark
+       and let the checklist be the live view. */
+    const prior = best.current.get(row.module_id);
+    if (prior && (row.tasks_done < prior.done || (prior.complete && !row.completed))) {
+      return;
+    }
+    best.current.set(row.module_id, { done: row.tasks_done, complete: row.completed });
+
     await supabase.from("module_progress").upsert(row, { onConflict: "user_id,module_id" });
   }, []);
 

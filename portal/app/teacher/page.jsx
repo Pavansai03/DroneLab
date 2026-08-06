@@ -29,6 +29,13 @@ function Panel({ me }) {
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
   const [open, setOpen] = useState("all");
+  const [help, setHelp] = useState([]);
+
+  const loadHelp = () =>
+    api.teacher
+      .help()
+      .then((r) => setHelp(r.requests ?? []))
+      .catch(() => setHelp([]));
 
   useEffect(() => {
     api.teacher.roster().then(setData).catch((e) => setError(e.message));
@@ -36,10 +43,13 @@ function Panel({ me }) {
       .school()
       .then((r) => setSchool(r.school))
       .catch(() => {});
+    loadHelp();
   }, []);
 
   if (error) return <div className="note bad">{error}</div>;
   if (!data) return <Loader label="Loading your class" />;
+
+  const openAsks = help.filter((r) => r.status === "open");
 
   return (
     <>
@@ -82,8 +92,13 @@ function Panel({ me }) {
                   value={data.summary.averageModules} label="Avg modules done" />
         <StatTile k="help" open={open} setOpen={setOpen} icon={<Icon.Shield />}
                   value={data.summary.needHelp} label="May need help"
+                  note={openAsks.length ? `${openAsks.length} asked directly` : null}
                   tone={data.summary.needHelp ? "warn" : null} />
       </div>
+
+      {/* What students actually said comes before what the system inferred.
+          An unanswered question is the most actionable thing on this page. */}
+      {open === "help" && <HelpQueue requests={help} onChange={loadHelp} />}
 
       <Roster rows={data.roster} view={open} onSelect={setSelected} />
 
@@ -177,7 +192,7 @@ function Stat({ icon, value, label, tone }) {
 }
 
 /** A figure that opens the list behind it. */
-function StatTile({ k, open, setOpen, icon, value, label, tone }) {
+function StatTile({ k, open, setOpen, icon, value, label, tone, note }) {
   return (
     <button
       className={`stat clickable ${open === k ? "open" : ""}`}
@@ -187,8 +202,112 @@ function StatTile({ k, open, setOpen, icon, value, label, tone }) {
       <div className="ico">{icon}</div>
       <b style={tone ? { color: `var(--${tone})` } : undefined}>{value}</b>
       <small>{label}</small>
+      {note && <small className="stat-note">{note}</small>}
       <span className="stat-cue">{open === k ? "Hide" : "View list"}</span>
     </button>
+  );
+}
+
+/**
+ * WHAT STUDENTS ACTUALLY ASKED
+ * ============================
+ * The roster below can only infer difficulty from silence. This is the other
+ * half: the students who said what is wrong, in their own words, from their own
+ * panel. Answering one closes it on both sides.
+ */
+function HelpQueue({ requests, onChange }) {
+  const [openOnly, setOpenOnly] = useState(true);
+  const list = openOnly ? requests.filter((r) => r.status === "open") : requests;
+
+  return (
+    <div className="drill rise" style={{ marginBottom: 18 }}>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2 style={{ margin: 0 }}>Questions from students</h2>
+        <button className="btn small" onClick={() => setOpenOnly((v) => !v)}>
+          {openOnly ? "Show answered too" : "Show unanswered only"}
+        </button>
+      </div>
+
+      {list.length === 0 ? (
+        <div className="note" style={{ marginTop: 14 }}>
+          {openOnly
+            ? "Nothing unanswered. Students can raise a question from their own panel whenever they get stuck — it lands here."
+            : "No questions yet."}
+        </div>
+      ) : (
+        <div className="help-queue">
+          {list.map((r) => (
+            <HelpItem key={r.id} r={r} onChange={onChange} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HelpItem({ r, onChange }) {
+  const [reply, setReply] = useState(r.reply ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  async function answer(status) {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.teacher.answerHelp(r.id, reply.trim() || null, status);
+      await onChange();
+    } catch (e) {
+      setErr(e.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className={`card help-item ${r.status}`}>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <strong>{r.full_name || "Unnamed student"}</strong>
+          <div className="sub" style={{ margin: "3px 0 0", fontSize: 12.5 }}>
+            {r.class_code ? `Class ${r.class_code} · ` : ""}
+            {r.module_id ? `${r.module_id} · ` : ""}
+            {new Date(r.created_at).toLocaleDateString()}
+          </div>
+        </div>
+        <span className={`pill ${r.status === "open" ? "warn" : "ok"}`}>
+          {r.status === "open" ? "unanswered" : r.status}
+        </span>
+      </div>
+
+      <p className="help-quote">{r.message}</p>
+
+      {err && <div className="note bad">{err}</div>}
+
+      {r.status === "open" ? (
+        <>
+          <textarea
+            rows={2}
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            placeholder="Write a reply — they will see it on their panel."
+            maxLength={2000}
+          />
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button className="btn small" disabled={busy} onClick={() => answer("closed")}>
+              Dealt with in person
+            </button>
+            <button
+              className="btn primary small"
+              disabled={busy || reply.trim().length === 0}
+              onClick={() => answer("answered")}
+            >
+              {busy ? "Sending…" : "Send reply"}
+            </button>
+          </div>
+        </>
+      ) : (
+        r.reply && <p className="help-answer">{r.reply}</p>
+      )}
+    </div>
   );
 }
 
@@ -215,7 +334,11 @@ function Roster({ rows, view, onSelect }) {
     return rows
       .filter((r) => {
         if (view === "active") return r.last_active && Date.parse(r.last_active) > week;
-        if (view === "help") return r.stuck_on && (!r.last_active || Date.parse(r.last_active) < week);
+        if (view === "help")
+          return (
+            (r.help_open ?? 0) > 0 ||
+            (r.stuck_on && (!r.last_active || Date.parse(r.last_active) < week))
+          );
         if (view === "progress") return (r.modules_completed ?? 0) > 0;
         return true;
       })
@@ -223,7 +346,7 @@ function Roster({ rows, view, onSelect }) {
       .filter((r) =>
         !needle
           ? true
-          : [r.full_name, r.class_code, r.stuck_on]
+          : [r.full_name, r.class_code, r.stuck_on, r.help_note]
               .filter(Boolean)
               .some((v) => v.toLowerCase().includes(needle))
       )
@@ -248,7 +371,7 @@ function Roster({ rows, view, onSelect }) {
     all: "Class roster",
     active: "Active this week",
     progress: "Students who have completed a module",
-    help: "May need help",
+    help: "May need help — asked, or gone quiet",
   }[view];
 
   return (
@@ -322,7 +445,14 @@ function Roster({ rows, view, onSelect }) {
                     <td className="mono cell-sub" style={{ color: stale ? "var(--warn)" : undefined }}>
                       {r.last_active ? new Date(r.last_active).toLocaleDateString() : "never"}
                     </td>
-                    <td className="cell-sub">{r.stuck_on ?? "—"}</td>
+                    <td className="cell-sub">
+                      {(r.help_open ?? 0) > 0 && (
+                        <span className="pill warn" style={{ marginBottom: 5 }}>
+                          asked for help
+                        </span>
+                      )}
+                      <div>{r.help_note || r.stuck_on || "—"}</div>
+                    </td>
                     <td>
                       <button className="btn small" onClick={() => onSelect(r.user_id)}>
                         View

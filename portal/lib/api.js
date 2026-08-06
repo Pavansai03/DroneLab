@@ -59,6 +59,12 @@ export const api = {
   joinSchool: (join_code) => request("/api/me/school", { method: "POST", body: { join_code } }),
   progress: () => request("/api/progress"),
 
+  help: {
+    mine: () => request("/api/help"),
+    ask: (message, module_id) => request("/api/help", { method: "POST", body: { message, module_id } }),
+    withdraw: (id) => request(`/api/help/${id}`, { method: "DELETE" }),
+  },
+
   school: {
     apply: (body) => request("/api/school/apply", { method: "POST", body }),
     application: () => request("/api/school/application"),
@@ -68,6 +74,9 @@ export const api = {
     school: () => request("/api/teacher/school"),
     roster: (schoolId) => request(`/api/teacher/roster${schoolId ? `?school=${schoolId}` : ""}`),
     student: (id) => request(`/api/teacher/students/${id}`),
+    help: (schoolId) => request(`/api/teacher/help${schoolId ? `?school=${schoolId}` : ""}`),
+    answerHelp: (id, reply, status) =>
+      request(`/api/teacher/help/${id}`, { method: "POST", body: { reply, status } }),
   },
 
   admin: {

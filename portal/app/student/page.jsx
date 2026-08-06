@@ -112,6 +112,8 @@ function Panel({ me }) {
         </>
       )}
 
+      <AskForHelp modules={modules} joined={Boolean(me.school)} />
+
       <h2>All modules</h2>
       <div className="grid cols-2">
         {modules.map((m) => {
@@ -156,4 +158,165 @@ function Stat({ icon, value, label, tone }) {
       <small>{label}</small>
     </div>
   );
+}
+
+/**
+ * ASKING FOR HELP
+ * ===============
+ * The school panel has a "May need help" list. Until now the only way onto it
+ * was to go quiet for a week and let the system guess — which is a strange way
+ * to run a classroom, because the student who knows exactly what is wrong had
+ * no way to say so.
+ *
+ * One open request at a time, replaceable. A student who is stuck is stuck on
+ * one thing; letting them queue five makes the teacher's list longer without
+ * making it more informative.
+ */
+function AskForHelp({ modules, joined }) {
+  const [state, setState] = useState(null); // { requests, open }
+  const [message, setMessage] = useState("");
+  const [moduleId, setModuleId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    api.help.mine().then(setState).catch(() => setState({ requests: [], open: null }));
+  }, []);
+
+  async function send(e) {
+    e.preventDefault();
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.help.ask(message.trim(), moduleId || null);
+      setState(await api.help.mine());
+      setMessage("");
+      setEditing(false);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function withdraw(id) {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.help.withdraw(id);
+      setState(await api.help.mine());
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!state) return null;
+
+  const answered = state.requests.filter((r) => r.status === "answered" && r.reply).slice(0, 2);
+  const open = state.open;
+
+  return (
+    <>
+      <h2>Stuck on something?</h2>
+
+      {err && <div className="note bad" style={{ marginBottom: 12 }}>{err}</div>}
+
+      {open && !editing ? (
+        <div className="card help-card">
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <span className="pill warn">Waiting for your teacher</span>
+              <p className="help-quote">{open.message}</p>
+              <div className="sub" style={{ margin: 0, fontSize: 12.5 }}>
+                {open.module_id ? `About ${labelFor(modules, open.module_id)} · ` : ""}
+                sent {new Date(open.created_at).toLocaleDateString()}
+              </div>
+            </div>
+            <div className="row" style={{ flexWrap: "nowrap" }}>
+              <button
+                className="btn small"
+                disabled={busy}
+                onClick={() => {
+                  setMessage(open.message);
+                  setModuleId(open.module_id ?? "");
+                  setEditing(true);
+                }}
+              >
+                Edit
+              </button>
+              <button className="btn small" disabled={busy} onClick={() => withdraw(open.id)}>
+                I sorted it
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <form className="card help-card" onSubmit={send}>
+          <p className="sub" style={{ marginTop: 0 }}>
+            {joined
+              ? "Describe what is going wrong and your teacher will see it on their panel. Be specific — which part, which step, what happened."
+              : "Join your school with its code first, so your question reaches someone."}
+          </p>
+
+          <div className="field">
+            <label htmlFor="hm">Which module?</label>
+            <select id="hm" value={moduleId} onChange={(e) => setModuleId(e.target.value)}>
+              <option value="">Not about a particular module</option>
+              {modules.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.number}. {m.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field">
+            <label htmlFor="hx">What do you need help with?</label>
+            <textarea
+              id="hx"
+              rows={3}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="e.g. The motors spin up but two of them turn the wrong way and I can't work out which wires to swap."
+              maxLength={1000}
+            />
+          </div>
+
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            {editing && (
+              <button type="button" className="btn" onClick={() => setEditing(false)}>
+                Cancel
+              </button>
+            )}
+            <button className="btn primary" disabled={busy || !joined || message.trim().length < 5}>
+              {busy ? "Sending…" : editing ? "Update my question" : "Ask for help"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {answered.length > 0 && (
+        <div className="card help-card answered">
+          <strong style={{ fontSize: 14 }}>Replies from your school</strong>
+          {answered.map((r) => (
+            <div key={r.id} className="help-reply">
+              <p className="help-quote small">{r.message}</p>
+              <p className="help-answer">{r.reply}</p>
+              <div className="sub" style={{ margin: 0, fontSize: 12 }}>
+                {r.answered_at ? new Date(r.answered_at).toLocaleDateString() : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function labelFor(modules, id) {
+  const m = modules.find((x) => x.id === id);
+  return m ? `module ${m.number}` : id;
 }
