@@ -1,22 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
 import { HeroDrone, Icon, Loader } from "../../components/DroneArt.jsx";
 
 /**
- * THE SUPER ADMIN PANEL
- * =====================
- * The owner's view: every school, every account, and the two operations
- * that exist nowhere else in the product — creating a school and granting a
- * role.
+ * THE ADMINISTRATION PANEL
+ * ========================
+ * Two things happen here and nothing else: schools are approved, and the
+ * platform is looked at.
  *
- * Those two are here rather than in the school panel for a structural
- * reason. `user_roles` and `schools` have no client-writable RLS policy at
- * all, so the only way to write them is through the service role key, which
- * lives on the Express server. That is what stops a student promoting
- * themselves to school staff by editing a request.
+ * The overview is four numbers, and every one of them opens the list behind it.
+ * That constraint is the design: a figure you cannot drill into is trivia — it
+ * tells you something is true and gives you no way to act on it. Anything that
+ * failed the test was removed rather than kept for decoration.
+ *
+ * Two panels went entirely:
+ *
+ *   * a separate Schools tab, which listed the same rows Approvals already
+ *     owns. One list, one place.
+ *   * a flights chart, which read `activity_log` — a table nothing has ever
+ *     written to. It was guaranteed to render "no activity recorded" for ever,
+ *     which is worse than absent: an empty chart reads as a broken feature
+ *     rather than a missing one.
  */
 export default function AdminPage() {
   return <Shell requireRole="admin">{() => <Panel />}</Shell>;
@@ -24,6 +31,8 @@ export default function AdminPage() {
 
 function Panel() {
   const [tab, setTab] = useState("approvals");
+  const [pending, setPending] = useState(0);
+
   return (
     <>
       <section className="hero rise">
@@ -33,9 +42,9 @@ function Panel() {
               <em>Administration</em>
             </h1>
             <p>
-              Every school and every account on this deployment. This is the only place roles are
-              granted and schools are created — neither can be done from a browser without the
-              server, which is what stops a student promoting themselves.
+              Approve schools and see the whole platform. Roles and schools can only be changed from
+              here — neither is writable from a browser, which is what stops anyone promoting
+              themselves.
             </p>
           </div>
           <div className="hero-art">
@@ -44,47 +53,466 @@ function Panel() {
         </div>
       </section>
 
-      <div className="row" style={{ marginBottom: 20 }}>
+      <div className="tabbar">
         {[
-          ["approvals", "Approvals"],
-          ["overview", "Overview"],
-          ["schools", "Schools"],
-          ["people", "People"],
-        ].map(([id, label]) => (
+          ["approvals", "Approvals", pending],
+          ["overview", "Overview", 0],
+          ["people", "People", 0],
+        ].map(([id, label, badge]) => (
           <button
             key={id}
-            className={`btn small ${tab === id ? "primary" : ""}`}
+            className={`tab-btn ${tab === id ? "active" : ""}`}
             onClick={() => setTab(id)}
           >
             {label}
+            {badge > 0 && <span className="tab-badge">{badge}</span>}
           </button>
         ))}
       </div>
 
-      {tab === "approvals" && <Approvals />}
+      {tab === "approvals" && <Approvals onPending={setPending} />}
       {tab === "overview" && <Overview />}
-      {tab === "schools" && <Schools />}
       {tab === "people" && <People />}
     </>
   );
 }
 
-/* ------------------------------------------------------------ approvals */
+/* ============================================================== overview */
+
+const VIEWS = {
+  schools: { label: "Total schools", icon: Icon.School },
+  students: { label: "Total students", icon: Icon.Users },
+  admins: { label: "Administrators", icon: Icon.Shield },
+  active: { label: "Active this week", icon: Icon.Bolt },
+};
+
+function Overview() {
+  const [stats, setStats] = useState(null);
+  const [open, setOpen] = useState(null);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    api.admin.stats().then(setStats).catch((e) => setErr(e.message));
+  }, []);
+
+  if (err) return <div className="note bad">{err}</div>;
+  if (!stats) return <Loader label="Loading the overview" />;
+
+  const t = stats.totals;
+  const tiles = [
+    { key: "schools", value: t.schools },
+    { key: "students", value: t.students },
+    { key: "admins", value: t.admins },
+    { key: "active", value: t.activeThisWeek },
+  ];
+
+  return (
+    <>
+      <div className="grid cols-4">
+        {tiles.map(({ key, value }) => {
+          const V = VIEWS[key];
+          return (
+            <button
+              key={key}
+              className={`stat clickable ${open === key ? "open" : ""}`}
+              onClick={() => setOpen(open === key ? null : key)}
+            >
+              <i className="accentbar" />
+              <div className="ico">
+                <V.icon />
+              </div>
+              <b>{value}</b>
+              <small>{V.label}</small>
+              <span className="stat-cue">{open === key ? "Hide" : "View list"}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {open === "schools" && <SchoolList />}
+      {(open === "students" || open === "active") && <StudentList onlyActive={open === "active"} />}
+      {open === "admins" && <AdminList />}
+
+      {!open && (
+        <div className="note" style={{ marginTop: 20 }}>
+          Select any figure above to see the accounts behind it.
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Shared search + filter bar, so every drill-down behaves the same way. */
+function ListControls({ q, setQ, placeholder, filters }) {
+  return (
+    <div className="listbar">
+      <div className="search">
+        <Icon.Search />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder} />
+        {q && (
+          <button className="clear" onClick={() => setQ("")} aria-label="Clear search">
+            ×
+          </button>
+        )}
+      </div>
+      {filters}
+    </div>
+  );
+}
+
+function Empty({ children }) {
+  return <div className="note">{children}</div>;
+}
+
+/* ------------------------------------------------------------- schools */
+
+function SchoolList() {
+  const [rows, setRows] = useState(null);
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState("approved");
+  const [sort, setSort] = useState("name");
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    api.admin
+      .schools()
+      .then((r) => setRows(r.schools))
+      .catch((e) => setErr(e.message));
+  }, []);
+
+  const view = useMemo(() => {
+    if (!rows) return [];
+    const needle = q.trim().toLowerCase();
+    return rows
+      .filter((s) => (status === "all" ? true : s.status === status))
+      /* Search matches the join code too. An administrator chasing a support
+         question almost always has the code in front of them, not the name. */
+      .filter((s) =>
+        !needle
+          ? true
+          : [s.name, s.join_code, s.region, s.contact_email]
+              .filter(Boolean)
+              .some((v) => v.toLowerCase().includes(needle))
+      )
+      .sort((a, b) =>
+        sort === "students"
+          ? b.stats.students - a.stats.students
+          : sort === "progress"
+            ? b.stats.percent - a.stats.percent
+            : a.name.localeCompare(b.name)
+      );
+  }, [rows, q, status, sort]);
+
+  if (err) return <div className="note bad">{err}</div>;
+  if (!rows) return <Loader label="Loading schools" size={64} />;
+
+  return (
+    <div className="drill rise">
+      <h2>Schools</h2>
+      <ListControls
+        q={q}
+        setQ={setQ}
+        placeholder="Search by name, join code, region or email…"
+        filters={
+          <>
+            <select value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="approved">Approved</option>
+              <option value="pending">Pending</option>
+              <option value="rejected">Rejected</option>
+              <option value="all">All statuses</option>
+            </select>
+            <select value={sort} onChange={(e) => setSort(e.target.value)}>
+              <option value="name">Sort: name</option>
+              <option value="students">Sort: most students</option>
+              <option value="progress">Sort: most progress</option>
+            </select>
+          </>
+        }
+      />
+
+      {view.length === 0 ? (
+        <Empty>No schools match.</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>School</th>
+                <th>Join code</th>
+                <th>Students</th>
+                <th>Active/wk</th>
+                <th style={{ minWidth: 170 }}>Teaching progress</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {view.map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    <strong>{s.name}</strong>
+                    <div className="cell-sub">
+                      {[s.region, s.contact_email].filter(Boolean).join(" · ")}
+                    </div>
+                  </td>
+                  <td>
+                    {s.join_code ? (
+                      <code className="code-chip">{s.join_code}</code>
+                    ) : (
+                      <span className="cell-sub">not issued</span>
+                    )}
+                  </td>
+                  <td className="mono">{s.stats.students}</td>
+                  <td className="mono">{s.stats.active}</td>
+                  <td>
+                    <div className="bar" style={{ marginBottom: 5 }}>
+                      <i style={{ width: `${s.stats.percent}%` }} />
+                    </div>
+                    <div className="cell-sub">
+                      {s.stats.percent}% · {s.stats.modules} modules completed
+                    </div>
+                  </td>
+                  <td>
+                    <span
+                      className={`pill ${
+                        s.status === "approved" ? "ok" : s.status === "pending" ? "warn" : "bad"
+                      }`}
+                    >
+                      {s.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------ students */
+
+function StudentList({ onlyActive }) {
+  const [rows, setRows] = useState(null);
+  const [schools, setSchools] = useState([]);
+  const [q, setQ] = useState("");
+  const [school, setSchool] = useState("");
+  const [sort, setSort] = useState("recent");
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    api.admin
+      .users({ role: "student" })
+      .then((r) => setRows(r.users))
+      .catch((e) => setErr(e.message));
+    api.admin
+      .schools()
+      .then((r) => setSchools(r.schools))
+      .catch(() => {});
+  }, []);
+
+  const week = Date.now() - 7 * 864e5;
+  const view = useMemo(() => {
+    if (!rows) return [];
+    const needle = q.trim().toLowerCase();
+    return rows
+      .filter((u) => (onlyActive ? u.last_active && Date.parse(u.last_active) > week : true))
+      .filter((u) => (school ? u.school_id === school : true))
+      .filter((u) =>
+        !needle
+          ? true
+          : [u.full_name, u.school_name, u.join_code, u.class_code]
+              .filter(Boolean)
+              .some((v) => v.toLowerCase().includes(needle))
+      )
+      .sort((a, b) =>
+        sort === "progress"
+          ? (b.modules_completed ?? 0) - (a.modules_completed ?? 0)
+          : sort === "name"
+            ? (a.full_name ?? "").localeCompare(b.full_name ?? "")
+            : Date.parse(b.last_active ?? 0) - Date.parse(a.last_active ?? 0)
+      );
+  }, [rows, q, school, sort, onlyActive, week]);
+
+  if (err) return <div className="note bad">{err}</div>;
+  if (!rows) return <Loader label="Loading students" size={64} />;
+
+  return (
+    <div className="drill rise">
+      <h2>{onlyActive ? "Students active this week" : "Students"}</h2>
+      <ListControls
+        q={q}
+        setQ={setQ}
+        placeholder="Search by name, school, join code or class…"
+        filters={
+          <>
+            <select value={school} onChange={(e) => setSchool(e.target.value)}>
+              <option value="">All schools</option>
+              {schools.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <select value={sort} onChange={(e) => setSort(e.target.value)}>
+              <option value="recent">Sort: most recent</option>
+              <option value="progress">Sort: most progress</option>
+              <option value="name">Sort: name</option>
+            </select>
+          </>
+        }
+      />
+
+      {view.length === 0 ? (
+        <Empty>
+          {onlyActive ? "Nobody has been active in the last seven days." : "No students match."}
+        </Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>School</th>
+                <th>Join code</th>
+                <th>Class</th>
+                <th style={{ minWidth: 150 }}>Progress</th>
+                <th>Last active</th>
+              </tr>
+            </thead>
+            <tbody>
+              {view.map((u) => {
+                const pct = Math.round(((u.modules_completed ?? 0) / 3) * 100);
+                const stale = !u.last_active || Date.parse(u.last_active) < week;
+                return (
+                  <tr key={u.user_id}>
+                    <td>
+                      <strong>{u.full_name || <em className="cell-sub">no name set</em>}</strong>
+                    </td>
+                    <td>
+                      {u.school_name ?? <span className="pill warn">not joined</span>}
+                      {u.school_status && u.school_status !== "approved" && (
+                        <div className="cell-sub">school {u.school_status}</div>
+                      )}
+                    </td>
+                    <td>
+                      {u.join_code ? (
+                        <code className="code-chip">{u.join_code}</code>
+                      ) : (
+                        <span className="cell-sub">—</span>
+                      )}
+                    </td>
+                    <td className="mono cell-sub">{u.class_code || "—"}</td>
+                    <td>
+                      <div className="bar" style={{ marginBottom: 5 }}>
+                        <i style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="cell-sub">
+                        {u.modules_completed ?? 0}/3 modules · {pct}%
+                      </div>
+                    </td>
+                    <td className="mono cell-sub" style={{ color: stale ? "var(--warn)" : undefined }}>
+                      {u.last_active ? new Date(u.last_active).toLocaleDateString() : "never"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------- admins */
+
+function AdminList() {
+  const [rows, setRows] = useState(null);
+  const [q, setQ] = useState("");
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    api.admin
+      .users({ role: "admin" })
+      .then((r) => setRows(r.users))
+      .catch((e) => setErr(e.message));
+  }, []);
+
+  const view = useMemo(() => {
+    if (!rows) return [];
+    const needle = q.trim().toLowerCase();
+    return rows.filter((u) =>
+      !needle ? true : (u.full_name ?? "").toLowerCase().includes(needle)
+    );
+  }, [rows, q]);
+
+  if (err) return <div className="note bad">{err}</div>;
+  if (!rows) return <Loader label="Loading administrators" size={64} />;
+
+  return (
+    <div className="drill rise">
+      <h2>Administrators</h2>
+      <ListControls q={q} setQ={setQ} placeholder="Search by name…" />
+
+      <div className="note" style={{ marginBottom: 14 }}>
+        Administrators see every school and every account, and are the only accounts that can approve
+        a school or grant a role. Add one under <strong>People</strong> by changing an existing
+        account&apos;s role.
+      </div>
+
+      {view.length === 0 ? (
+        <Empty>No administrators match.</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>School</th>
+                <th>Account created</th>
+                <th>Last active</th>
+              </tr>
+            </thead>
+            <tbody>
+              {view.map((u) => (
+                <tr key={u.user_id}>
+                  <td>
+                    <strong>{u.full_name || <em className="cell-sub">no name set</em>}</strong>{" "}
+                    <span className="pill info">admin</span>
+                  </td>
+                  <td className="cell-sub">{u.school_name ?? "platform-wide"}</td>
+                  <td className="mono cell-sub">
+                    {u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}
+                  </td>
+                  <td className="mono cell-sub">
+                    {u.last_active ? new Date(u.last_active).toLocaleDateString() : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================= approvals */
 
 /**
  * The approval queue.
  *
- * Pending applications come first and oldest first, because this is a queue to
- * be worked through rather than a list to be browsed — a school waiting three
- * days should not sit below one that applied this morning.
+ * Pending first and oldest first, because this is a queue to be worked through
+ * rather than a list to be browsed — a school waiting three days should not sit
+ * below one that applied this morning.
  *
  * Approving mints the join code and emails it. The result of that email is
- * REPORTED rather than assumed: if SMTP is unconfigured or the send failed, the
- * code is shown here so it can be passed on by hand. An approval that silently
- * produced a code nobody received would look like success and leave a school
- * stuck waiting for an email that never existed.
+ * REPORTED rather than assumed: with no SMTP configured, the code is shown here
+ * so it can be passed on by hand. An approval that silently produced a code
+ * nobody received would look like success and leave a school stuck.
  */
-function Approvals() {
+function Approvals({ onPending }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(null);
@@ -92,33 +520,33 @@ function Approvals() {
   const [rejecting, setRejecting] = useState(null);
   const [note, setNote] = useState("");
 
-  const load = () => api.admin.applications().then(setData).catch((e) => setErr(e.message));
+  const load = () =>
+    api.admin
+      .applications()
+      .then((d) => {
+        setData(d);
+        onPending?.(d.applications.filter((a) => a.status === "pending").length);
+      })
+      .catch((e) => setErr(e.message));
+
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function approve(a) {
+  async function decide(a, kind) {
     setBusy(a.id);
     setErr(null);
     try {
-      const r = await api.admin.approve(a.id);
-      setResult({ kind: "approved", school: r.school, mail: r.mail });
-      await load();
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function reject(a) {
-    setBusy(a.id);
-    setErr(null);
-    try {
-      const r = await api.admin.reject(a.id, note);
-      setResult({ kind: "rejected", name: a.name, mail: r.mail });
-      setRejecting(null);
-      setNote("");
+      if (kind === "approve") {
+        const r = await api.admin.approve(a.id);
+        setResult({ kind: "approved", school: r.school, mail: r.mail });
+      } else {
+        const r = await api.admin.reject(a.id, note);
+        setResult({ kind: "rejected", name: a.name, mail: r.mail });
+        setRejecting(null);
+        setNote("");
+      }
       await load();
     } catch (e) {
       setErr(e.message);
@@ -140,13 +568,10 @@ function Approvals() {
           {result.kind === "approved" ? (
             <>
               <strong>{result.school.name} approved.</strong> Join code{" "}
-              <b className="mono" style={{ fontSize: 16 }}>
-                {result.school.join_code}
-              </b>
-              .{" "}
+              <code className="code-chip">{result.school.join_code}</code>{" "}
               {result.mail?.sent
-                ? `Emailed to ${result.school.contact_email}.`
-                : `The email did NOT go out (${result.mail?.reason}) — pass this code on yourself.`}
+                ? `— emailed to ${result.school.contact_email}.`
+                : `— the email did NOT go out (${result.mail?.reason}), so pass this code on yourself.`}
             </>
           ) : (
             <>
@@ -165,11 +590,12 @@ function Approvals() {
       )}
 
       <h2 style={{ marginTop: 0 }}>
-        Waiting for a decision {pending.length > 0 && <span className="pill warn">{pending.length}</span>}
+        Waiting for a decision{" "}
+        {pending.length > 0 && <span className="pill warn">{pending.length}</span>}
       </h2>
 
       {pending.length === 0 ? (
-        <div className="note">Nothing waiting. New school registrations appear here.</div>
+        <Empty>Nothing waiting. New school registrations appear here.</Empty>
       ) : (
         <div className="grid cols-2">
           {pending.map((a) => (
@@ -178,13 +604,11 @@ function Approvals() {
                 <strong style={{ fontSize: 16 }}>{a.name}</strong>
                 <span className="pill warn">pending</span>
               </div>
-              <div className="sub" style={{ margin: "0 0 14px", lineHeight: 1.8, fontSize: 13 }}>
+              <div className="cell-sub" style={{ lineHeight: 1.9, marginBottom: 14 }}>
                 <div>{a.contact_email}</div>
                 {a.phone && <div className="mono">{a.phone}</div>}
                 {a.region && <div>{a.region}</div>}
-                <div style={{ color: "var(--faint)" }}>
-                  Applied {new Date(a.applied_at).toLocaleString()}
-                </div>
+                <div>Applied {new Date(a.applied_at).toLocaleString()}</div>
               </div>
 
               {rejecting === a.id ? (
@@ -199,7 +623,7 @@ function Approvals() {
                     />
                   </div>
                   <div className="row">
-                    <button className="btn danger" disabled={busy === a.id} onClick={() => reject(a)}>
+                    <button className="btn danger" disabled={busy === a.id} onClick={() => decide(a, "reject")}>
                       Confirm rejection
                     </button>
                     <button className="btn ghost" onClick={() => setRejecting(null)}>
@@ -209,7 +633,7 @@ function Approvals() {
                 </>
               ) : (
                 <div className="row">
-                  <button className="btn primary" disabled={busy === a.id} onClick={() => approve(a)}>
+                  <button className="btn primary" disabled={busy === a.id} onClick={() => decide(a, "approve")}>
                     {busy === a.id ? "Approving…" : "Approve & send code"}
                   </button>
                   <button
@@ -230,7 +654,7 @@ function Approvals() {
 
       <h2>Decided</h2>
       {decided.length === 0 ? (
-        <div className="note">No decisions yet.</div>
+        <Empty>No decisions yet.</Empty>
       ) : (
         <div className="table-wrap">
           <table>
@@ -250,17 +674,15 @@ function Approvals() {
                   <td>
                     <strong>{a.name}</strong>
                   </td>
-                  <td className="sub" style={{ margin: 0, fontSize: 12.5 }}>
-                    {a.contact_email}
-                  </td>
+                  <td className="cell-sub">{a.contact_email}</td>
                   <td>
                     <span className={`pill ${a.status === "approved" ? "ok" : "bad"}`}>{a.status}</span>
                   </td>
-                  <td className="mono" style={{ color: "var(--accent-2)" }}>
-                    {a.join_code ?? "—"}
+                  <td>
+                    {a.join_code ? <code className="code-chip">{a.join_code}</code> : <span className="cell-sub">—</span>}
                   </td>
                   <td className="mono">{a.member_count ?? 0}</td>
-                  <td className="mono" style={{ color: "var(--dim)" }}>
+                  <td className="mono cell-sub">
                     {a.decided_at ? new Date(a.decided_at).toLocaleDateString() : "—"}
                   </td>
                 </tr>
@@ -273,196 +695,7 @@ function Approvals() {
   );
 }
 
-/* ------------------------------------------------------------- overview */
-
-function Overview() {
-  const [d, setD] = useState(null);
-  const [err, setErr] = useState(null);
-  useEffect(() => {
-    api.admin.stats().then(setD).catch((e) => setErr(e.message));
-  }, []);
-
-  if (err) return <div className="note bad">{err}</div>;
-  if (!d) return <Loader />;
-
-  const t = d.totals;
-  const max = Math.max(...d.daily.map((x) => x.flights), 1);
-
-  return (
-    <>
-      <div className="grid cols-4">
-        <Stat icon={<Icon.School />} value={t.activeSchools} label="Active schools" />
-        <Stat icon={<Icon.Users />} value={t.students} label="Students" />
-        <Stat icon={<Icon.School />} value={t.schoolAccounts} label="School accounts" />
-        <Stat icon={<Icon.Bolt />} value={t.activeThisWeek} label="Active this week" />
-        <Stat icon={<Icon.Chart />} value={t.modulesCompleted} label="Modules completed" />
-        <Stat icon={<Icon.Shield />} value={t.admins} label="Administrators" />
-        <Stat
-          icon={<Icon.Rocket />}
-          value={t.unassigned}
-          label="Not in a school"
-          tone={t.unassigned ? "warn" : null}
-        />
-        <Stat icon={<Icon.School />} value={t.schools} label="Schools total" />
-      </div>
-
-      <h2>Flights, last 14 days</h2>
-      <div className="card">
-        {d.daily.length ? (
-          <>
-            <div className="spark">
-              {d.daily.map((x) => (
-                <i
-                  key={x.day}
-                  style={{ height: `${Math.max(4, (x.flights / max) * 100)}%` }}
-                  title={`${x.day}: ${x.flights} flights, ${x.crashes} crashes`}
-                />
-              ))}
-            </div>
-            <div className="sub" style={{ margin: "10px 0 0", fontSize: 12.5 }}>
-              {d.daily[0]?.day} to {d.daily[d.daily.length - 1]?.day}
-            </div>
-          </>
-        ) : (
-          <p className="sub" style={{ margin: 0 }}>
-            No activity recorded yet.
-          </p>
-        )}
-      </div>
-
-      {t.unassigned > 0 && (
-        <div className="note" style={{ marginTop: 18 }}>
-          {t.unassigned} account{t.unassigned === 1 ? " is" : "s are"} not attached to a school. Their progress
-          is saved but invisible to any school — assign them under <strong>People</strong>.
-        </div>
-      )}
-    </>
-  );
-}
-
-/* -------------------------------------------------------------- schools */
-
-function Schools() {
-  const [schools, setSchools] = useState(null);
-  const [err, setErr] = useState(null);
-  const [name, setName] = useState("");
-  const [region, setRegion] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const load = () =>
-    api.admin
-      .schools()
-      .then((r) => setSchools(r.schools))
-      .catch((e) => setErr(e.message));
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function create(e) {
-    e.preventDefault();
-    setBusy(true);
-    setErr(null);
-    try {
-      await api.admin.createSchool({ name, region });
-      setName("");
-      setRegion("");
-      await load();
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function toggle(s) {
-    try {
-      await api.admin.updateSchool(s.id, { active: !s.active });
-      await load();
-    } catch (e) {
-      setErr(e.message);
-    }
-  }
-
-  return (
-    <>
-      {err && <div className="note bad" style={{ marginBottom: 14 }}>{err}</div>}
-
-      <form className="card" onSubmit={create} style={{ marginBottom: 22 }}>
-        <h2 style={{ marginTop: 0 }}>Add a school</h2>
-        <div className="grid cols-3">
-          <div className="field" style={{ margin: 0 }}>
-            <label htmlFor="sn">Name</label>
-            <input id="sn" value={name} onChange={(e) => setName(e.target.value)} required />
-          </div>
-          <div className="field" style={{ margin: 0 }}>
-            <label htmlFor="sr">Region (optional)</label>
-            <input id="sr" value={region} onChange={(e) => setRegion(e.target.value)} />
-          </div>
-          <div className="field" style={{ margin: 0, display: "flex", alignItems: "flex-end" }}>
-            <button className="btn primary" disabled={busy || !name.trim()}>
-              Create
-            </button>
-          </div>
-        </div>
-        <p className="sub" style={{ margin: "12px 0 0", fontSize: 12.5 }}>
-          A join code is generated automatically. Students type it into their profile to join.
-        </p>
-      </form>
-
-      {!schools ? (
-        <Loader />
-      ) : schools.length === 0 ? (
-        <div className="note">No schools yet. Create the first one above.</div>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>School</th>
-                <th>Join code</th>
-                <th>Students</th>
-                <th>Staff</th>
-                <th>Active/wk</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {schools.map((s) => (
-                <tr key={s.id}>
-                  <td>
-                    <strong>{s.name}</strong>
-                    {s.region && (
-                      <div style={{ color: "var(--dim)", fontSize: 12 }}>{s.region}</div>
-                    )}
-                  </td>
-                  <td className="mono" style={{ color: "var(--accent)" }}>
-                    {s.join_code}
-                  </td>
-                  <td className="mono">{s.stats.students}</td>
-                  <td className="mono">{s.stats.staff}</td>
-                  <td className="mono">{s.stats.active}</td>
-                  <td>
-                    <span className={`pill ${s.active ? "ok" : "muted"}`}>
-                      {s.active ? "active" : "paused"}
-                    </span>
-                  </td>
-                  <td>
-                    <button className="btn small" onClick={() => toggle(s)}>
-                      {s.active ? "Pause" : "Resume"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </>
-  );
-}
-
-/* --------------------------------------------------------------- people */
+/* ================================================================ people */
 
 function People() {
   const [users, setUsers] = useState(null);
@@ -516,23 +749,24 @@ function People() {
     <>
       {err && <div className="note bad" style={{ marginBottom: 14 }}>{err}</div>}
 
-      <div className="row" style={{ marginBottom: 14 }}>
-        <input
-          placeholder="Search by name…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          style={{ maxWidth: 260 }}
-        />
-        <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} style={{ maxWidth: 180 }}>
-          <option value="">All roles</option>
-          <option value="student">Students</option>
-          <option value="school">Schools</option>
-          <option value="admin">Administrators</option>
-        </select>
-      </div>
+      <ListControls
+        q={q}
+        setQ={setQ}
+        placeholder="Search by name…"
+        filters={
+          <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)}>
+            <option value="">All roles</option>
+            <option value="student">Students</option>
+            <option value="school">Schools</option>
+            <option value="admin">Administrators</option>
+          </select>
+        }
+      />
 
       {!users ? (
-        <Loader />
+        <Loader label="Loading accounts" size={64} />
+      ) : rows.length === 0 ? (
+        <Empty>No accounts match.</Empty>
       ) : (
         <div className="table-wrap">
           <table>
@@ -548,12 +782,12 @@ function People() {
             <tbody>
               {rows.map((u) => (
                 <tr key={u.user_id}>
-                  <td>{u.full_name || <em style={{ color: "var(--dim)" }}>no name set</em>}</td>
+                  <td>{u.full_name || <em className="cell-sub">no name set</em>}</td>
                   <td>
                     <select
                       value={u.school_id ?? ""}
                       onChange={(e) => setSchool(u, e.target.value)}
-                      style={{ maxWidth: 200 }}
+                      style={{ maxWidth: 210 }}
                     >
                       <option value="">— none —</option>
                       {schools.map((s) => (
@@ -565,7 +799,7 @@ function People() {
                   </td>
                   <td>
                     <select
-                      value={u.role}
+                      value={u.role === "teacher" ? "school" : u.role}
                       onChange={(e) => setRole(u, e.target.value)}
                       style={{ maxWidth: 150 }}
                     >
@@ -575,7 +809,7 @@ function People() {
                     </select>
                   </td>
                   <td className="mono">{u.modules_completed ?? 0}</td>
-                  <td className="mono" style={{ color: "var(--dim)" }}>
+                  <td className="mono cell-sub">
                     {u.last_active ? new Date(u.last_active).toLocaleDateString() : "never"}
                   </td>
                 </tr>
@@ -585,25 +819,9 @@ function People() {
         </div>
       )}
       <p className="sub" style={{ marginTop: 12, fontSize: 12.5 }}>
-        Role changes take effect on the user&apos;s next request. You cannot remove your own admin role — ask
-        another administrator.
+        Role changes take effect on the account&apos;s next request. You cannot remove your own admin
+        role — ask another administrator.
       </p>
     </>
-  );
-}
-
-/**
- * A stat tile. The icon carries the meaning at a glance; the number carries it
- * on a second look. Both matter — a wall of bare numbers takes real effort to
- * scan, and a wall of icons says nothing.
- */
-function Stat({ icon, value, label, tone }) {
-  return (
-    <div className="stat">
-      <i className="accentbar" />
-      <div className="ico">{icon}</div>
-      <b style={tone ? { color: `var(--${tone})` } : undefined}>{value}</b>
-      <small>{label}</small>
-    </div>
   );
 }

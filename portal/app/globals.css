@@ -1171,3 +1171,163 @@ label {
 .btn.danger:hover:not(:disabled) {
   filter: brightness(1.08);
 }
+
+/* ================================================================= tabs */
+.tabbar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 22px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 5px;
+  box-shadow: var(--shadow-sm);
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.tab-btn {
+  border: 0;
+  background: none;
+  padding: 9px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--dim);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: 0.18s;
+}
+.tab-btn:hover {
+  color: var(--text);
+  background: var(--bg-2);
+}
+.tab-btn.active {
+  background: var(--grad);
+  color: #fff;
+  box-shadow: var(--glow);
+}
+.tab-badge {
+  background: var(--warn);
+  color: #fff;
+  border-radius: 99px;
+  font-size: 11px;
+  padding: 1px 7px;
+  font-weight: 800;
+}
+.tab-btn.active .tab-badge {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* ====================================================== clickable stats */
+/* A figure you can open. The cue only appears on hover, so a resting board is
+   four numbers rather than four numbers and four instructions — but it appears
+   the instant the pointer suggests intent. */
+.stat.clickable {
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  width: 100%;
+  position: relative;
+  padding-bottom: 30px;
+}
+.stat.clickable:hover {
+  border-color: var(--accent-2);
+  box-shadow: var(--shadow);
+}
+.stat-cue {
+  position: absolute;
+  left: 20px;
+  bottom: 12px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  opacity: 0;
+  transform: translateY(3px);
+  transition: 0.18s;
+}
+.stat.clickable:hover .stat-cue,
+.stat.clickable.open .stat-cue {
+  opacity: 1;
+  transform: none;
+}
+.stat.clickable.open {
+  border-color: var(--accent-2);
+  background: var(--grad-soft);
+}
+
+/* ========================================================== drill-downs */
+.drill {
+  margin-top: 26px;
+  padding-top: 4px;
+}
+.listbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.listbar select {
+  width: auto;
+  min-width: 150px;
+  flex: 0 0 auto;
+}
+.search {
+  position: relative;
+  flex: 1 1 260px;
+  display: flex;
+  align-items: center;
+}
+.search svg {
+  position: absolute;
+  left: 13px;
+  width: 16px;
+  height: 16px;
+  color: var(--faint);
+  pointer-events: none;
+}
+.search input {
+  padding-left: 38px;
+  padding-right: 34px;
+}
+.search .clear {
+  position: absolute;
+  right: 10px;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.search .clear:hover {
+  color: var(--text);
+}
+
+.cell-sub {
+  color: var(--faint);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+/* A join code is a thing to be read and retyped, so it is set apart from the
+   prose around it rather than left as another word in a cell. */
+.code-chip {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  background: var(--grad-soft);
+  border: 1px solid rgba(21, 101, 192, 0.25);
+  color: var(--accent-2);
+  padding: 3px 9px;
+  border-radius: 7px;
+  white-space: nowrap;
+}

@@ -16,7 +16,11 @@ import { MODULES } from "./student.js";
 
 const router = Router();
 
-router.use(requireRole("teacher", "admin"));
+/* 'school' is the role a school account gets on registration; 'teacher'
+   predates it and is kept so existing accounts keep working. Omitting 'school'
+   here meant every school account reached its own dashboard and then had every
+   request refused — the panel loaded and nothing in it did. */
+router.use(requireRole("teacher", "school", "admin"));
 
 /** The class roster, with progress rolled up per student. */
 router.get(
@@ -24,7 +28,7 @@ router.get(
   route(async (req, res) => {
     const { db, role, schoolId } = req.auth;
 
-    if (role === "teacher" && !schoolId) {
+    if (role !== "admin" && !schoolId) {
       return res.status(409).json({
         error: "Your account is not attached to a school yet. Ask an administrator to assign you one.",
         roster: [],
@@ -35,7 +39,7 @@ router.get(
     /* An admin may pass ?school= to look at one school; without it they see
        every school. A teacher's own scoping is enforced by RLS regardless of
        what they pass, so this filter is a convenience, not a control. */
-    const wanted = req.query.school || (role === "teacher" ? schoolId : null);
+    const wanted = req.query.school || (role === "admin" ? null : schoolId);
     if (wanted) q = q.eq("school_id", wanted);
 
     const { data, error } = await q;

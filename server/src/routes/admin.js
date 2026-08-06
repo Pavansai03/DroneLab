@@ -164,24 +164,34 @@ router.get(
       db.from("class_roster").select("school_id, role, modules_completed, last_active"),
     ]);
 
-    const byShool = new Map();
+    const MODULES_TOTAL = 3;
+    const week = Date.now() - 7 * 864e5;
+    const agg = new Map();
     for (const r of roster ?? []) {
       if (!r.school_id) continue;
-      const s = byShool.get(r.school_id) ?? { students: 0, staff: 0, modules: 0, active: 0 };
-      if (r.role === "teacher" || r.role === "school") s.staff++;
+      const a = agg.get(r.school_id) ?? { students: 0, staff: 0, modules: 0, active: 0 };
+      if (r.role === "teacher" || r.role === "school") a.staff++;
       else {
-        s.students++;
-        s.modules += r.modules_completed ?? 0;
-        if (r.last_active && Date.parse(r.last_active) > Date.now() - 7 * 864e5) s.active++;
+        a.students++;
+        a.modules += r.modules_completed ?? 0;
+        if (r.last_active && Date.parse(r.last_active) > week) a.active++;
       }
-      byShool.set(r.school_id, s);
+      agg.set(r.school_id, a);
     }
 
     res.json({
-      schools: (schools ?? []).map((s) => ({
-        ...s,
-        stats: byShool.get(s.id) ?? { students: 0, staff: 0, modules: 0, active: 0 },
-      })),
+      schools: (schools ?? []).map((x) => {
+        const a = agg.get(x.id) ?? { students: 0, staff: 0, modules: 0, active: 0 };
+        /* Progress as a percentage of what the school COULD have completed.
+           A raw module count says nothing without knowing how many students it
+           is spread across — five modules is excellent across two students and
+           dismal across forty. */
+        const possible = a.students * MODULES_TOTAL;
+        return {
+          ...x,
+          stats: { ...a, percent: possible ? Math.round((a.modules / possible) * 100) : 0 },
+        };
+      }),
     });
   })
 );
@@ -239,10 +249,29 @@ router.get(
     const db = adminClient();
     let q = db.from("class_roster").select("*").order("created_at", { ascending: false });
     if (req.query.school) q = q.eq("school_id", req.query.school);
-    if (req.query.role) q = q.eq("role", req.query.role);
-    const { data, error } = await q.limit(500);
+    if (req.query.role) {
+      /* 'school' and 'teacher' mean the same thing everywhere downstream, so a
+         filter for either must return both — otherwise an older account
+         disappears from a list it belongs in. */
+      if (req.query.role === "school") q = q.in("role", ["school", "teacher"]);
+      else q = q.eq("role", req.query.role);
+    }
+    const { data, error } = await q.limit(1000);
     if (error) return res.status(400).json({ error: error.message });
-    res.json({ users: data ?? [] });
+
+    /* Join codes live on the school and the roster view does not carry them.
+       Resolving here rather than in the browser means the list arrives complete,
+       so a search box can match a code as readily as a name. */
+    const { data: schools } = await db.from("schools").select("id, join_code, status");
+    const byId = new Map((schools ?? []).map((x) => [x.id, x]));
+
+    res.json({
+      users: (data ?? []).map((u) => ({
+        ...u,
+        join_code: byId.get(u.school_id)?.join_code ?? null,
+        school_status: byId.get(u.school_id)?.status ?? null,
+      })),
+    });
   })
 );
 
@@ -293,41 +322,26 @@ router.get(
   "/stats",
   route(async (_req, res) => {
     const db = adminClient();
-    const [{ data: roster }, { data: schools }, { data: activity }] = await Promise.all([
+    const [{ data: roster }, { data: schools }] = await Promise.all([
       db.from("class_roster").select("role, modules_completed, last_active, school_id"),
-      db.from("schools").select("id, active"),
-      db.from("activity_log").select("day, flights, crashes").order("day", { ascending: false }).limit(2000),
+      db.from("schools").select("id, active, status"),
     ]);
 
     const rows = roster ?? [];
     const students = rows.filter((r) => r.role === "student");
     const week = Date.now() - 7 * 864e5;
 
-    /* Flights per day for the last fortnight, oldest first, so the panel can
-       draw it straight without reversing. */
-    const byDay = new Map();
-    for (const a of activity ?? []) {
-      const d = byDay.get(a.day) ?? { day: a.day, flights: 0, crashes: 0 };
-      d.flights += a.flights;
-      d.crashes += a.crashes;
-      byDay.set(a.day, d);
-    }
-    const daily = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)).slice(-14);
-
+    /* Four numbers, and every one of them is a link to the list behind it.
+       Anything that cannot be drilled into does not belong on this screen: a
+       count with no way to ask "which ones?" is trivia. */
     res.json({
       totals: {
-        schools: (schools ?? []).length,
-        activeSchools: (schools ?? []).filter((s) => s.active).length,
+        schools: (schools ?? []).filter((x) => x.status === "approved").length,
         students: students.length,
-        /* 'teacher' predates the school role and is kept so existing accounts keep
-           working; both mean the same thing to everything downstream. */
-        schoolAccounts: rows.filter((r) => r.role === "teacher" || r.role === "school").length,
         admins: rows.filter((r) => r.role === "admin").length,
-        unassigned: rows.filter((r) => !r.school_id).length,
         activeThisWeek: students.filter((r) => r.last_active && Date.parse(r.last_active) > week).length,
-        modulesCompleted: students.reduce((a, r) => a + (r.modules_completed ?? 0), 0),
       },
-      daily,
+      pendingApplications: (schools ?? []).filter((x) => x.status === "pending").length,
     });
   })
 );

@@ -164,7 +164,10 @@ function TopBar({ me, pathname }) {
   const links = staff
     ? []
     : [{ href: "/student", label: "My learning" }, { href: "/student/profile", label: "Profile" }];
-  if (staff) links.push({ href: "/school", label: "My school" });
+  /* "My school" is deliberately not offered to an administrator. They have no
+     school of their own, so the panel would show either nothing or an arbitrary
+     one — and every school is already reachable from Administration. */
+  if (staff && me.role !== "admin") links.push({ href: "/school", label: "My school" });
   if (me.role === "admin") links.push({ href: "/admin", label: "Administration" });
 
   return (
