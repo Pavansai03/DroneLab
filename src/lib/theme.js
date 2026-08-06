@@ -5,9 +5,11 @@
  * styles.css reads from a CSS variable, so the whole interface repaints from
  * this one attribute — no per-component branching.
  *
- * The default follows the operating system, because a student who has already
- * told their machine they prefer light should not have to tell us as well. Once
- * they pick explicitly, that choice wins and is remembered.
+ * The default is LIGHT, and it does not follow the operating system. Following
+ * the OS is the better-behaved choice in general, but this runs in classrooms:
+ * the machines are on a shared image that nobody has configured, the room is lit
+ * for reading, and a projector throws a dark theme away entirely. A student who
+ * prefers dark can say so once and it is remembered for ever after.
  */
 
 const KEY = "dronelab.theme";
@@ -31,12 +33,12 @@ export function storedTheme() {
 }
 
 export function initialTheme() {
-  return storedTheme() ?? systemTheme();
+  return storedTheme() ?? "light";
 }
 
 export function applyTheme(theme) {
   if (typeof document === "undefined") return;
-  const t = THEMES.includes(theme) ? theme : "dark";
+  const t = THEMES.includes(theme) ? theme : "light";
   document.documentElement.setAttribute("data-theme", t);
   /* Tells the browser to render form controls, scrollbars and the like to match,
      so native chrome does not stay dark inside a light page. */

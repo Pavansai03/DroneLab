@@ -733,31 +733,53 @@ label {
   overflow: hidden;
   border-right: 1px solid var(--line-soft);
 }
-.auth-show h2 {
-  font-size: clamp(30px, 3.6vw, 46px);
-  line-height: 1.08;
-  text-transform: none;
-  letter-spacing: -0.025em;
-  color: var(--text);
-  margin: 20px 0 16px;
+
+/* A small line of context above the headline. It answers "is this for me?"
+   before the headline has to work for its living. */
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  margin: 26px 0 0;
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--accent);
+  font-size: 11.5px;
   font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
-.auth-show h2::after {
-  display: none;
+
+/* The display headline. Three lines, and they must stay three lines — see the
+   comment at the call site for why this is not an <h2>. */
+.auth-show .display {
+  font-size: clamp(32px, 4vw, 54px);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  margin: 16px 0 18px;
+  font-weight: 800;
+  max-width: 15ch;
 }
-.auth-show h2 em {
+.auth-show .display em {
   font-style: normal;
   background: var(--grad);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  /* The gradient is painted through the glyphs, so a fallback colour has to be
+     removed explicitly in WebKit or it wins and the text renders solid. */
+  -webkit-text-fill-color: transparent;
 }
-.auth-show p {
+.auth-show .lede {
   color: var(--dim);
-  font-size: 15px;
-  line-height: 1.7;
-  max-width: 46ch;
-  margin: 0 0 28px;
+  font-size: 15.5px;
+  line-height: 1.72;
+  max-width: 48ch;
+  margin: 0 0 30px;
 }
 .auth-art {
   width: min(400px, 78%);
@@ -800,11 +822,16 @@ label {
     text-align: center;
     align-items: center;
   }
-  .auth-show h2 {
-    font-size: 30px;
-    margin: 14px 0 10px;
+  .kicker {
+    align-self: center;
+    margin-top: 8px;
   }
-  .auth-show p {
+  .auth-show .display {
+    font-size: 31px;
+    margin: 14px 0 10px;
+    max-width: none;
+  }
+  .auth-show .lede {
     font-size: 14px;
     margin-bottom: 0;
   }
@@ -818,24 +845,44 @@ label {
   }
 }
 
+/* Three claims, stacked. Side by side they had to be four words each, which
+   made them slogans; a line of breathing room lets each one say what it means. */
 .features {
-  display: flex;
-  gap: 22px;
-  flex-wrap: wrap;
-  margin-top: 4px;
+  display: grid;
+  gap: 14px;
+  margin: 0 0 30px;
+  max-width: 46ch;
 }
 .feature {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 13px;
   color: var(--dim);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 13.5px;
+  line-height: 1.55;
+  font-weight: 500;
+}
+.feature strong {
+  display: block;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.feature-ico {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--grad-soft);
+  border: 1px solid var(--line-soft);
+  color: var(--accent);
 }
 .feature svg {
   width: 17px;
   height: 17px;
-  color: var(--accent);
   flex-shrink: 0;
 }
 

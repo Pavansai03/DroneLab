@@ -484,66 +484,98 @@ body {
 /* ------------------------------------------------ light / dark toggle */
 /* A switch rather than a button: the state IS the setting, so it should be
    readable at a glance without having to reason about what clicking would do. */
-.theme-toggle {
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  flex-shrink: 0;
-  line-height: 0;
-}
-.tt-track {
+/* ---------------------------------------------------------- theme switch */
+/* A segmented control: two options, always both visible, with a sliding pane
+   behind the one in force. The pane is a separate element rather than a
+   background on the button so it can animate BETWEEN the two — a background
+   that simply swaps has no way to show that these are two ends of one setting. */
+.theme-switch {
   position: relative;
-  display: inline-flex;
+  /* GRID, with minmax(0, 1fr) columns rather than flex.
+     The glider is half the inner width and slides by exactly 100% of itself, so
+     the two segments have to be exactly equal. Flex could not guarantee that:
+     "Light" is a wider word than "Dark", and a flex item will not shrink below
+     its own content, so the first segment took 72px and the second 69px and the
+     glider stopped 2px short of where it was meant to sit. A 0-floor grid track
+     has no such opinion. */
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  justify-content: space-between;
-  width: 50px;
-  height: 26px;
-  padding: 0 6px;
+  padding: 3px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--sunken);
-  transition:
-    background 0.18s ease,
-    border-color 0.18s ease;
+  flex-shrink: 0;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.16);
 }
-.theme-toggle:hover .tt-track {
-  border-color: var(--cyan);
+.ts-glider {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  height: calc(100% - 6px);
+  border-radius: 999px;
+  background: var(--cyan);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
 }
-.theme-toggle:focus-visible .tt-track {
+.ts-glider[data-active="dark"] {
+  transform: translateX(100%);
+}
+.ts-opt {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.18s ease;
+}
+.ts-opt svg {
+  flex-shrink: 0;
+}
+.ts-opt:hover {
+  color: var(--text);
+}
+/* The selected option sits on the glider, so it takes the page background as
+   its text colour — which is what makes it legible in either theme without a
+   second rule per theme. */
+.ts-opt.on,
+.ts-opt.on:hover {
+  color: var(--bg);
+}
+.ts-opt:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--focus-halo);
 }
-.tt-ico {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  color: var(--muted);
-  transition: color 0.18s ease;
+
+/* Narrow windows: the icons carry it. Both are still on screen, so the choice
+   stays readable without the words. */
+@media (max-width: 1180px) {
+  .ts-label {
+    display: none;
+  }
+  .ts-opt {
+    padding: 5px 9px;
+  }
 }
-/* The icon the knob is NOT covering is the one worth highlighting. */
-.theme-toggle[aria-checked="false"] .tt-ico.moon,
-.theme-toggle[aria-checked="true"] .tt-ico.sun {
-  color: var(--bg);
-}
-.tt-knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--cyan);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.theme-toggle[aria-checked="true"] .tt-knob {
-  transform: translateX(24px);
-}
+
 @media (prefers-reduced-motion: reduce) {
-  .tt-knob,
-  .tt-track,
-  .tt-ico {
+  .ts-glider {
     transition: none;
   }
 }

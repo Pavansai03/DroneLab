@@ -410,40 +410,122 @@ export function buildForest() {
   const inLake = (x, z) => Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + 4;
   const swayers = [];
 
-  /* Trees. Big ones, as asked — up to 22 m, which is a serious obstacle at the
-     altitudes these missions fly. */
-  scatter(160, 15, 132, (x, z, i) => {
-    // Keep the riverbed and the lake clear
-    if (Math.abs(x - 26) < 16 && Math.abs(z) < 130) return;
-    if (inLake(x, z)) return;
+  /* ------------------------------------------------------------- TREES
+   *
+   * Trees grow in STANDS, not in a uniform sprinkle.
+   *
+   * The first version scattered 160 trees evenly across the whole field, which
+   * is the one thing a real wood never looks like: every direction was equally
+   * obstructed, there was nowhere to fly and nowhere for the eye to rest, and
+   * because the species alternated every third tree, no two neighbours matched.
+   * The result read as clutter rather than as forest.
+   *
+   * What a real wood has, and this now has:
+   *   - GROVES. A dozen stands, each one species, each with its own maturity.
+   *     Conifers grow in tight dark blocks; broadleaves stand further apart.
+   *   - MEADOW between them. The gaps are the point — they are what makes the
+   *     stands read as stands, and they are where the flying happens.
+   *   - A DENSITY GRADIENT. Open around the launch pad, thickening outward to
+   *     the treeline, the way a clearing actually gives way to woodland.
+   *   - SPACING. No two trunks inside each other. Interpenetrating canopies are
+   *     the tell that scenery was scattered by a random number generator.
+   *   - AGE STRUCTURE. Mature at the heart of a stand, younger at its edge,
+   *     because that is where the light is.
+   *
+   * It comes out around 100 trees instead of 160 — fewer objects, and it looks
+   * far more like a wood.
+   */
+  {
+    const planted = [];
 
-    const h = rand(8, 22);
-    const isBroadleaf = i % 3 === 0;
-    /* Clearance has to allow for the CANOPY, not just the trunk. A 22 m
-       broadleaf spreads about 7.7 m sideways, so testing the trunk position
-       alone still let branches grow through a gate. */
-    const reach = h * (isBroadleaf ? 0.35 : 0.3);
-    if (nearGateCourse(x, z, reach)) return;
+    /* One tree, if there is room for it. Returns whether it went in. */
+    const plant = (x, z, h, isBroadleaf) => {
+      if (Math.abs(x - 26) < 16 && Math.abs(z) < 130) return false; // riverbed
+      if (inLake(x, z)) return false;
 
-    const t = isBroadleaf ? broadleaf(h) : conifer(h);
-    t.position.set(x, 0, z);
-    t.rotation.y = Math.random() * Math.PI;
-    g.add(t);
-    /* Wind. A few degrees of lean, at a rate set by the tree's height — a 22 m
-       broadleaf answers a gust slowly and a sapling whips. Static trees are the
-       thing that most gives away a rendered forest, and this costs two sines per
-       tree per frame. */
-    swayers.push({ obj: t, phase: Math.random() * Math.PI * 2, rate: 1.5 - h / 30, amp: 0.006 + h / 3400 });
+      /* Clearance has to allow for the CANOPY, not just the trunk. A 22 m
+         broadleaf spreads about 7.7 m sideways, so testing the trunk position
+         alone still let branches grow through a gate. */
+      const reach = h * (isBroadleaf ? 0.35 : 0.3);
+      if (nearGateCourse(x, z, reach)) return false;
 
-    /* Two colliders, not one. A single canopy-width cylinder would make it
-       impossible to fly between the trunks under the canopy — which is exactly
-       the shot a confident student goes looking for, and it is legitimately
-       flyable. So the trunk is slim and the canopy is wide, and the gap between
-       them is real. */
-    const trunkH = h * (isBroadleaf ? 0.45 : 0.34);
-    obstacles.push(cylinder(x, z, h * (isBroadleaf ? 0.07 : 0.05), 0, trunkH, "a tree trunk"));
-    obstacles.push(cylinder(x, z, reach, trunkH * 0.92, h, "a tree"));
-  });
+      /* Crowns may interlock a little — they do in nature — but trunks must not
+         share ground. Half the sum of the two reaches is close enough to how
+         real canopies pack, and it is what stops the stand becoming a thicket
+         of coincident geometry. */
+      for (const t of planted) {
+        if (Math.hypot(t.x - x, t.z - z) < (t.reach + reach) * 0.62) return false;
+      }
+      planted.push({ x, z, reach });
+
+      const t = isBroadleaf ? broadleaf(h) : conifer(h);
+      t.position.set(x, 0, z);
+      t.rotation.y = Math.random() * Math.PI;
+      g.add(t);
+
+      /* Wind. A few degrees of lean, at a rate set by the tree's height — a 22 m
+         broadleaf answers a gust slowly and a sapling whips. Static trees are the
+         thing that most gives away a rendered forest, and this costs two sines per
+         tree per frame. */
+      swayers.push({ obj: t, phase: Math.random() * Math.PI * 2, rate: 1.5 - h / 30, amp: 0.006 + h / 3400 });
+
+      /* Two colliders, not one. A single canopy-width cylinder would make it
+         impossible to fly between the trunks under the canopy — which is exactly
+         the shot a confident student goes looking for, and it is legitimately
+         flyable. So the trunk is slim and the canopy is wide, and the gap between
+         them is real. */
+      const trunkH = h * (isBroadleaf ? 0.45 : 0.34);
+      obstacles.push(cylinder(x, z, h * (isBroadleaf ? 0.07 : 0.05), 0, trunkH, "a tree trunk"));
+      obstacles.push(cylinder(x, z, reach, trunkH * 0.92, h, "a tree"));
+      return true;
+    };
+
+    /* The stands. Placed by hand-ish polar coordinates rather than at random, so
+       the clearings between them are reliably flyable instead of occasionally
+       sealing shut. */
+    const GROVES = [
+      { a: 0.35, r: 46, spread: 18, n: 7, broadleaf: false },
+      { a: 1.15, r: 62, spread: 23, n: 9, broadleaf: true },
+      { a: 1.95, r: 44, spread: 16, n: 5, broadleaf: false },
+      { a: 2.70, r: 74, spread: 25, n: 9, broadleaf: false },
+      { a: 3.40, r: 52, spread: 19, n: 6, broadleaf: true },
+      { a: 4.10, r: 88, spread: 27, n: 10, broadleaf: false },
+      { a: 4.85, r: 58, spread: 20, n: 7, broadleaf: true },
+      { a: 5.55, r: 78, spread: 24, n: 9, broadleaf: false },
+      { a: 0.85, r: 104, spread: 25, n: 8, broadleaf: false },
+      { a: 2.30, r: 112, spread: 27, n: 9, broadleaf: true },
+      { a: 3.90, r: 108, spread: 26, n: 8, broadleaf: false },
+      { a: 5.10, r: 118, spread: 25, n: 8, broadleaf: true },
+    ];
+
+    for (const grove of GROVES) {
+      const cx = Math.cos(grove.a) * grove.r;
+      const cz = Math.sin(grove.a) * grove.r;
+      /* Maturity is a property of the stand, not of each tree. Trees that came
+         up together are the same age, and that is very visible from the air. */
+      const prime = rand(13, 22);
+
+      for (let i = 0; i < grove.n; i++) {
+        /* sqrt() would spread these evenly over the disc; the bare random packs
+           them toward the middle, which is what a stand actually does. */
+        const rr = Math.pow(Math.random(), 0.7) * grove.spread;
+        const aa = Math.random() * Math.PI * 2;
+        const edge = rr / grove.spread;
+        // Tallest at the heart, younger toward the light at the margin.
+        const h = Math.max(6, prime * (1 - edge * 0.42) * rand(0.88, 1.1));
+        plant(cx + Math.cos(aa) * rr, cz + Math.sin(aa) * rr, h, grove.broadleaf);
+      }
+    }
+
+    /* Standards: the isolated old trees left standing in open pasture. A handful
+       of these does more for the sense of scale than another whole stand, because
+       there is nothing beside them to measure them against but the ground. */
+    scatter(9, 34, 96, (x, z) => plant(x, z, rand(16, 23), true));
+
+    /* Saplings and scrub taking hold in the open ground, so the meadow is not a
+       bare lawn between the stands. */
+    scatter(14, 26, 120, (x, z) => plant(x, z, rand(4.5, 8), Math.random() < 0.5));
+  }
 
   /* Undergrowth for close-in scale. */
   scatter(60, 13, 60, (x, z) => {
@@ -610,27 +692,122 @@ function building(w, d, storeys, palette) {
     g.add(band);
   }
 
-  /* Roof furniture, so the tops are not flat grey lids when you fly over. */
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(w * 0.98, 0.4, d * 0.98), mat(0x4a5058));
-  roof.position.y = h + 0.2;
-  g.add(roof);
+  /* GROUND FLOOR.
+     Real streets do not look like the twentieth floor: the bottom storey is
+     taller, darker and mostly glass, because it is shops. Extruding one wall
+     texture from pavement to parapet is the single thing that most gives away a
+     computer-generated city, and this is a cheap fix for it — one box. */
+  const plinth = new THREE.Mesh(
+    new THREE.BoxGeometry(w * 1.008, STOREY * 0.92, d * 1.008),
+    mat(0x3c424b, { roughness: 0.55, metalness: 0.25 })
+  );
+  plinth.position.y = STOREY * 0.46;
+  plinth.receiveShadow = true;
+  g.add(plinth);
+
+  /* A canopy over the shopfront. Reads as an awning from the street and as a
+     hard shadow line from above, which is where the drone actually is. */
+  const canopy = new THREE.Mesh(
+    new THREE.BoxGeometry(w * 1.09, 0.18, d * 1.09),
+    mat(0x565d66, { roughness: 0.9 })
+  );
+  canopy.position.y = STOREY * 0.92;
+  canopy.castShadow = true;
+  g.add(canopy);
+
+  /* CORNER PILASTERS. Four slim uprights standing slightly proud of the wall.
+     A flat face has no way to catch the sun; these give every building a lit
+     edge and a shadowed edge, so the massing is readable from directly above. */
+  {
+    const pil = mat(palette.wall, { roughness: 0.85 });
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const c = new THREE.Mesh(new THREE.BoxGeometry(1.1, h, 1.1), pil);
+        c.position.set((sx * w) / 2, h / 2, (sz * d) / 2);
+        c.castShadow = true;
+        g.add(c);
+      }
+    }
+  }
+
+  /* SETBACK. Tall buildings step in as they rise — partly daylight rules,
+     partly structure. A 25-storey slab of constant width looks like a bar
+     chart; two stages look like a tower. */
+  let top = h;
+  if (storeys > 12) {
+    const upH = STOREY * Math.round(storeys * 0.3);
+    const upper = new THREE.Mesh(
+      new THREE.BoxGeometry(w * 0.72, upH, d * 0.72),
+      mat(palette.wall, { roughness: 0.7 })
+    );
+    upper.position.y = h + upH / 2;
+    upper.castShadow = true;
+    upper.receiveShadow = true;
+    g.add(upper);
+
+    const upBand = new THREE.Mesh(
+      new THREE.BoxGeometry(w * 0.725, upH * 0.62, d * 0.725),
+      bandMat
+    );
+    upBand.position.y = h + upH / 2;
+    g.add(upBand);
+    top = h + upH;
+  }
+
+  /* PARAPET, not a lid. Every flat roof has a low wall around its edge, and
+     from a drone that raised rim is the most recognisable thing about a roof —
+     it is what makes the roof read as a surface you could land on rather than
+     as the top of a solid block. */
+  {
+    const rimW = top > h ? w * 0.72 : w;
+    const rimD = top > h ? d * 0.72 : d;
+    const deck = new THREE.Mesh(
+      new THREE.BoxGeometry(rimW * 0.98, 0.3, rimD * 0.98),
+      mat(0x4a5058)
+    );
+    deck.position.y = top + 0.15;
+    deck.receiveShadow = true;
+    g.add(deck);
+
+    const rim = mat(0x60666f, { roughness: 0.9 });
+    for (const [bw, bd, ox, oz] of [
+      [rimW + 0.5, 0.45, 0, (rimD + 0.5) / 2],
+      [rimW + 0.5, 0.45, 0, -(rimD + 0.5) / 2],
+      [0.45, rimD + 0.5, (rimW + 0.5) / 2, 0],
+      [0.45, rimD + 0.5, -(rimW + 0.5) / 2, 0],
+    ]) {
+      const wsec = new THREE.Mesh(new THREE.BoxGeometry(bw, 0.85, bd), rim);
+      wsec.position.set(ox, top + 0.72, oz);
+      wsec.castShadow = true;
+      g.add(wsec);
+    }
+
+    // Stair head: every roof has one, and it is always the tallest thing up there.
+    const head = new THREE.Mesh(
+      new THREE.BoxGeometry(Math.min(4, rimW * 0.3), 2.4, Math.min(3.4, rimD * 0.3)),
+      mat(0x555c66)
+    );
+    head.position.set(rimW * 0.22, top + 1.2, -rimD * 0.22);
+    head.castShadow = true;
+    g.add(head);
+  }
+  const roof = { position: { y: top } };
   if (storeys > 6) {
-    const unit = new THREE.Mesh(new THREE.BoxGeometry(w * 0.3, 1.6, d * 0.3), mat(0x6b727c));
-    unit.position.set(w * 0.15, h + 1.0, -d * 0.15);
-    unit.castShadow = true;
-    g.add(unit);
     const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4, 6), mat(0x9aa3af));
-    mast.position.set(-w * 0.25, h + 2.2, d * 0.2);
+    mast.position.set(-w * 0.18, roof.position.y + 2.2, d * 0.14);
     g.add(mast);
     // Aviation warning light: red, and it blinks. Genuinely what these are for.
     const lamp = new THREE.Mesh(
       new THREE.SphereGeometry(0.22, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0xff3b30 })
     );
-    lamp.position.set(-w * 0.25, h + 4.3, d * 0.2);
+    lamp.position.set(-w * 0.18, roof.position.y + 4.3, d * 0.14);
     lamp.name = "warnLamp";
     g.add(lamp);
   }
+  /* The true top, so the caller's collider and its rooftop clutter agree with
+     what was actually drawn — a setback tower is taller than storeys * STOREY. */
+  g.userData.top = roof.position.y;
   return g;
 }
 
@@ -1158,9 +1335,12 @@ export function buildCity() {
          rotation the mesh does — a 24x14 block turned 90 degrees is a different
          obstacle, and getting that wrong would let a drone clip a corner that
          looks solid on screen. */
-      obstacles.push(
-        box(px, pz, bw / 2, bd / 2, 0, storeys * STOREY + 0.4, b.rotation.y, "a building")
-      );
+      /* Height comes from the building itself, not from the storey count: a
+         tower with a setback carries an extra stage the arithmetic here does
+         not know about, and a collider that stops short of what is drawn is
+         worse than no collider at all. */
+      const top = b.userData.top ?? storeys * STOREY;
+      obstacles.push(box(px, pz, bw / 2, bd / 2, 0, top + 0.9, b.rotation.y, "a building"));
       roofs.push({ x: px, z: pz, w: bw, d: bd, top: storeys * STOREY + 0.4, rot: b.rotation.y });
     }
   }
@@ -1259,6 +1439,94 @@ export function buildCity() {
     const poleMesh = instanced(new THREE.CylinderGeometry(0.1, 0.13, 3.6, 6), mat(0x3d434b), poles);
     const headMesh = instanced(new THREE.BoxGeometry(0.42, 1.05, 0.36), mat(0x23282e), heads);
     [poleMesh, headMesh].forEach((m) => m && g.add(m));
+  }
+
+  /* STREET TREES.
+     A line of trees down each pavement, evenly spaced, in pits cut out of the
+     paving. From the ground they are scenery; from 30 m up they are the thing
+     that separates a city from an industrial estate, because the regular
+     rhythm along every street is unmistakably municipal planting.
+
+     Instanced in two parts — trunk and crown — so eighty of them cost four draw
+     calls. They are also real obstacles: at 6 m they sit exactly where a
+     student flying a low pass down a street will be. */
+  {
+    const trunks = [];
+    const crowns = [];
+    const pits = [];
+    for (const r of roads) {
+      /* One side of each street, alternating, at a generous spacing. Both sides
+         at close pitch is what a real avenue has and it looked like one — but it
+         put 220 solid obstacles into the streets and left nothing flyable at
+         low level, which is the same clutter the forest was just cured of. An
+         avenue reads as an avenue from the rhythm, not from the count. */
+      for (const side of [r.p % 80 === 0 ? 1 : -1]) {
+        const off = side * (ROAD / 2 + 3.1);
+        for (let along = -128; along <= 128; along += 24) {
+          // Junctions stay clear — sightlines, and it is where the crossings are.
+          if (Math.abs(((along + 20) % 40) - 20) < 11) continue;
+          const px = r.axis ? along : r.p + off;
+          const pz = r.axis ? r.p + off : along;
+          if (Math.hypot(px, pz) > 132 || Math.hypot(px, pz) < 22) continue;
+          if (nearGateCourse(px, pz, 3.2)) continue;
+
+          const th = rand(5.4, 7.2);
+          const spread = th * 0.34;
+          pits.push({ x: px, y: 0.16, z: pz, sx: 1, sy: 1, sz: 1 });
+          trunks.push({ x: px, y: th * 0.28, z: pz, sx: 1, sy: th * 0.56, sz: 1 });
+          crowns.push({
+            x: px, y: th * 0.72, z: pz,
+            ry: Math.random() * Math.PI,
+            sx: spread, sy: spread * rand(0.8, 1.05), sz: spread,
+          });
+          obstacles.push(cylinder(px, pz, 0.4, 0, th * 0.55, "a tree trunk"));
+          obstacles.push(cylinder(px, pz, spread, th * 0.5, th, "a street tree"));
+        }
+      }
+    }
+    const pitGeo = new THREE.CircleGeometry(0.95, 10);
+    pitGeo.rotateX(-Math.PI / 2);
+    const pitMesh = instanced(pitGeo, mat(0x3b3227, { roughness: 1 }), pits);
+    if (pitMesh) pitMesh.castShadow = false;
+    const trunkMesh = instanced(
+      new THREE.CylinderGeometry(0.17, 0.24, 1, 6),
+      mat(0x5b4634, { roughness: 0.95 }),
+      trunks
+    );
+    const crownMesh = instanced(
+      new THREE.SphereGeometry(1, 8, 6),
+      mat(0x3f7a3d, { roughness: 0.95 }),
+      crowns
+    );
+    [pitMesh, trunkMesh, crownMesh].forEach((m) => m && g.add(m));
+  }
+
+  /* STOP LINES AND LANE DIVIDERS.
+     The dashed centre line already told a pilot which way a street runs. These
+     say where it stops. A junction with no stop bar reads as two strips of tar
+     crossing; with one, it reads as a controlled intersection — and it costs a
+     single instanced quad per approach. */
+  {
+    const bars = [];
+    for (let i = -3; i <= 3; i++) {
+      for (let j = -3; j <= 3; j++) {
+        const jx = i * 40;
+        const jz = j * 40;
+        if (Math.hypot(jx, jz) > 130 || Math.hypot(jx, jz) < 22) continue;
+        for (const side of [-1, 1]) {
+          // Across the lane approaching the junction, on the near side of the crossing
+          bars.push({ x: jx + side * (ROAD / 2 + 3.4), y: 0.036, z: jz, ry: Math.PI / 2, sx: 1, sz: 1 });
+          bars.push({ x: jx, y: 0.036, z: jz + side * (ROAD / 2 + 3.4), sx: 1, sz: 1 });
+        }
+      }
+    }
+    const geo = new THREE.PlaneGeometry(ROAD / 2 - 0.4, 0.45);
+    geo.rotateX(-Math.PI / 2);
+    const m = instanced(geo, paintMat, bars);
+    if (m) {
+      m.castShadow = false;
+      g.add(m);
+    }
   }
 
   /* A skyline beyond the play area: low-detail blocks the drone will never reach,
@@ -1415,4 +1683,9 @@ export const FLIGHT_FIELDS = [
   },
 ];
 
-export const DEFAULT_FIELD = "forest";
+/* The city is the field a student starts in. It is the harder of the two to fly,
+   but it is by far the better one to LOOK at first: a street grid gives constant
+   ground reference, the buildings are of known height, and there is always
+   something in frame to judge drift against. An empty-looking wood is a poor
+   first impression of a flight simulator. */
+export const DEFAULT_FIELD = "city";

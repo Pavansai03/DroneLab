@@ -192,27 +192,54 @@ function LoginForm() {
             DRONE<em>LAB</em>
           </div>
 
-          <h2 className="rise d1">
+          <span className="kicker rise d1">For schools · Ages 12+</span>
+
+          {/* Deliberately a <p>, not an <h2>. The site-wide h2 is the small
+              uppercase section heading — display:flex with a gap and a trailing
+              rule — and inheriting that here turned the three lines of this
+              headline into three flex items that laid out side by side and
+              wrapped independently. A display headline is not a section
+              heading, so it does not borrow one's element. */}
+          <p className="display rise d1">
             Build a drone.
             <br />
             Fly it. <em>Break it.</em>
             <br />
             Understand it.
-          </h2>
-          <p className="rise d2">
+          </p>
+
+          <p className="lede rise d2">
             A classroom simulator where the physics are real, the failures are real, and every
             component decision has a consequence you can hear and see.
           </p>
 
           <div className="features rise d2">
             <span className="feature">
-              <Icon.Rocket /> Progress that follows you
+              <span className="feature-ico">
+                <Icon.Rocket />
+              </span>
+              <span>
+                <strong>Progress that follows you</strong>
+                Pick up on any machine, exactly where you left off.
+              </span>
             </span>
             <span className="feature">
-              <Icon.School /> School dashboards
+              <span className="feature-ico">
+                <Icon.School />
+              </span>
+              <span>
+                <strong>School dashboards</strong>
+                Teachers see who is flying and who is stuck.
+              </span>
             </span>
             <span className="feature">
-              <Icon.Shield /> Approved schools only
+              <span className="feature-ico">
+                <Icon.Shield />
+              </span>
+              <span>
+                <strong>Approved schools only</strong>
+                Students join with a code, never an open sign-up.
+              </span>
             </span>
           </div>
 

@@ -1080,28 +1080,34 @@ export default function App() {
           </>
         )}
 
-        <button
-          className="theme-toggle"
-          role="switch"
-          aria-checked={theme === "light"}
-          onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
-          title={
-            theme === "light"
-              ? "Light mode. Click for dark mode."
-              : "Dark mode. Click for light mode."
-          }
-          aria-label="Toggle light and dark mode"
-        >
-          <span className="tt-track">
-            <span className="tt-ico moon">
-              <Moon size={11} />
-            </span>
-            <span className="tt-ico sun">
-              <Sun size={11} />
-            </span>
-            <span className="tt-knob" />
-          </span>
-        </button>
+        {/* A named choice, not a nameless switch.
+            This was a 50x26 toggle with two 11px glyphs inside it, and the one
+            thing it never made clear was which end meant what: a knob sitting
+            over a sun could equally mean "light is on" or "press for light".
+            Two labelled segments cannot be misread — the lit one is the theme
+            you are in, and the other one is what you would get. The labels
+            collapse to icons on a narrow window, where the pair of icons is
+            still unambiguous because both are on screen at once. */}
+        <div className="theme-switch" role="radiogroup" aria-label="Colour theme">
+          <span className="ts-glider" data-active={theme} aria-hidden="true" />
+          {[
+            { id: "light", label: "Light", Glyph: Sun },
+            { id: "dark", label: "Dark", Glyph: Moon },
+          ].map(({ id, label, Glyph }) => (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={theme === id}
+              className={`ts-opt ${theme === id ? "on" : ""}`}
+              onClick={() => setTheme(id)}
+              title={`${label} mode`}
+            >
+              <Glyph size={13} />
+              <span className="ts-label">{label}</span>
+            </button>
+          ))}
+        </div>
 
         {/* Master audio, not just the buzzer. The motors make noise whether or not
             a buzzer was ever fitted, so this can no longer be disabled along with
