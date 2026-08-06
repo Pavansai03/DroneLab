@@ -1,19 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Shell from "../../../components/Shell.jsx";
 import { api } from "../../../lib/api.js";
-import { Loader } from "../../../components/DroneArt.jsx";
+import { Icon } from "../../../components/DroneArt.jsx";
 
 /**
  * THE PROFILE PAGE
  * ================
- * Name, class, school membership — the things a student owns about
- * themselves — plus a plain statement of what their school can see.
+ * One card, centred: who you are, and which school you belong to.
  *
- * That last part is deliberate. A student can be told their progress is
- * visible to staff in a privacy notice nobody reads, or they can be told it
- * on the page where they type their name in. The second is honest.
+ * School membership used to sit in a second card beside this one, which put the
+ * join code — the thing a student is most often asked to read back — in a
+ * different column from their own name. It is one identity, so it is one card,
+ * and the code is set large enough to read off a screen from across a desk.
  */
 export default function ProfilePage() {
   return <Shell>{(me) => <Profile me={me} />}</Shell>;
@@ -24,14 +24,9 @@ function Profile({ me }) {
   const [classCode, setClassCode] = useState(me.profile?.class_code ?? "");
   const [joinCode, setJoinCode] = useState("");
   const [school, setSchool] = useState(me.school);
-  const [progress, setProgress] = useState(null);
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    api.progress().then(setProgress).catch(() => {});
-  }, []);
 
   async function save(e) {
     e.preventDefault();
@@ -66,110 +61,98 @@ function Profile({ me }) {
   }
 
   return (
-    <>
+    <div className="profile-wrap">
       <h1>Profile</h1>
-      <p className="sub">Your account, and what it is connected to.</p>
+      <p className="sub">Your account, and the school it belongs to.</p>
 
-      {err && <div className="note bad" style={{ marginBottom: 14 }}>{err}</div>}
-      {msg && <div className="note ok" style={{ marginBottom: 14 }}>{msg}</div>}
+      {err && <div className="note bad" style={{ marginBottom: 16 }}>{err}</div>}
+      {msg && <div className="note ok" style={{ marginBottom: 16 }}>{msg}</div>}
 
-      <div className="grid cols-2">
-        <form className="card" onSubmit={save}>
-          <h2 style={{ marginTop: 0 }}>About you</h2>
-          <div className="field">
-            <label>Email</label>
-            <input value={me.email} disabled />
-          </div>
-          <div className="field">
-            <label htmlFor="fn">Full name</label>
-            <input id="fn" value={fullName} onChange={(e) => setFullName(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="cc">Class</label>
-            <input
-              id="cc"
-              value={classCode}
-              onChange={(e) => setClassCode(e.target.value)}
-              placeholder="e.g. 9B"
-            />
-          </div>
-          <button className="btn primary" disabled={busy}>
-            Save
-          </button>
-        </form>
+      <form className="card profile-card" onSubmit={save}>
+        <h2 style={{ marginTop: 0 }}>About you</h2>
 
-        <div className="card">
-          <h2 style={{ marginTop: 0 }}>School</h2>
-          {school ? (
-            <>
-              <p className="sub" style={{ marginBottom: 10 }}>
-                You are a member of <strong style={{ color: "var(--text)" }}>{school.name}</strong>.
-              </p>
-              <div className="note">
-                Your school can see your name, your class, which modules you have finished and when you last
-                practised. They cannot see your password, and nobody outside your school can see you at all.
+        <div className="field">
+          <label>Email</label>
+          <input value={me.email} disabled />
+        </div>
+
+        <div className="field">
+          <label htmlFor="fn">Full name</label>
+          <input id="fn" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+        </div>
+
+        <div className="field">
+          <label htmlFor="cc">Class</label>
+          <input
+            id="cc"
+            value={classCode}
+            onChange={(e) => setClassCode(e.target.value)}
+            placeholder="e.g. 9B"
+          />
+        </div>
+
+        {/* School and join code live here, with the rest of the student's
+            identity, rather than in a separate panel. */}
+        {school ? (
+          <div className="school-block">
+            <div className="school-row">
+              <span className="school-ico">
+                <Icon.School />
+              </span>
+              <div>
+                <label style={{ margin: 0 }}>School</label>
+                <strong>{school.name}</strong>
               </div>
-            </>
-          ) : (
-            <form onSubmit={join}>
-              <p className="sub" style={{ marginBottom: 12 }}>
-                You have not joined a school. Until you do, your progress is saved to your account but no
-                school can see it.
-              </p>
-              <div className="field">
-                <label htmlFor="jc">Join code</label>
-                <input
-                  id="jc"
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                  placeholder="ABCD-1234"
-                />
+            </div>
+            {school.join_code && (
+              <div className="school-row">
+                <span className="school-ico">
+                  <Icon.Shield />
+                </span>
+                <div>
+                  <label style={{ margin: 0 }}>Join code</label>
+                  <code className="code-chip big">{school.join_code}</code>
+                </div>
               </div>
-              <button className="btn primary" disabled={busy || !joinCode.trim()}>
-                Join school
+            )}
+            <p className="school-note">
+              Your school can see your name, your class, which modules you have finished and when you
+              last practised. They cannot see your password, and nobody outside your school can see
+              you at all.
+            </p>
+          </div>
+        ) : (
+          <div className="school-block">
+            <label htmlFor="jc">Join code</label>
+            <p className="school-note" style={{ margin: "0 0 12px" }}>
+              You have not joined a school. Until you do, your progress is saved but no school can
+              see it — and the simulator stays locked.
+            </p>
+            <div className="row" style={{ flexWrap: "nowrap" }}>
+              <input
+                id="jc"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                placeholder="ABCD-2345"
+                className="mono"
+                style={{ letterSpacing: "0.1em" }}
+              />
+              <button
+                type="button"
+                className="btn primary"
+                onClick={join}
+                disabled={busy || !joinCode.trim()}
+              >
+                Join
               </button>
-            </form>
-          )}
-        </div>
-      </div>
+            </div>
+          </div>
+        )}
 
-      <h2>Learning record</h2>
-      {progress ? (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Module</th>
-                <th>Status</th>
-                <th>Tasks</th>
-                <th>Last worked on</th>
-              </tr>
-            </thead>
-            <tbody>
-              {progress.modules.map((m) => (
-                <tr key={m.id}>
-                  <td>
-                    {m.number}. {m.title}
-                  </td>
-                  <td>
-                    <span className={`pill ${m.completed ? "ok" : m.tasksDone ? "warn" : "muted"}`}>
-                      {m.completed ? "complete" : m.tasksDone ? "in progress" : "not started"}
-                    </span>
-                  </td>
-                  <td className="mono">
-                    {m.tasksDone}/{m.tasksTotal || "—"}
-                  </td>
-                  <td className="mono" style={{ color: "var(--dim)" }}>
-                    {m.updatedAt ? new Date(m.updatedAt).toLocaleString() : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <Loader />
-      )}
-    </>
+        <button className="btn primary" disabled={busy} style={{ width: "100%", justifyContent: "center" }}>
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </form>
+    </div>
   );
 }

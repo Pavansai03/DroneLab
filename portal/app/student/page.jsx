@@ -31,7 +31,7 @@ function Panel({ me }) {
   if (error) return <div className="note bad">{error}</div>;
   if (!data) return <Loader label="Loading your progress" />;
 
-  const { summary, modules, activity } = data;
+  const { summary, modules } = data;
   const next = modules.find((m) => !m.completed);
 
   return (
@@ -138,34 +138,6 @@ function Panel({ me }) {
         })}
       </div>
 
-      <h2>Recent practice</h2>
-      {activity.length ? (
-        <div className="card">
-          <div className="spark">
-            {[...activity]
-              .reverse()
-              .slice(-30)
-              .map((d) => {
-                const max = Math.max(...activity.map((x) => x.flights), 1);
-                return (
-                  <i
-                    key={d.day}
-                    style={{ height: `${Math.max(4, (d.flights / max) * 100)}%` }}
-                    title={`${d.day}: ${d.flights} flights, ${d.crashes} crashes`}
-                  />
-                );
-              })}
-          </div>
-          <div className="sub" style={{ margin: "10px 0 0", fontSize: 12.5 }}>
-            {summary.flights} flights and {summary.crashes} crashes over the last {activity.length} active
-            days. Crashing is how the failure modules are meant to be learned — it is not a score.
-          </div>
-        </div>
-      ) : (
-        <div className="note">
-          No flights recorded yet. Progress appears here once you have flown in the simulator while signed in.
-        </div>
-      )}
     </>
   );
 }

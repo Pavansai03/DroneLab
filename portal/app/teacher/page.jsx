@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
 import { HeroDrone, Icon, Loader } from "../../components/DroneArt.jsx";
@@ -28,7 +28,7 @@ function Panel({ me }) {
   const [school, setSchool] = useState(null);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
-  const [sort, setSort] = useState("name");
+  const [open, setOpen] = useState("all");
 
   useEffect(() => {
     api.teacher.roster().then(setData).catch((e) => setError(e.message));
@@ -40,13 +40,6 @@ function Panel({ me }) {
 
   if (error) return <div className="note bad">{error}</div>;
   if (!data) return <Loader label="Loading your class" />;
-
-  const week = Date.now() - 7 * 864e5;
-  const rows = [...data.roster].sort((a, b) => {
-    if (sort === "progress") return (b.modules_completed ?? 0) - (a.modules_completed ?? 0);
-    if (sort === "active") return Date.parse(b.last_active ?? 0) - Date.parse(a.last_active ?? 0);
-    return (a.full_name ?? "").localeCompare(b.full_name ?? "");
-  });
 
   return (
     <>
@@ -77,79 +70,22 @@ function Panel({ me }) {
         </div>
       </section>
 
+      {/* Every figure opens the list behind it, exactly as the administration
+          overview does. A count with no way to ask "which ones?" is trivia —
+          and a teacher's first question is always which ones. */}
       <div className="grid cols-4">
-        <Stat icon={<Icon.Users />} value={data.summary.students} label="Students" />
-        <Stat icon={<Icon.Bolt />} value={data.summary.activeThisWeek} label="Active this week" />
-        <Stat icon={<Icon.Chart />} value={data.summary.averageModules} label="Avg modules done" />
-        <Stat
-          icon={<Icon.Shield />}
-          value={data.summary.needHelp}
-          label="May need help"
-          tone={data.summary.needHelp ? "warn" : null}
-        />
+        <StatTile k="all" open={open} setOpen={setOpen} icon={<Icon.Users />}
+                  value={data.summary.students} label="Students" />
+        <StatTile k="active" open={open} setOpen={setOpen} icon={<Icon.Bolt />}
+                  value={data.summary.activeThisWeek} label="Active this week" />
+        <StatTile k="progress" open={open} setOpen={setOpen} icon={<Icon.Chart />}
+                  value={data.summary.averageModules} label="Avg modules done" />
+        <StatTile k="help" open={open} setOpen={setOpen} icon={<Icon.Shield />}
+                  value={data.summary.needHelp} label="May need help"
+                  tone={data.summary.needHelp ? "warn" : null} />
       </div>
 
-      <div className="row" style={{ margin: "26px 0 12px", justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>Class roster</h2>
-        <div className="row">
-          <label style={{ margin: 0 }}>Sort</label>
-          <select value={sort} onChange={(e) => setSort(e.target.value)} style={{ width: 160 }}>
-            <option value="name">Name</option>
-            <option value="progress">Modules complete</option>
-            <option value="active">Last active</option>
-          </select>
-        </div>
-      </div>
-
-      {rows.length === 0 ? (
-        <div className="note">
-          Nobody has joined yet. Give your students the join code above; it goes in their profile page.
-        </div>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Student</th>
-                <th>Class</th>
-                <th>Modules</th>
-                <th>Flights</th>
-                <th>Last active</th>
-                <th>Working on</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const stale = !r.last_active || Date.parse(r.last_active) < week;
-                return (
-                  <tr key={r.user_id}>
-                    <td>{r.full_name || <em style={{ color: "var(--dim)" }}>no name set</em>}</td>
-                    <td className="mono" style={{ color: "var(--dim)" }}>
-                      {r.class_code || "—"}
-                    </td>
-                    <td>
-                      <span className={`pill ${r.modules_completed >= 3 ? "ok" : "muted"}`}>
-                        {r.modules_completed ?? 0}/3
-                      </span>
-                    </td>
-                    <td className="mono">{r.total_flights ?? 0}</td>
-                    <td className="mono" style={{ color: stale ? "var(--warn)" : "var(--dim)" }}>
-                      {r.last_active ? new Date(r.last_active).toLocaleDateString() : "never"}
-                    </td>
-                    <td style={{ color: "var(--dim)", fontSize: 12.5 }}>{r.stuck_on ?? "—"}</td>
-                    <td>
-                      <button className="btn small" onClick={() => setSelected(r.user_id)}>
-                        View
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <Roster rows={data.roster} view={open} onSelect={setSelected} />
 
       {selected && <StudentDetail id={selected} onClose={() => setSelected(null)} />}
     </>
@@ -236,6 +172,169 @@ function Stat({ icon, value, label, tone }) {
       <div className="ico">{icon}</div>
       <b style={tone ? { color: `var(--${tone})` } : undefined}>{value}</b>
       <small>{label}</small>
+    </div>
+  );
+}
+
+/** A figure that opens the list behind it. */
+function StatTile({ k, open, setOpen, icon, value, label, tone }) {
+  return (
+    <button
+      className={`stat clickable ${open === k ? "open" : ""}`}
+      onClick={() => setOpen(open === k ? null : k)}
+    >
+      <i className="accentbar" />
+      <div className="ico">{icon}</div>
+      <b style={tone ? { color: `var(--${tone})` } : undefined}>{value}</b>
+      <small>{label}</small>
+      <span className="stat-cue">{open === k ? "Hide" : "View list"}</span>
+    </button>
+  );
+}
+
+/**
+ * The class roster, filtered by whichever figure is open.
+ *
+ * "May need help" is started-and-not-seen-for-a-week, not simply behind. A class
+ * works at different speeds by design, and a list that flags the slowest third
+ * every week trains its reader to ignore it.
+ */
+function Roster({ rows, view, onSelect }) {
+  const [q, setQ] = useState("");
+  const [cls, setCls] = useState("");
+  const [sort, setSort] = useState("name");
+
+  const week = Date.now() - 7 * 864e5;
+  const classes = useMemo(
+    () => [...new Set(rows.map((r) => r.class_code).filter(Boolean))].sort(),
+    [rows]
+  );
+
+  const list = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return rows
+      .filter((r) => {
+        if (view === "active") return r.last_active && Date.parse(r.last_active) > week;
+        if (view === "help") return r.stuck_on && (!r.last_active || Date.parse(r.last_active) < week);
+        if (view === "progress") return (r.modules_completed ?? 0) > 0;
+        return true;
+      })
+      .filter((r) => (cls ? r.class_code === cls : true))
+      .filter((r) =>
+        !needle
+          ? true
+          : [r.full_name, r.class_code, r.stuck_on]
+              .filter(Boolean)
+              .some((v) => v.toLowerCase().includes(needle))
+      )
+      .sort((a, b) =>
+        sort === "progress"
+          ? (b.modules_completed ?? 0) - (a.modules_completed ?? 0)
+          : sort === "active"
+            ? Date.parse(b.last_active ?? 0) - Date.parse(a.last_active ?? 0)
+            : (a.full_name ?? "").localeCompare(b.full_name ?? "")
+      );
+  }, [rows, q, cls, sort, view, week]);
+
+  if (!view) {
+    return (
+      <div className="note" style={{ marginTop: 20 }}>
+        Select any figure above to see the students behind it.
+      </div>
+    );
+  }
+
+  const title = {
+    all: "Class roster",
+    active: "Active this week",
+    progress: "Students who have completed a module",
+    help: "May need help",
+  }[view];
+
+  return (
+    <div className="drill rise">
+      <h2>{title}</h2>
+
+      <div className="listbar">
+        <div className="search">
+          <Icon.Search />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, class or task…" />
+          {q && (
+            <button className="clear" onClick={() => setQ("")} aria-label="Clear search">
+              ×
+            </button>
+          )}
+        </div>
+        {classes.length > 0 && (
+          <select value={cls} onChange={(e) => setCls(e.target.value)}>
+            <option value="">All classes</option>
+            {classes.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        )}
+        <select value={sort} onChange={(e) => setSort(e.target.value)}>
+          <option value="name">Sort: name</option>
+          <option value="progress">Sort: most progress</option>
+          <option value="active">Sort: last active</option>
+        </select>
+      </div>
+
+      {list.length === 0 ? (
+        <div className="note">
+          {rows.length === 0
+            ? "Nobody has joined yet. Give your students the join code above; it goes in their profile page."
+            : "No students match."}
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Class</th>
+                <th style={{ minWidth: 150 }}>Progress</th>
+                <th>Last active</th>
+                <th>Working on</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((r) => {
+                const pct = Math.round(((r.modules_completed ?? 0) / 3) * 100);
+                const stale = !r.last_active || Date.parse(r.last_active) < week;
+                return (
+                  <tr key={r.user_id}>
+                    <td>
+                      <strong>{r.full_name || <em className="cell-sub">no name set</em>}</strong>
+                    </td>
+                    <td className="mono cell-sub">{r.class_code || "—"}</td>
+                    <td>
+                      <div className="bar" style={{ marginBottom: 5 }}>
+                        <i style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="cell-sub">
+                        {r.modules_completed ?? 0}/3 modules · {pct}%
+                      </div>
+                    </td>
+                    <td className="mono cell-sub" style={{ color: stale ? "var(--warn)" : undefined }}>
+                      {r.last_active ? new Date(r.last_active).toLocaleDateString() : "never"}
+                    </td>
+                    <td className="cell-sub">{r.stuck_on ?? "—"}</td>
+                    <td>
+                      <button className="btn small" onClick={() => onSelect(r.user_id)}>
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

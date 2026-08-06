@@ -60,7 +60,7 @@ router.post(
     const db = adminClient();
     const { data: school } = await db
       .from("schools")
-      .select("id, name, status, contact_email, join_code")
+      .select("id, name, status, contact_email, join_code, owner_id")
       .eq("id", req.params.id)
       .maybeSingle();
 
@@ -85,6 +85,16 @@ router.post(
       .maybeSingle();
 
     if (error) return res.status(400).json({ error: error.message });
+
+    /* Make the owner a member of their own school.
+       my_school_id() reads profiles.school_id, and every row-level policy keys
+       off it — so an owner whose profile does not point at their own school
+       resolves to NULL and sees an empty roster for a school full of students.
+       Approving is the moment the school becomes real, so it is the moment to
+       attach its owner to it. */
+    if (school.owner_id) {
+      await db.from("profiles").update({ school_id: school.id }).eq("id", school.owner_id);
+    }
 
     const portalUrl = process.env.PORTAL_URL || "http://localhost:3000";
     const mail = school.contact_email

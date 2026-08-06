@@ -1331,3 +1331,108 @@ label {
   border-radius: 7px;
   white-space: nowrap;
 }
+
+/* ============================================================== profile */
+/* One centred column. Identity is one thing, so it reads as one card rather
+   than a name in the left panel and a join code in the right. */
+.profile-wrap {
+  max-width: 620px;
+  margin: 0 auto;
+}
+.profile-card {
+  padding: 30px 34px;
+}
+.profile-card .field input {
+  font-size: 15px;
+  padding: 13px 15px;
+}
+
+.school-block {
+  margin: 24px 0;
+  padding: 20px;
+  border-radius: var(--r);
+  background: var(--grad-soft);
+  border: 1px solid rgba(21, 101, 192, 0.2);
+}
+.school-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.school-row:last-of-type {
+  margin-bottom: 0;
+}
+.school-row strong {
+  display: block;
+  font-size: 19px;
+  line-height: 1.3;
+  margin-top: 2px;
+}
+.school-ico {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.school-ico svg {
+  width: 20px;
+  height: 20px;
+}
+.school-note {
+  margin: 16px 0 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--dim);
+}
+/* The join code is read aloud and typed by other people, so it is set large
+   enough to be legible from across a desk. */
+.code-chip.big {
+  display: inline-block;
+  font-size: 21px;
+  padding: 6px 14px;
+  margin-top: 4px;
+  letter-spacing: 0.12em;
+}
+
+/* =============================================================== modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(20, 30, 44, 0.45);
+  backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  animation: fade 0.16s ease both;
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 28px 30px;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: var(--shadow-lg);
+  animation: rise 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.modal h2 {
+  text-transform: none;
+  letter-spacing: -0.01em;
+  font-size: 20px;
+  color: var(--text);
+}
+.modal h2::after {
+  display: none;
+}

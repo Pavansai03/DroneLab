@@ -219,6 +219,14 @@ export function useBuildSync({ user, build, applyBuild, fallbackBuild }) {
 
 export function useProgressSync({ user, moduleId, progress }) {
   const lastKey = useRef(null);
+  /* The most recent snapshot, kept in a ref so the cleanup can flush it without
+     re-subscribing the effect on every keystroke of progress. */
+  const pendingRef = useRef(null);
+
+  const write = useCallback(async (row) => {
+    if (!isSupabaseConfigured || !row) return;
+    await supabase.from("module_progress").upsert(row, { onConflict: "user_id,module_id" });
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !user || !progress) return;
@@ -227,24 +235,38 @@ export function useProgressSync({ user, moduleId, progress }) {
     if (key === lastKey.current) return;
     lastKey.current = key;
 
-    const t = setTimeout(async () => {
-      await supabase.from("module_progress").upsert(
-        {
-          user_id: user.id,
-          module_id: moduleId,
-          completed: progress.complete,
-          tasks_done: progress.doneCount,
-          tasks_total: progress.total,
-          current_task: progress.current?.label ?? null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,module_id" }
-      );
+    const row = {
+      user_id: user.id,
+      module_id: moduleId,
+      completed: progress.complete,
+      tasks_done: progress.doneCount,
+      tasks_total: progress.total,
+      current_task: progress.current?.label ?? null,
+      updated_at: new Date().toISOString(),
+    };
+    pendingRef.current = row;
+
+    const t = setTimeout(() => {
+      write(row);
+      pendingRef.current = null;
     }, 1200);
 
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      /* FLUSH, do not drop.
+         Finishing a module auto-advances to the next one, which changes
+         `moduleId` and tears this effect down — inside the 1200 ms debounce. The
+         old cleanup simply cancelled the timer, so the write that marked the
+         module COMPLETE never happened and it sat for ever one task short of
+         done. The debounce exists to avoid writing on every keystroke, not to
+         discard the last thing that happened. */
+      if (pendingRef.current) {
+        write(pendingRef.current);
+        pendingRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, moduleId, progress?.doneCount, progress?.complete]);
+  }, [user?.id, moduleId, progress?.doneCount, progress?.complete, progress?.total]);
 }
 
 /** Which modules this student has already finished, to restore the rail state. */

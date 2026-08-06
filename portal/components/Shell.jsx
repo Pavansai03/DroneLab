@@ -21,6 +21,33 @@ import { apiUrl } from "../lib/api.js";
  * from anything the browser could edit. Hiding a link is presentation; the
  * actual refusal happens server-side.
  */
+/**
+ * Signing out is one click away from every screen, sits next to navigation, and
+ * throws away unsaved work in the simulator tab. A confirmation is cheap
+ * insurance against a misclick that costs a lesson.
+ */
+function SignOutConfirm({ onCancel, onConfirm }) {
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginTop: 0 }}>Sign out?</h2>
+        <p className="sub" style={{ marginBottom: 22 }}>
+          Your progress is saved. You will need to sign in again to reach your learning or the
+          simulator.
+        </p>
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button className="btn ghost" onClick={onCancel} autoFocus>
+            Stay signed in
+          </button>
+          <button className="btn danger" onClick={onConfirm}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Shell({ children, requireRole }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -158,6 +185,7 @@ export default function Shell({ children, requireRole }) {
 
 function TopBar({ me, pathname }) {
   const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
   const staff = me.role === "teacher" || me.role === "school" || me.role === "admin";
   /* A school account is not a student and has no learning of its own, so it is
      not shown a student panel it would only find empty. */
@@ -213,15 +241,18 @@ function TopBar({ me, pathname }) {
       <span className={`pill ${me.role === "admin" ? "info" : me.role === "teacher" ? "warn" : "muted"}`}>
         {me.role}
       </span>
-      <button
-        className="btn small"
-        onClick={async () => {
-          await supabase().auth.signOut();
-          router.replace("/login");
-        }}
-      >
+      <button className="btn small" onClick={() => setConfirming(true)}>
         Sign out
       </button>
+      {confirming && (
+        <SignOutConfirm
+          onCancel={() => setConfirming(false)}
+          onConfirm={async () => {
+            await supabase().auth.signOut();
+            router.replace("/login");
+          }}
+        />
+      )}
     </header>
   );
 }
