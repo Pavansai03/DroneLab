@@ -132,6 +132,29 @@ app.use(
   })
 );
 
+/* A PREFLIGHT IS A QUESTION, NOT A REQUEST.
+   OPTIONS carries no credentials — the browser sends it precisely to ask
+   whether the real request is permitted — so it must never reach requireAuth.
+
+   It was reaching it. When the cors() origin callback declines, it adds no
+   headers but does not end the request either, so the preflight fell through to
+   the auth gate below and came back 401. The browser then reports only "no
+   Access-Control-Allow-Origin", and a developer reading the network tab sees a
+   401 on /api/me and goes looking for a broken token. The cause was an origin
+   that was not on the list, which nothing in that exchange said.
+
+   Now it answers here, and says which origin was refused. */
+app.use((req, res, next) => {
+  if (req.method !== "OPTIONS") return next();
+  if (res.getHeader("Access-Control-Allow-Origin")) return res.sendStatus(204);
+  return res.status(403).json({
+    error:
+      `Origin ${req.headers.origin ?? "(none)"} is not on this API's allowed list. ` +
+      `Add it to CORS_ORIGINS and restart.`,
+    code: "origin_not_allowed",
+  });
+});
+
 /** Unauthenticated, so a load balancer can use it. */
 app.get("/health", (_req, res) => res.json({ ok: true, service: "dronelab-api" }));
 
