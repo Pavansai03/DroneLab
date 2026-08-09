@@ -64,9 +64,9 @@ export function buildHangarDais() {
     disposables.push(mark.dispose);
 
     const RINGS = [
-      { r: 1.16, n: 7, w: 0.52, o: 0.95, phase: 0 },
-      { r: 1.78, n: 11, w: 0.46, o: 0.8, phase: Math.PI / 11 },
-      { r: 2.28, n: 15, w: 0.38, o: 0.62, phase: Math.PI / 15 },
+      { r: 1.16, n: 7, w: 0.8, o: 0.95, phase: 0 },
+      { r: 1.8, n: 11, w: 0.72, o: 0.85, phase: Math.PI / 11 },
+      { r: 2.32, n: 15, w: 0.6, o: 0.7, phase: Math.PI / 15 },
     ];
 
     for (const ring of RINGS) {
