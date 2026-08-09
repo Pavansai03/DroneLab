@@ -103,7 +103,20 @@ function build(ctx) {
   noise.connect(noiseBand);
   noiseBand.connect(noiseGain);
   noiseGain.connect(master);
-  master.connect(ctx.destination);
+  /* A limiter between the mix and the speakers.
+     Four oscillators plus a noise bed can sum past full scale on a hard climb,
+     and digital clipping does not sound like a loud drone — it sounds like a
+     broken one. This holds the peaks and leaves everything below the threshold
+     untouched, which is what allows the level above to be raised at all. */
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -6;
+  limiter.knee.value = 6;
+  limiter.ratio.value = 12;
+  limiter.attack.value = 0.003;
+  limiter.release.value = 0.12;
+
+  master.connect(limiter);
+  limiter.connect(ctx.destination);
   noise.start();
 
   return { ctx, noise, noiseBand, noiseGain, rotors, tone, master };
@@ -187,7 +200,7 @@ export function updateRotorAudio(rpms, { crashed = false, dt = 1 / 60 } = {}) {
          frame is audible as a zipper. The short time constant tracks throttle
          closely while smoothing the step. */
       r.osc.frequency.setTargetAtTime(bpf, now, 0.03);
-      r.gain.gain.setTargetAtTime(0.14, now, 0.05);
+      r.gain.gain.setTargetAtTime(0.2, now, 0.05);
       live++;
       sum += rpm;
       peak = Math.max(peak, rpm);
@@ -208,8 +221,13 @@ export function updateRotorAudio(rpms, { crashed = false, dt = 1 / 60 } = {}) {
   // Smoothed in JS as well, so a single odd frame cannot make it stutter
   level += (target - level) * Math.min(1, dt * 10);
 
-  nodes.master.gain.setTargetAtTime(level * 0.16, now, 0.06);
-  nodes.noiseGain.gain.setTargetAtTime(level * 0.5, now, 0.08);
+  /* Louder. 0.16 was set by ear on headphones and is far too quiet through the
+     speakers a classroom actually has — a laptop at half volume with twenty
+     students in the room. The limiter below is what makes this safe to raise:
+     it is the ceiling, so a bigger number here means the quiet parts come up
+     while the loud parts stay exactly where they were. */
+  nodes.master.gain.setTargetAtTime(level * 0.42, now, 0.06);
+  nodes.noiseGain.gain.setTargetAtTime(level * 0.55, now, 0.08);
   // Both filters open with power: more air, more high end
   nodes.noiseBand.frequency.setTargetAtTime(900 + level * 1700, now, 0.1);
   nodes.tone.frequency.setTargetAtTime(700 + level * 2200, now, 0.1);

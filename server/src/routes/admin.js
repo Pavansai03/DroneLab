@@ -251,6 +251,69 @@ router.patch(
   })
 );
 
+/* ------------------------------------------------------- student approvals */
+
+/**
+ * Students waiting on a decision, or already decided.
+ *
+ * A student and a school are approved by the same person for the same reason,
+ * so they are deliberately shaped the same way here: a list, a status filter,
+ * and one route that records a decision either way.
+ */
+router.get(
+  "/students",
+  route(async (req, res) => {
+    const db = adminClient();
+    let q = db
+      .from("class_roster")
+      .select("*")
+      .eq("role", "student")
+      .not("school_id", "is", null)
+      .order("joined_at", { ascending: false, nullsFirst: false });
+
+    if (req.query.status) q = q.eq("student_status", req.query.status);
+    if (req.query.school) q = q.eq("school_id", req.query.school);
+
+    const { data, error } = await q;
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ students: data ?? [] });
+  })
+);
+
+/**
+ * Record a decision about one student.
+ *
+ * Reversible in both directions and at any time. An approval given in error has
+ * to be retractable, or the only remedy is deleting a child's account and the
+ * work in it — and a school that leaves has to be closable without that.
+ */
+router.post(
+  "/students/:id/decision",
+  route(async (req, res) => {
+    const decision = String(req.body?.decision ?? "");
+    if (!["approved", "rejected", "pending"].includes(decision)) {
+      return res.status(400).json({ error: "Decision must be approved, rejected or pending." });
+    }
+    const note = req.body?.note ? String(req.body.note).trim().slice(0, 500) : null;
+
+    const { data, error } = await adminClient()
+      .from("profiles")
+      .update({
+        status: decision,
+        decided_at: new Date().toISOString(),
+        decided_by: req.auth.user.id,
+        decision_note: note,
+      })
+      .eq("id", req.params.id)
+      .select("id, full_name, status, decided_at, decision_note")
+      .maybeSingle();
+
+    if (error) return res.status(400).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: "No such student." });
+    res.json({ student: data });
+  })
+);
+
 /* ----------------------------------------------------------------- people */
 
 router.get(

@@ -10,6 +10,7 @@
  */
 
 import * as THREE from "three";
+import { buildBrandSign } from "./brand.js";
 import {
   makeMaterials,
   makeGradientTexture,
@@ -237,6 +238,14 @@ export class DroneScene {
 
     this.labelGroup = new THREE.Group();
     bay.add(this.labelGroup);
+
+    /* The workshop's sign, on the wall the bench faces. Placed behind the pad
+       and turned slightly inward so it reads from the default camera without
+       ever coming between the camera and the aircraft. */
+    this.brandSign = buildBrandSign();
+    this.brandSign.position.set(0.2, -0.72, -5.4);
+    this.brandSign.rotation.y = deg(9);
+    bay.add(this.brandSign);
 
     /* The transmitter lives beside the pad, not on the aircraft. */
     this.txStand = new THREE.Group();

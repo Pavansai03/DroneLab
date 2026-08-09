@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
+import { ExportStudent } from "../../components/Export.jsx";
 import { HeroDrone, Icon, Loader, Skeleton } from "../../components/DroneArt.jsx";
 import { simulatorUrl, openSimulator } from "../../lib/simulator.js";
 
@@ -114,7 +115,29 @@ function Panel({ me }) {
 
       <AskForHelp modules={modules} joined={Boolean(me.school)} />
 
-      <h2>All modules</h2>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
+        <h2 style={{ marginBottom: 0 }}>All modules</h2>
+        {/* A student's own report, built from the data already on this page —
+            no extra request, and nothing in it they cannot already see. */}
+        <ExportStudent
+          small
+          label="Export my report"
+          name={me.profile?.full_name}
+          data={{
+            student: {
+              full_name: me.profile?.full_name,
+              email: me.email,
+              class_code: me.profile?.class_code,
+              student_status: me.approval?.status,
+              joined_at: me.approval?.joinedAt,
+              decided_at: me.approval?.decidedAt,
+            },
+            school: me.school,
+            modules,
+            activity: data.activity,
+          }}
+        />
+      </div>
       <div className="grid cols-2">
         {modules.map((m) => {
           const pct = m.tasksTotal ? Math.round((m.tasksDone / m.tasksTotal) * 100) : m.completed ? 100 : 0;

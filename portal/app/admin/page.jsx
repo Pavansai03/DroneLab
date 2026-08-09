@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
+import { ExportSchool, ExportSchools, ExportStudent, ExportStudents } from "../../components/Export.jsx";
 import { HeroDrone, Icon, Loader } from "../../components/DroneArt.jsx";
 
 /**
@@ -32,6 +33,7 @@ export default function AdminPage() {
 function Panel() {
   const [tab, setTab] = useState("approvals");
   const [pending, setPending] = useState(0);
+  const [pendingStudents, setPendingStudents] = useState(0);
 
   return (
     <>
@@ -55,7 +57,7 @@ function Panel() {
 
       <div className="tabbar">
         {[
-          ["approvals", "Approvals", pending],
+          ["approvals", "Approvals", pending + pendingStudents],
           ["overview", "Overview", 0],
           ["people", "People", 0],
         ].map(([id, label, badge]) => (
@@ -70,7 +72,12 @@ function Panel() {
         ))}
       </div>
 
-      {tab === "approvals" && <Approvals onPending={setPending} />}
+      {tab === "approvals" && (
+        <>
+          <Approvals onPending={setPending} />
+          <StudentApprovals onPending={setPendingStudents} />
+        </>
+      )}
       {tab === "overview" && <Overview />}
       {tab === "people" && <People />}
     </>
@@ -173,11 +180,15 @@ function SchoolList() {
   const [sort, setSort] = useState("name");
   const [err, setErr] = useState(null);
 
-  useEffect(() => {
+  const reload = () =>
     api.admin
       .schools()
       .then((r) => setRows(r.schools))
       .catch((e) => setErr(e.message));
+
+  useEffect(() => {
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const view = useMemo(() => {
@@ -230,6 +241,12 @@ function SchoolList() {
         }
       />
 
+      {rows.length > 0 && (
+        <div className="row" style={{ justifyContent: "flex-end", marginBottom: 10 }}>
+          <ExportSchools schools={view} />
+        </div>
+      )}
+
       {view.length === 0 ? (
         <Empty>No schools match.</Empty>
       ) : (
@@ -243,6 +260,8 @@ function SchoolList() {
                 <th>Active/wk</th>
                 <th style={{ minWidth: 170 }}>Teaching progress</th>
                 <th>Status</th>
+                <th>Decided</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -280,6 +299,22 @@ function SchoolList() {
                       {s.status}
                     </span>
                   </td>
+                  <td className="cell-sub mono">
+                    {s.decided_at ? (
+                      new Date(s.decided_at).toLocaleString()
+                    ) : (
+                      <span title="Applied but not yet decided">—</span>
+                    )}
+                    {s.applied_at && (
+                      <div className="cell-sub">applied {new Date(s.applied_at).toLocaleDateString()}</div>
+                    )}
+                  </td>
+                  <td>
+                    <div className="row" style={{ flexWrap: "nowrap", gap: 6 }}>
+                      <ExportSchool school={s} schoolId={s.id} small label="Export" />
+                      <Decide school={s} onDone={reload} />
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -298,13 +333,17 @@ function StudentList({ onlyActive }) {
   const [q, setQ] = useState("");
   const [school, setSchool] = useState("");
   const [sort, setSort] = useState("recent");
+  const [approval, setApproval] = useState("");
   const [err, setErr] = useState(null);
 
-  useEffect(() => {
+  const reload = () =>
     api.admin
       .users({ role: "student" })
       .then((r) => setRows(r.users))
       .catch((e) => setErr(e.message));
+
+  useEffect(() => {
+    reload();
     api.admin
       .schools()
       .then((r) => setSchools(r.schools))
@@ -318,6 +357,7 @@ function StudentList({ onlyActive }) {
     return rows
       .filter((u) => (onlyActive ? u.last_active && Date.parse(u.last_active) > week : true))
       .filter((u) => (school ? u.school_id === school : true))
+      .filter((u) => (approval ? (u.student_status ?? "approved") === approval : true))
       .filter((u) =>
         !needle
           ? true
@@ -332,7 +372,7 @@ function StudentList({ onlyActive }) {
             ? (a.full_name ?? "").localeCompare(b.full_name ?? "")
             : Date.parse(b.last_active ?? 0) - Date.parse(a.last_active ?? 0)
       );
-  }, [rows, q, school, sort, onlyActive, week]);
+  }, [rows, q, school, sort, onlyActive, approval, week]);
 
   if (err) return <div className="note bad">{err}</div>;
   if (!rows) return <Loader label="Loading students" size={64} />;
@@ -354,6 +394,12 @@ function StudentList({ onlyActive }) {
                 </option>
               ))}
             </select>
+            <select value={approval} onChange={(e) => setApproval(e.target.value)}>
+              <option value="">Any approval</option>
+              <option value="pending">Waiting</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
             <select value={sort} onChange={(e) => setSort(e.target.value)}>
               <option value="recent">Sort: most recent</option>
               <option value="progress">Sort: most progress</option>
@@ -362,6 +408,12 @@ function StudentList({ onlyActive }) {
           </>
         }
       />
+
+      {rows.length > 0 && (
+        <div className="row" style={{ justifyContent: "flex-end", marginBottom: 10 }}>
+          <ExportStudents rows={view} />
+        </div>
+      )}
 
       {view.length === 0 ? (
         <Empty>
@@ -378,6 +430,8 @@ function StudentList({ onlyActive }) {
                 <th>Class</th>
                 <th style={{ minWidth: 150 }}>Progress</th>
                 <th>Last active</th>
+                <th>Approval</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -413,6 +467,22 @@ function StudentList({ onlyActive }) {
                     </td>
                     <td className="mono cell-sub" style={{ color: stale ? "var(--warn)" : undefined }}>
                       {u.last_active ? new Date(u.last_active).toLocaleDateString() : "never"}
+                    </td>
+                    <td>
+                      <StatusPill value={u.student_status} />
+                      <div className="cell-sub mono">
+                        {u.decided_at
+                          ? new Date(u.decided_at).toLocaleString()
+                          : u.joined_at
+                            ? `joined ${new Date(u.joined_at).toLocaleDateString()}`
+                            : "—"}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="row" style={{ flexWrap: "nowrap", gap: 6 }}>
+                        <ExportStudent id={u.user_id} name={u.full_name} label="Export" />
+                        <DecideStudent row={u} onDone={reload} />
+                      </div>
                     </td>
                   </tr>
                 );
@@ -822,6 +892,284 @@ function People() {
         Role changes take effect on the account&apos;s next request. You cannot remove your own admin
         role — ask another administrator.
       </p>
+    </>
+  );
+}
+
+/* ==================================================== approval controls */
+
+function StatusPill({ value }) {
+  const v = value ?? "approved";
+  return (
+    <span className={`pill ${v === "approved" ? "ok" : v === "pending" ? "warn" : "bad"}`}>
+      {v === "pending" ? "waiting" : v}
+    </span>
+  );
+}
+
+/**
+ * Revoke or restore a school, from the list rather than the queue.
+ *
+ * A decision that can only be made once is not a decision, it is a trapdoor. A
+ * school closes, a trial ends, an application turns out to have been made by
+ * someone who did not have the authority — all of those happen after approval,
+ * and the only remedy without this was deleting the school and everything its
+ * students had done.
+ */
+function Decide({ school, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [note, setNote] = useState("");
+  const [err, setErr] = useState(null);
+
+  async function run(kind) {
+    setBusy(true);
+    setErr(null);
+    try {
+      if (kind === "approve") await api.admin.approve(school.id);
+      else await api.admin.reject(school.id, note || null);
+      setAsking(false);
+      setNote("");
+      await onDone();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (school.status === "pending") {
+    return <span className="cell-sub">in the queue</span>;
+  }
+
+  if (asking) {
+    return (
+      <div style={{ minWidth: 210 }}>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Reason (emailed to the school)"
+          style={{ marginBottom: 6 }}
+        />
+        <div className="row" style={{ flexWrap: "nowrap", gap: 6 }}>
+          <button className="btn small" onClick={() => setAsking(false)} disabled={busy}>
+            Cancel
+          </button>
+          <button className="btn small danger" onClick={() => run("reject")} disabled={busy}>
+            {busy ? "Working…" : "Revoke access"}
+          </button>
+        </div>
+        {err && <div className="note bad">{err}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {school.status === "approved" ? (
+        <button className="btn small" onClick={() => setAsking(true)} disabled={busy}
+                title="Withdraw this school's approval. Its students lose access immediately.">
+          Revoke
+        </button>
+      ) : (
+        <button className="btn small" onClick={() => run("approve")} disabled={busy}
+                title="Approve this school again. A new join code is issued.">
+          {busy ? "Working…" : "Re-approve"}
+        </button>
+      )}
+      {err && <div className="note bad">{err}</div>}
+    </>
+  );
+}
+
+/** The same, for one student. */
+function DecideStudent({ row, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const status = row.student_status ?? "approved";
+
+  async function run(decision) {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.admin.studentDecision(row.user_id, decision, null);
+      await onDone();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!row.school_id) return <span className="cell-sub">no school</span>;
+
+  return (
+    <>
+      {status === "approved" ? (
+        <button className="btn small" onClick={() => run("rejected")} disabled={busy}
+                title="Withdraw this student's access. Their work is kept.">
+          {busy ? "…" : "Revoke"}
+        </button>
+      ) : (
+        <button className="btn small primary" onClick={() => run("approved")} disabled={busy}>
+          {busy ? "…" : "Approve"}
+        </button>
+      )}
+      {err && <div className="note bad">{err}</div>}
+    </>
+  );
+}
+
+/**
+ * STUDENTS WAITING
+ * ================
+ * The second queue on the approvals tab. It sits below the schools rather than
+ * beside them because the order matters: a school has to exist before its
+ * students can be let into it, and approving students for a school that is
+ * still pending would be putting them behind a door that is not there yet.
+ */
+function StudentApprovals({ onPending }) {
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [rejecting, setRejecting] = useState(null);
+  const [note, setNote] = useState("");
+
+  const load = () =>
+    api.admin
+      .students({ status: "pending" })
+      .then((r) => {
+        setRows(r.students);
+        onPending?.(r.students.length);
+        setErr(null);
+      })
+      .catch((e) => {
+        /* Before student-approval.sql has run, the column this queue filters on
+           does not exist and the request fails. That is a setup step outstanding,
+           not a fault — so say which one, rather than showing a database error
+           to someone who cannot act on it. */
+        setRows([]);
+        onPending?.(0);
+        setErr(
+          /student_status|column|schema/i.test(e.message)
+            ? "Student approvals are not switched on yet — run supabase/student-approval.sql."
+            : e.message
+        );
+      });
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function decide(row, decision) {
+    setBusy(row.user_id);
+    setErr(null);
+    try {
+      await api.admin.studentDecision(row.user_id, decision, decision === "rejected" ? note || null : null);
+      setRejecting(null);
+      setNote("");
+      await load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (!rows) return null;
+  if (err) {
+    return (
+      <>
+        <h2>Students waiting to join</h2>
+        <div className="note">{err}</div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <h2>
+        Students waiting to join{" "}
+        {rows.length > 0 && <span className="pill warn">{rows.length}</span>}
+      </h2>
+
+      {rows.length === 0 ? (
+        <Empty>
+          No students waiting. A student appears here the moment they enter a valid join code — the
+          code attaches them to a school, it does not admit them.
+        </Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>School</th>
+                <th>Class</th>
+                <th>Requested</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.user_id}>
+                  <td>
+                    <strong>{r.full_name || <em className="cell-sub">no name set</em>}</strong>
+                  </td>
+                  <td>
+                    {r.school_name}
+                    {r.school_status !== "approved" && (
+                      <div className="cell-sub">school {r.school_status}</div>
+                    )}
+                  </td>
+                  <td className="mono cell-sub">{r.class_code || "—"}</td>
+                  <td className="mono cell-sub">
+                    {r.joined_at ? new Date(r.joined_at).toLocaleString() : "—"}
+                  </td>
+                  <td>
+                    {rejecting === r.user_id ? (
+                      <div style={{ minWidth: 220 }}>
+                        <input
+                          value={note}
+                          onChange={(e) => setNote(e.target.value)}
+                          placeholder="Reason shown to the student"
+                          style={{ marginBottom: 6 }}
+                        />
+                        <div className="row" style={{ flexWrap: "nowrap", gap: 6 }}>
+                          <button className="btn small" onClick={() => setRejecting(null)}>
+                            Cancel
+                          </button>
+                          <button
+                            className="btn small danger"
+                            disabled={busy === r.user_id}
+                            onClick={() => decide(r, "rejected")}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="row" style={{ flexWrap: "nowrap", gap: 6 }}>
+                        <button className="btn small" onClick={() => setRejecting(r.user_id)}>
+                          Reject
+                        </button>
+                        <button
+                          className="btn small primary"
+                          disabled={busy === r.user_id}
+                          onClick={() => decide(r, "approved")}
+                        >
+                          {busy === r.user_id ? "Working…" : "Approve"}
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 }

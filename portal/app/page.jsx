@@ -40,7 +40,13 @@ export default function Home() {
                pending screen, not on a dashboard with nothing in it. */
             const { application } = await api.school.application().catch(() => ({ application: null }));
             router.replace(application && application.status !== "approved" ? "/school/pending" : "/school");
-          } else router.replace(me.admitted ? "/student" : "/student/join");
+          } else if (me.admitted) router.replace("/student");
+          /* Three states, three destinations. A student with no school has not
+             started; one who has entered a code is waiting on an administrator;
+             one who has been turned down needs to be told so rather than being
+             dropped back on the join form to try the same code again. */
+          else if (me.school) router.replace("/student/pending");
+          else router.replace("/student/join");
         } catch {
           /* Signed in, but the API is unreachable or slow to wake. The student
              panel handles that state itself and shows a real message. */

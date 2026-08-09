@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
+import { ExportSchool, ExportStudent, ExportStudents } from "../../components/Export.jsx";
 import { HeroDrone, Icon, Loader } from "../../components/DroneArt.jsx";
 
 /**
@@ -77,6 +78,10 @@ function Panel({ me }) {
           <div className="hero-art">
             <HeroDrone />
           </div>
+        </div>
+        {/* The school's own report, where the school's own details are. */}
+        <div className="row" style={{ marginTop: 6 }}>
+          <ExportSchool school={school} roster={data.roster} summary={data.summary} />
         </div>
       </section>
 
@@ -405,6 +410,12 @@ function Roster({ rows, view, onSelect }) {
         </select>
       </div>
 
+      {list.length > 0 && (
+        <div className="row" style={{ justifyContent: "flex-end", marginBottom: 10 }}>
+          <ExportStudents rows={list} filename="dronelab-class-report.csv" />
+        </div>
+      )}
+
       {list.length === 0 ? (
         <div className="note">
           {rows.length === 0
@@ -420,6 +431,7 @@ function Roster({ rows, view, onSelect }) {
                 <th>Class</th>
                 <th style={{ minWidth: 150 }}>Progress</th>
                 <th>Last active</th>
+                <th>Approval</th>
                 <th>Working on</th>
                 <th />
               </tr>
@@ -445,6 +457,27 @@ function Roster({ rows, view, onSelect }) {
                     <td className="mono cell-sub" style={{ color: stale ? "var(--warn)" : undefined }}>
                       {r.last_active ? new Date(r.last_active).toLocaleDateString() : "never"}
                     </td>
+                    {/* A school cannot decide this, but it very much needs to
+                        see it: "why can't Priya open the simulator" is answered
+                        here rather than by a support email. */}
+                    <td>
+                      <span
+                        className={`pill ${
+                          (r.student_status ?? "approved") === "approved"
+                            ? "ok"
+                            : r.student_status === "pending"
+                              ? "warn"
+                              : "bad"
+                        }`}
+                      >
+                        {r.student_status === "pending" ? "waiting" : r.student_status ?? "approved"}
+                      </span>
+                      {r.decided_at && (
+                        <div className="cell-sub mono">
+                          {new Date(r.decided_at).toLocaleDateString()}
+                        </div>
+                      )}
+                    </td>
                     <td className="cell-sub">
                       {(r.help_open ?? 0) > 0 && (
                         <span className="pill warn" style={{ marginBottom: 5 }}>
@@ -454,9 +487,12 @@ function Roster({ rows, view, onSelect }) {
                       <div>{r.help_note || r.stuck_on || "—"}</div>
                     </td>
                     <td>
-                      <button className="btn small" onClick={() => onSelect(r.user_id)}>
-                        View
-                      </button>
+                      <div className="row" style={{ flexWrap: "nowrap", gap: 6 }}>
+                        <button className="btn small" onClick={() => onSelect(r.user_id)}>
+                          View
+                        </button>
+                        <ExportStudent id={r.user_id} name={r.full_name} label="Export" />
+                      </div>
                     </td>
                   </tr>
                 );

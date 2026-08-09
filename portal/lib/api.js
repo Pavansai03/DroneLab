@@ -45,6 +45,21 @@ async function request(path, { method = "GET", body } = {}) {
   }
 
   if (!res.ok) {
+    /* Signed in somewhere else. Clearing the local session here rather than
+       letting the caller decide means every page gets the same behaviour for
+       free: the next thing the student sees is the login screen with a reason,
+       not a panel full of failed requests. */
+    if (payload?.code === "session_superseded") {
+      try {
+        await supabase().auth.signOut();
+      } catch {
+        /* Already gone; the redirect below is what matters. */
+      }
+      if (typeof window !== "undefined") {
+        window.location.href = `/login?error=${encodeURIComponent(payload.error)}`;
+      }
+    }
+
     const err = new Error(payload?.error || `Request failed (${res.status})`);
     err.status = res.status;
     err.payload = payload;
@@ -96,5 +111,11 @@ export const api = {
     setRole: (id, role) => request(`/api/admin/users/${id}/role`, { method: "POST", body: { role } }),
     setSchool: (id, school_id) =>
       request(`/api/admin/users/${id}/school`, { method: "POST", body: { school_id } }),
+    students: (params = {}) => {
+      const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
+      return request(`/api/admin/students${q ? `?${q}` : ""}`);
+    },
+    studentDecision: (id, decision, note) =>
+      request(`/api/admin/students/${id}/decision`, { method: "POST", body: { decision, note } }),
   },
 };

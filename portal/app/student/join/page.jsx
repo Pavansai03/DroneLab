@@ -49,9 +49,11 @@ function Join({ me }) {
     try {
       const { joined } = await api.joinSchool(code.trim().toUpperCase());
       setJoined(joined);
-      /* A moment on the confirmation before moving on. Jumping instantly makes
-         it unclear whether the code was accepted or the page simply changed. */
-      setTimeout(() => router.replace("/student"), 1400);
+      /* On to the waiting room, not into the product. The code attaches them to
+         a school; an administrator admits them. A moment on the confirmation
+         first, because jumping instantly leaves it unclear whether the code was
+         accepted or the page simply changed. */
+      setTimeout(() => router.replace("/student/pending"), 1400);
     } catch (err) {
       setError(err.message);
       setBusy(false);

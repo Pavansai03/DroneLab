@@ -68,6 +68,22 @@ export default function Shell({ children, requireRole }) {
         }
         const profile = await api.me();
         if (!alive) return;
+
+        /* THE GATE, ENFORCED ON EVERY PANEL PAGE.
+           Hiding the simulator button from an unapproved student is a courtesy,
+           not a control — the panel itself is still behind approval, and typing
+           /student in the address bar must not be a way past it. Sending them
+           to the screen that explains their actual state is also kinder than a
+           dashboard with everything greyed out and no reason given. */
+        if (profile.role === "student" && !profile.admitted) {
+          const want = profile.school ? "/student/pending" : "/student/join";
+          /* Never redirect a gate page to itself. /student/join is wrapped in
+             this Shell too, so without this check an unjoined student is sent
+             to the page they are already on, `me` is never set, and they sit
+             under a loading spinner for ever. */
+          if (pathname !== want) return router.replace(want);
+        }
+
         setMe(profile);
       } catch (e) {
         if (!alive) return;
