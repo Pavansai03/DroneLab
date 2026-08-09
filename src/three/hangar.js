@@ -5,31 +5,24 @@ import { makeMarkTexture, MARK_ASPECT } from "./brand.js";
  * THE ASSEMBLY PLATFORM
  * =====================
  * The original eight-sided podium, exactly as it was, with the RajUddan mark
- * repeated across its surface as a livery.
+ * filling its surface.
  *
  * WHY A PATTERN AND NOT A SIGN
  * ----------------------------
  * Everything tried before this put the brand somewhere you look AT: a board
  * behind the bench, a stripe round a raised drum, a strip of lettering on the
- * deck. All of them are signage, and signage on a floor has one correct reading
- * angle. This camera orbits without stopping, so for most of every rotation
- * that lettering was upside down.
+ * deck. All of them are signage standing beside the machine, and the machine is
+ * what anyone is here to look at.
  *
- * A repeated mark has no reading angle. It is a surface finish rather than a
- * label — the way a brand appears on a workshop floor, a pit lane or a court —
- * and it stays right whichever way the camera has come round.
+ * The mark belongs ON the deck — the centre-circle logo of a court, not a
+ * hoarding at the side of it.
  *
- * HOW THEY ARE ARRANGED
- * ---------------------
- * Three concentric rings with counts that share no common factor (7, 11, 15).
- * Equal counts would line the marks up into radial spokes, and spokes are the
- * one thing that makes a scatter look mechanical. The rings are also offset by
- * half a step, and each mark is turned toward the centre, so the pattern reads as
- * laid out rather than dropped.
- *
- * Sizes fall off toward the rim and so does opacity, which does two things: it
- * keeps the eye on the aircraft in the middle, and it stops the outer ring
- * fighting the podium's edge for attention.
+ * ONE MARK, NOT A PATTERN
+ * -----------------------
+ * A scatter of small marks came before this and read as wallpaper — busy, and
+ * none of them large enough to be the logo rather than a texture. A single mark
+ * filling the deck is the stronger statement, and the aircraft standing on top
+ * of it is the point of the picture anyway.
  */
 
 /** Top surface of the podium. Set by the aircraft above it; do not move. */
@@ -59,60 +52,43 @@ export function buildHangarDais() {
   g.add(podium);
 
   /* ------------------------------------------------------- the livery */
+  /* ONE mark, as large as the platform will hold.
+     Sized from the pad's radius rather than picked by eye: a rectangle of the
+     artwork's own proportions, scaled until its diagonal exactly meets the
+     2.6m pad. That is the largest it can be without a corner hanging over the
+     edge, and it is arithmetic rather than a guess, so it stays right if the
+     artwork is ever replaced with one of different proportions. */
   const mark = makeMarkTexture();
   if (mark) {
     disposables.push(mark.dispose);
 
-    const RINGS = [
-      { r: 1.16, n: 7, w: 0.8, o: 0.95, phase: 0 },
-      { r: 1.8, n: 11, w: 0.72, o: 0.85, phase: Math.PI / 11 },
-      { r: 2.32, n: 15, w: 0.6, o: 0.7, phase: Math.PI / 15 },
-    ];
+    const PAD_R = 2.6;
+    // (w/2)^2 + (h/2)^2 = PAD_R^2, with h = w / MARK_ASPECT
+    const w = (2 * PAD_R) / Math.sqrt(1 + 1 / (MARK_ASPECT * MARK_ASPECT));
+    const h = w / MARK_ASPECT;
 
-    for (const ring of RINGS) {
-      const h = ring.w / MARK_ASPECT;
-      const mesh = new THREE.InstancedMesh(
-        new THREE.PlaneGeometry(ring.w, h),
-        new THREE.MeshBasicMaterial({
-          map: mark.texture,
-          transparent: true,
-          opacity: ring.o,
-          depthWrite: false,
-        }),
-        ring.n
-      );
+    const decal = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({
+        map: mark.texture,
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: false,
+      })
+    );
 
-      const o = new THREE.Object3D();
-      for (let i = 0; i < ring.n; i++) {
-        const a = (i / ring.n) * Math.PI * 2 + ring.phase;
+    /* Squared to where the camera starts (azimuth 35 degrees), so the mark is
+       upright the moment the bay opens. With a single mark there is no
+       orientation that is right from everywhere — the camera orbits — so the
+       one to get right is the first one anybody sees.
 
-        /* Turned so its top points at the CENTRE, not away from it.
-           This is the opposite of the obvious choice and it matters. The camera
-           looks down and inward, so for the marks nearest it — the ones seen
-           largest and least foreshortened — a top pointing outward is a top
-           pointing at the viewer, which lands upside down on screen. Pointing
-           inward puts those the right way up. The far side inverts instead, but
-           those are smaller, more foreshortened and half behind the aircraft.
-
-           The plane is laid flat by a -90 degree turn about X, which sends its
-           local +Y to world -Z; this solves for the spin that then aims +Y down
-           the inward radius. Worth deriving rather than guessing — an angle out
-           by 90 degrees gives a ring of marks all facing one way, which reads
-           as a mistake rather than as a pattern. */
-        const spin = Math.atan2(Math.cos(a), Math.sin(a));
-
-        o.position.set(Math.cos(a) * ring.r, DECAL_Y, Math.sin(a) * ring.r);
-        o.rotation.set(-Math.PI / 2, 0, spin);
-        o.scale.set(1, 1, 1);
-        o.updateMatrix();
-        mesh.setMatrixAt(i, o.matrix);
-      }
-      mesh.instanceMatrix.needsUpdate = true;
-      mesh.castShadow = false;
-      mesh.receiveShadow = false;
-      mesh.renderOrder = 2;
-      g.add(mesh);
-    }
+       Laying the plane flat sends its local +Y to world -Z; this turn then aims
+       it directly away from the opening camera position, which is what puts the
+       top of the logo at the top of the screen. */
+    decal.rotation.set(-Math.PI / 2, 0, (35 * Math.PI) / 180);
+    decal.position.set(0, DECAL_Y, 0);
+    decal.renderOrder = 2;
+    g.add(decal);
   }
 
   g.userData.dispose = () => disposables.forEach((d) => d());
