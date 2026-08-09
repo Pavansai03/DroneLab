@@ -38,7 +38,28 @@ const run = (cmd, cwd, env = {}) => {
   execSync(cmd, { cwd, stdio: "inherit", env: { ...process.env, ...env } });
 };
 
-/* 1 — the simulator.
+/* 1 — the simulator's own dependencies.
+   Vercel installs in the project's Root Directory, which is `portal/` — so the
+   portal's packages are there and the repository root's are not. Vite lives at
+   the root, and `npm run build` there fails in about a second with "vite: not
+   found", which reads like a broken build command rather than a missing
+   install. Nothing else in the pipeline can succeed without this.
+
+   Skipped when the modules are already present, so running this locally does
+   not reinstall on every build. `npm ci` when there is a lockfile, because it
+   is both faster and reproducible; `npm install` if that fails, which happens
+   when the lockfile has drifted from package.json. */
+if (!existsSync(resolve(root, "node_modules", "vite"))) {
+  console.log("\nInstalling the simulator's dependencies (root package.json)…");
+  try {
+    run(existsSync(resolve(root, "package-lock.json")) ? "npm ci" : "npm install", root);
+  } catch {
+    console.log("\nnpm ci failed — falling back to npm install.");
+    run("npm install", root);
+  }
+}
+
+/* 2 — the simulator.
    BASE_PATH tells Vite to emit /sim/assets/... instead of /assets/..., because
    the app no longer sits at the root of its origin. Without it every asset URL
    is absolute to `/` and resolves into the portal, which answers with a 404
@@ -50,14 +71,14 @@ if (!existsSync(dist)) {
   process.exit(1);
 }
 
-/* 2 — hand it to Next.
+/* 3 — hand it to Next.
    Removed first: see the note at the top about stale hashed assets. */
 rmSync(target, { recursive: true, force: true });
 mkdirSync(target, { recursive: true });
 cpSync(dist, target, { recursive: true });
 console.log(`\nCopied ${readdirSync(dist).length} entries -> portal/public/sim`);
 
-/* 3 — the portal, which now has the simulator inside its public directory and
+/* 4 — the portal, which now has the simulator inside its public directory and
    will serve it as static files at /sim. */
 run("npm run build", resolve(root, "portal"));
 
