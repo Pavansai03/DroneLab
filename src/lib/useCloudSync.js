@@ -14,7 +14,7 @@ import { supabase, isSupabaseConfigured, describeError } from "./supabase.js";
 
 /* ------------------------------------------------------- serialisation */
 
-export function serialiseBuild(build) {
+export function serialiseBuild(build, earned) {
   return {
     frameId: build.frameId,
     placed: build.placed,
@@ -22,6 +22,14 @@ export function serialiseBuild(build) {
     variants: build.variants,
     faults: build.faults,
     flags: build.flags,
+    /* Flight achievements ride along with the build.
+       They are not part of the aircraft, and this is not where they belong on
+       principle — but `state` is a jsonb column that already syncs per user, so
+       putting them here works today without a migration. Kept local only, they
+       were lost by every reload on a new machine, every cleared browser, and by
+       the move to a new origin, which is what took a completed module back to
+       ten of eleven for someone who had certainly flown it. */
+    earned: earned ? [...earned] : [],
   };
 }
 
@@ -132,7 +140,7 @@ export async function signOut() {
 
 /* ----------------------------------------------------------- build sync */
 
-export function useBuildSync({ user, build, applyBuild, fallbackBuild }) {
+export function useBuildSync({ user, build, earned, applyBuild, applyEarned, fallbackBuild }) {
   const [status, setStatus] = useState("idle"); // idle | loading | saving | saved | error
   const [error, setError] = useState(null);
   const loadedFor = useRef(null);
@@ -166,6 +174,11 @@ export function useBuildSync({ user, build, applyBuild, fallbackBuild }) {
       }
       if (data) {
         applyBuild(deserialiseBuild(data, fallbackBuild));
+        /* Merged, never replaced: a student may have flown on this machine
+           while signed out, and that work counts too. */
+        if (Array.isArray(data.state?.earned) && data.state.earned.length) {
+          applyEarned?.(data.state.earned);
+        }
         lastSaved.current = JSON.stringify(data.state);
       }
       setStatus("idle");
@@ -182,7 +195,7 @@ export function useBuildSync({ user, build, applyBuild, fallbackBuild }) {
   useEffect(() => {
     if (!isSupabaseConfigured || !user || status === "loading") return;
 
-    const payload = serialiseBuild(build);
+    const payload = serialiseBuild(build, earned);
     const json = JSON.stringify(payload);
     if (json === lastSaved.current) return;
 
@@ -210,7 +223,7 @@ export function useBuildSync({ user, build, applyBuild, fallbackBuild }) {
 
     return () => clearTimeout(saveTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [build, user?.id]);
+  }, [build, earned, user?.id]);
 
   return { status, error };
 }

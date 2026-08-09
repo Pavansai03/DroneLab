@@ -88,12 +88,27 @@ export function buildProgressApi({ build, frame, telemetry, diagnostics, complet
 
 /** Evaluate every task in a module and return per-task pass/fail plus a summary. */
 export function evaluateModule(module, api) {
+  /* A MODULE THE SERVER HAS RECORDED AS FINISHED STAYS FINISHED.
+     Every other task here is re-derived from the current build, which is right
+     for build tasks — unfit a motor and that task really is undone. It is wrong
+     for anything demonstrated in flight. Those cannot be re-derived at all once
+     the flight is over, so a student who completed a module last week, on
+     another machine, or before this deployment moved origin, came back to a
+     checklist that had forgotten the one task it could not check.
+
+     Completion is a historical fact, not a live measurement. If it was recorded
+     it is true, and the module rail has been showing a tick for it all along —
+     this only makes the task list agree. */
+  const recorded = Boolean(api.moduleComplete?.(module.id));
+
   const tasks = module.tasks.map((t) => {
-    let done = false;
-    try {
-      done = Boolean(t.check(api));
-    } catch {
-      done = false;
+    let done = recorded;
+    if (!done) {
+      try {
+        done = Boolean(t.check(api));
+      } catch {
+        done = false;
+      }
     }
     return { ...t, done };
   });

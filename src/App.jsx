@@ -134,10 +134,32 @@ export default function App() {
     []
   );
 
+  /* Flight achievements, accumulated and never reduced. Telemetry is null in
+     the assembly bay, so a set read straight off it loses everything the moment
+     a student stops flying — see flightAchieved() in progress.js. Seeded from
+     this machine, merged with whatever the account already had. */
+  const [earned, setEarned] = useState(() => loadEarned(null));
+
+  const applyCloudEarned = useCallback((list) => {
+    setEarned((prev) => {
+      const next = new Set(prev);
+      let novel = false;
+      for (const k of list) {
+        if (!next.has(k)) {
+          next.add(k);
+          novel = true;
+        }
+      }
+      return novel ? next : prev;
+    });
+  }, []);
+
   const { status: syncStatus, error: syncError } = useBuildSync({
     user: auth.user,
     build: bs,
+    earned,
     applyBuild: applyCloudBuild,
+    applyEarned: applyCloudEarned,
     fallbackBuild: makeInitialBuild(frameId),
   });
 
@@ -175,10 +197,6 @@ export default function App() {
   const [inspectorTab, setInspectorTab] = useState("diagnostics");
   const [selectedTree, setSelectedTree] = useState("fc");
   const [telemetry, setTelemetry] = useState(null);
-  /* Flight achievements, accumulated. Telemetry is null in the assembly bay, so
-     a set read straight off it loses everything the moment a student stops
-     flying — see flightAchieved() in progress.js. */
-  const [earned, setEarned] = useState(() => loadEarned(null));
   const [crashReport, setCrashReport] = useState(null);
   const [notice, setNotice] = useState(null);
   const [testing, setTesting] = useState(false);
