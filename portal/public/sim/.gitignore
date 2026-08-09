@@ -1,0 +1,6 @@
+# Written by scripts/build-merged.mjs. Nothing here is authored by hand.
+# The filenames are content-hashed and change every build, so committing
+# them means endless meaningless diffs, and stale assets shipping beside
+# fresh ones.
+*
+!.gitignore

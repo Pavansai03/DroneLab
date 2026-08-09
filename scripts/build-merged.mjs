@@ -25,7 +25,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { cpSync, existsSync, rmSync, mkdirSync, readdirSync } from "node:fs";
+import { cpSync, existsSync, rmSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -76,6 +76,25 @@ if (!existsSync(dist)) {
 rmSync(target, { recursive: true, force: true });
 mkdirSync(target, { recursive: true });
 cpSync(dist, target, { recursive: true });
+
+/* Rewrite the ignore file the wipe just removed.
+   Re-created rather than preserved: wiping the directory is the whole point of
+   this step, and carving out an exception would be one more thing to get wrong.
+   Written by the script rather than committed once, so it cannot go missing —
+   the first build after the wipe put a 1.1MB bundle into a commit. */
+writeFileSync(
+  resolve(target, ".gitignore"),
+  [
+    "# Written by scripts/build-merged.mjs. Nothing here is authored by hand.",
+    "# The filenames are content-hashed and change every build, so committing",
+    "# them means endless meaningless diffs, and stale assets shipping beside",
+    "# fresh ones.",
+    "*",
+    "!.gitignore",
+    "",
+  ].join("\n")
+);
+
 console.log(`\nCopied ${readdirSync(dist).length} entries -> portal/public/sim`);
 
 /* 4 — the portal, which now has the simulator inside its public directory and
