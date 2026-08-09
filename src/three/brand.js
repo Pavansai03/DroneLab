@@ -219,3 +219,110 @@ export function makeBrandTexture() {
 }
 
 export const BRAND_ASPECT = W / H;
+
+/* ==================================================================== */
+/* THE LIVERY BAND                                                      */
+/* ==================================================================== */
+/**
+ * A strip for wrapping around the side of the assembly platform.
+ *
+ * Different artwork from the panel, not the same artwork squeezed: wrapped
+ * around a cylinder and repeated, each instance is close to seven times wider
+ * than it is tall, and the panel's stacked wordmark and tagline would be
+ * unreadable at that proportion. So this is one line — mark, name, separator —
+ * proportioned for the shape it is actually going on.
+ *
+ * `REPEAT` copies go round the platform so the brand is legible from wherever
+ * the orbiting camera happens to be, rather than only from one side.
+ */
+const BAND_W = 1000;
+const BAND_H = 150;
+export const BAND_REPEAT = 5;
+
+function paintBand(ctx, logo) {
+  ctx.clearRect(0, 0, BAND_W, BAND_H);
+
+  const bg = ctx.createLinearGradient(0, 0, BAND_W, 0);
+  bg.addColorStop(0, "#14523f");
+  bg.addColorStop(0.5, DEEP);
+  bg.addColorStop(1, "#2f7d45");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, BAND_W, BAND_H);
+
+  // A leaf-green rule top and bottom, so the band reads as a fitted stripe.
+  ctx.fillStyle = LEAF;
+  ctx.fillRect(0, 0, BAND_W, 5);
+  ctx.fillRect(0, BAND_H - 5, BAND_W, 5);
+
+  const t = { x: 34, y: 26, w: 178, h: BAND_H - 52 };
+  ctx.fillStyle = "#ffffff";
+  roundRect(ctx, t.x, t.y, t.w, t.h, 16);
+  ctx.fill();
+
+  if (logo) {
+    const pad = 12;
+    const k = Math.min((t.w - pad * 2) / logo.width, (t.h - pad * 2) / logo.height);
+    ctx.drawImage(
+      logo,
+      t.x + (t.w - logo.width * k) / 2,
+      t.y + (t.h - logo.height * k) / 2,
+      logo.width * k,
+      logo.height * k
+    );
+  } else {
+    drawFallbackMark(ctx, t.x, t.y, t.w, t.h);
+  }
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#ffffff";
+  ctx.font = '800 64px "Segoe UI", system-ui, -apple-system, Arial, sans-serif';
+  ctx.fillText("RajUddan", t.x + t.w + 34, BAND_H * 0.46);
+
+  ctx.fillStyle = "rgba(255,255,255,0.78)";
+  ctx.font = '600 26px "Segoe UI", system-ui, -apple-system, Arial, sans-serif';
+  if ("letterSpacing" in ctx) ctx.letterSpacing = "5px";
+  ctx.fillText("DRONE ENGINEERING LAB", t.x + t.w + 38, BAND_H * 0.78);
+  if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
+
+  /* A chevron closing each repeat, so the joins read as a designed rhythm
+     rather than as the texture obviously starting over. */
+  ctx.fillStyle = LEAF;
+  const cx = BAND_W - 92;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.moveTo(cx + i * 24, 42);
+    ctx.lineTo(cx + i * 24 + 16, 42);
+    ctx.lineTo(cx + i * 24 + 34, BAND_H - 42);
+    ctx.lineTo(cx + i * 24 + 18, BAND_H - 42);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+/** The wrapped band. Returns `{ texture, dispose }`, or null when headless. */
+export function makeBrandBandTexture() {
+  if (!hasCanvas()) return null;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = BAND_W;
+  canvas.height = BAND_H;
+  const ctx = canvas.getContext("2d");
+  paintBand(ctx, null);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.anisotropy = 8;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.repeat.set(BAND_REPEAT, 1);
+
+  const img = new Image();
+  img.onload = () => {
+    paintBand(ctx, img);
+    texture.needsUpdate = true;
+  };
+  img.onerror = () => {};
+  img.src = "brand/logo.png";
+
+  return { texture, dispose: () => texture.dispose() };
+}
