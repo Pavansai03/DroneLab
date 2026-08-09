@@ -45,17 +45,35 @@ const run = (cmd, cwd, env = {}) => {
    found", which reads like a broken build command rather than a missing
    install. Nothing else in the pipeline can succeed without this.
 
+   --include=dev is not optional here, however redundant it looks. Vercel sets
+   NODE_ENV=production, and npm honours that by omitting devDependencies — which
+   is where vite is. Without the flag the install "succeeds", installs no build
+   tooling at all, and the next line dies with the very "vite: not found" this
+   step exists to prevent.
+
    Skipped when the modules are already present, so running this locally does
    not reinstall on every build. `npm ci` when there is a lockfile, because it
    is both faster and reproducible; `npm install` if that fails, which happens
    when the lockfile has drifted from package.json. */
 if (!existsSync(resolve(root, "node_modules", "vite"))) {
   console.log("\nInstalling the simulator's dependencies (root package.json)…");
+  const lock = existsSync(resolve(root, "package-lock.json"));
   try {
-    run(existsSync(resolve(root, "package-lock.json")) ? "npm ci" : "npm install", root);
+    run(lock ? "npm ci --include=dev" : "npm install --include=dev", root);
   } catch {
     console.log("\nnpm ci failed — falling back to npm install.");
-    run("npm install", root);
+    run("npm install --include=dev", root);
+  }
+
+  /* Checked here rather than left to fail obscurely two lines down. An install
+     that quietly omitted the build tooling is the exact failure this block
+     exists for, and it deserves a sentence rather than a stack trace. */
+  if (!existsSync(resolve(root, "node_modules", "vite"))) {
+    console.error(
+      "\nInstalled, but vite is still missing — devDependencies were omitted.\n" +
+        `NODE_ENV is "${process.env.NODE_ENV}", and the build tooling lives in devDependencies.`
+    );
+    process.exit(1);
   }
 }
 
