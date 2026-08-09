@@ -224,20 +224,19 @@ export const BRAND_ASPECT = W / H;
 /* THE LIVERY BAND                                                      */
 /* ==================================================================== */
 /**
- * A strip for wrapping around the side of the assembly platform.
+ * The markings laid on the platform's surface.
  *
- * Different artwork from the panel, not the same artwork squeezed: wrapped
- * around a cylinder and repeated, each instance is close to seven times wider
- * than it is tall, and the panel's stacked wordmark and tagline would be
- * unreadable at that proportion. So this is one line — mark, name, separator —
- * proportioned for the shape it is actually going on.
+ * Different artwork from the panel, not the same artwork squeezed: a strip on
+ * the deck is nearly seven times wider than it is tall, and the panel's stacked
+ * wordmark and tagline would be illegible at that proportion.
  *
- * `REPEAT` copies go round the platform so the brand is legible from wherever
- * the orbiting camera happens to be, rather than only from one side.
+ * It is laid flat on the platform, so it is proportioned for a strip read from
+ * above rather than for a stacked block: one line, mark then name then lab.
  */
 const BAND_W = 1000;
 const BAND_H = 150;
-export const BAND_REPEAT = 5;
+/** So a caller can size a decal without hard-coding the artwork's proportions. */
+export const BAND_ASPECT = BAND_W / BAND_H;
 
 function paintBand(ctx, logo) {
   ctx.clearRect(0, 0, BAND_W, BAND_H);
@@ -300,7 +299,7 @@ function paintBand(ctx, logo) {
   }
 }
 
-/** The wrapped band. Returns `{ texture, dispose }`, or null when headless. */
+/** Returns `{ texture, dispose }`, or null when there is no DOM to draw on. */
 export function makeBrandBandTexture() {
   if (!hasCanvas()) return null;
 
@@ -313,8 +312,6 @@ export function makeBrandBandTexture() {
   const texture = new THREE.CanvasTexture(canvas);
   texture.anisotropy = 8;
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.repeat.set(BAND_REPEAT, 1);
 
   const img = new Image();
   img.onload = () => {
