@@ -420,6 +420,16 @@ export const Icon = {
       <path fill="#EA4335" d="M24 10.6c3.2 0 5.4 1.4 6.7 2.6l6.1-6C33 3.8 29.9 2 24 2 15.4 2 8.1 6.9 4.4 14l7.1 5.5c1.8-5.3 6.7-8.9 12.5-8.9z" />
     </svg>
   ),
+  /* A tray with an arrow coming down into it. The external-link glyph was
+     standing in for this, and it says the opposite thing: that something opens
+     elsewhere, rather than that a file lands on your machine. */
+  Download: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}>
+      <path d="M12 3v11" />
+      <path d="M8 10.5l4 4 4-4" />
+      <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+    </svg>
+  ),
   Search: (p) => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" {...p}>
       <circle cx="11" cy="11" r="7" />

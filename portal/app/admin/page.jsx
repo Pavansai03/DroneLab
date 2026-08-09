@@ -659,8 +659,11 @@ function Approvals({ onPending }) {
         </div>
       )}
 
+      {/* Named to match the students queue below it. "Waiting for a decision"
+          described the queue without saying whose, which read as ambiguous the
+          moment a second queue appeared underneath. */}
       <h2 style={{ marginTop: 0 }}>
-        Waiting for a decision{" "}
+        Schools waiting to join{" "}
         {pending.length > 0 && <span className="pill warn">{pending.length}</span>}
       </h2>
 

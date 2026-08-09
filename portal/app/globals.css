@@ -646,7 +646,25 @@ label {
   transition: 0.18s;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+  /* A button label is one line. Without this a button in a narrow flex slot
+     wraps its own text — "Export my report" came out as three stacked words
+     beside an icon left at its natural size, which is the next line's job. */
+  white-space: nowrap;
+  line-height: 1.2;
+}
+/* The icons carry no intrinsic size — every other place that uses them sets it
+   in CSS, and buttons were the one place that forgot. An unsized inline SVG
+   falls back to its default box, which is far larger than the text beside it. */
+.btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.btn.small svg {
+  width: 14px;
+  height: 14px;
 }
 .btn:hover:not(:disabled) {
   border-color: var(--accent);

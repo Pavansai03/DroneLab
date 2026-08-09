@@ -10,7 +10,7 @@
  */
 
 import * as THREE from "three";
-import { buildBrandSign } from "./brand.js";
+import { buildHangarDais, FLOOR_Y } from "./hangar.js";
 import {
   makeMaterials,
   makeGradientTexture,
@@ -171,17 +171,16 @@ export class DroneScene {
       new THREE.MeshStandardMaterial({ map: this.groundTex, roughness: 0.92, metalness: 0.02 })
     );
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.72;
+    /* The floor sits well below the bench now — see hangar.js. The deck cannot
+       move without lifting the aircraft off its own hardpoints, so the room
+       falls away beneath it instead, and that gap is what gives the platform
+       its height. */
+    ground.position.y = FLOOR_Y;
     ground.receiveShadow = true;
     bay.add(ground);
 
-    const podium = new THREE.Mesh(
-      new THREE.CylinderGeometry(2.7, 2.95, 0.14, 8),
-      new THREE.MeshStandardMaterial({ color: 0xeef5fb, roughness: 0.4, metalness: 0.25 })
-    );
-    podium.position.y = -0.66;
-    podium.receiveShadow = true;
-    bay.add(podium);
+    this.dais = buildHangarDais();
+    bay.add(this.dais);
 
     this.padTex = makeHexGridTexture("rgba(15,95,125,0.75)");
     this.padTex.repeat.set(9, 9);
@@ -238,14 +237,6 @@ export class DroneScene {
 
     this.labelGroup = new THREE.Group();
     bay.add(this.labelGroup);
-
-    /* The workshop's sign, on the wall the bench faces. Placed behind the pad
-       and turned slightly inward so it reads from the default camera without
-       ever coming between the camera and the aircraft. */
-    this.brandSign = buildBrandSign();
-    this.brandSign.position.set(0.2, -0.72, -5.4);
-    this.brandSign.rotation.y = deg(9);
-    bay.add(this.brandSign);
 
     /* The transmitter lives beside the pad, not on the aircraft. */
     this.txStand = new THREE.Group();

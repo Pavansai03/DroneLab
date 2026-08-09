@@ -56,7 +56,7 @@ function Btn({ busy, onClick, small, label, title }) {
       disabled={busy}
       title={title || "Download a CSV report"}
     >
-      <Icon.External />
+      <Icon.Download />
       {busy ? "Preparing…" : label}
     </button>
   );
@@ -68,7 +68,7 @@ function Btn({ busy, onClick, small, label, title }) {
  * which an administrator may also call. A student exporting themselves has no
  * such route, so they pass their own already-loaded data as `data`.
  */
-export function ExportStudent({ id, name, data, small = true, label = "Export report" }) {
+export function ExportStudent({ id, name, data, small = true, label = "Export" }) {
   const { busy, err, go } = useExport(async () => {
     const detail = data ?? (await api.teacher.student(id));
     download(
