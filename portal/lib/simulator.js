@@ -5,13 +5,16 @@ import { supabase } from "./supabase.js";
 /**
  * Where the flight simulator lives.
  *
- * It is a separate application on its own origin — the Vite app in development,
- * wherever it is deployed in production — so the portal cannot route to it and
- * has to be told. Configurable rather than hard-coded, because the two are
- * deployed independently and will not always share a host.
+ * It ships inside this deployment now, as a static build under `/sim` — see
+ * scripts/build-merged.mjs. The default is that path, so nothing needs
+ * configuring for the normal case.
+ *
+ * Still overridable. Pointing NEXT_PUBLIC_SIMULATOR_URL at a full URL puts the
+ * simulator back on its own host, which is what local development does when the
+ * Vite dev server is running on 5173 and the two are genuinely separate.
  */
 export const simulatorUrl = () =>
-  process.env.NEXT_PUBLIC_SIMULATOR_URL || "http://localhost:5173";
+  process.env.NEXT_PUBLIC_SIMULATOR_URL || "/sim";
 
 /**
  * Open the simulator, carrying the signed-in session across.

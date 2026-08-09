@@ -1,0 +1,6 @@
+# Built by scripts/build-merged.mjs from the Vite app in ../../../src.
+# Nothing here is written by hand and none of it belongs in git — the hashed
+# filenames change every build, so committing them means a permanent stream of
+# meaningless diffs and, worse, stale assets shipping alongside fresh ones.
+*
+!.gitignore

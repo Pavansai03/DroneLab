@@ -213,7 +213,11 @@ export function makeBrandTexture() {
   /* A missing logo is the normal state until someone saves one, and it is not a
      fault worth putting in a student's console mid-build. */
   img.onerror = () => {};
-  img.src = "brand/logo.png";
+  /* Resolved against the app's base, not the document. Served from /sim the
+     document URL may or may not carry a trailing slash, and a bare relative
+     path silently resolves to the PORTAL's /brand/logo.png in one of those
+     cases — a 404 that shows up only as the fallback mark quietly staying. */
+  img.src = `${import.meta.env.BASE_URL}brand/logo.png`;
 
   return { texture, dispose: () => texture.dispose() };
 }
@@ -319,7 +323,11 @@ export function makeBrandBandTexture() {
     texture.needsUpdate = true;
   };
   img.onerror = () => {};
-  img.src = "brand/logo.png";
+  /* Resolved against the app's base, not the document. Served from /sim the
+     document URL may or may not carry a trailing slash, and a bare relative
+     path silently resolves to the PORTAL's /brand/logo.png in one of those
+     cases — a 404 that shows up only as the fallback mark quietly staying. */
+  img.src = `${import.meta.env.BASE_URL}brand/logo.png`;
 
   return { texture, dispose: () => texture.dispose() };
 }
@@ -378,7 +386,11 @@ export function makeMarkTexture() {
     texture.needsUpdate = true;
   };
   img.onerror = () => {};
-  img.src = "brand/logo.png";
+  /* Resolved against the app's base, not the document. Served from /sim the
+     document URL may or may not carry a trailing slash, and a bare relative
+     path silently resolves to the PORTAL's /brand/logo.png in one of those
+     cases — a 404 that shows up only as the fallback mark quietly staying. */
+  img.src = `${import.meta.env.BASE_URL}brand/logo.png`;
 
   return { texture, dispose: () => texture.dispose() };
 }

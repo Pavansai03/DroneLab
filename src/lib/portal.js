@@ -7,7 +7,15 @@
  * not appear, and the simulator behaves exactly as it always has.
  */
 
-export const portalUrl = () => import.meta.env.VITE_PORTAL_URL || "";
+export const portalUrl = () => {
+  const configured = import.meta.env.VITE_PORTAL_URL;
+  if (configured) return configured;
+  /* Served from /sim inside the portal's own deployment, the portal is simply
+     the root of this origin — no configuration needed, and the back control
+     appears by default rather than only when someone remembers a variable.
+     A standalone build (base "/") has no portal to return to. */
+  return import.meta.env.BASE_URL === "/sim/" ? "/" : "";
+};
 
 /** Is there a portal to return to at all? */
 export const hasPortal = () => Boolean(portalUrl());
@@ -26,7 +34,11 @@ export function goToPortal() {
   if (!url) return;
   try {
     const ref = document.referrer;
-    if (ref && new URL(ref).origin === new URL(url).origin && window.history.length > 1) {
+    /* `url` may be a bare path now that the two share an origin, and the URL
+       constructor rejects those without a base. Resolving against the current
+       location handles both forms. */
+    const target = new URL(url, window.location.href);
+    if (ref && new URL(ref).origin === target.origin && window.history.length > 1) {
       window.history.back();
       return;
     }
