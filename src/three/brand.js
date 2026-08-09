@@ -323,3 +323,62 @@ export function makeBrandBandTexture() {
 
   return { texture, dispose: () => texture.dispose() };
 }
+
+/* ==================================================================== */
+/* THE MARK ALONE                                                       */
+/* ==================================================================== */
+/**
+ * Just the logo, on a transparent ground, for scattering across the platform.
+ *
+ * No wordmark and no lettering of any kind. Type laid flat on a floor has one
+ * correct reading angle and is nonsense from everywhere else, and the camera
+ * here orbits without stopping. A mark has no such problem — it is recognisable
+ * upside down, which is exactly why it can be repeated across a surface the way
+ * a livery is and lettering cannot.
+ */
+const MARK_W = 560;
+const MARK_H = 320;
+export const MARK_ASPECT = MARK_W / MARK_H;
+
+function paintMark(ctx, logo) {
+  ctx.clearRect(0, 0, MARK_W, MARK_H);
+  if (logo) {
+    /* Contain, not cover. The supplied artwork is wider than it is tall and
+       cropping a logo to fill a box is how you lose the end of the wing. */
+    const k = Math.min(MARK_W / logo.width, MARK_H / logo.height);
+    ctx.drawImage(
+      logo,
+      (MARK_W - logo.width * k) / 2,
+      (MARK_H - logo.height * k) / 2,
+      logo.width * k,
+      logo.height * k
+    );
+  } else {
+    drawFallbackMark(ctx, 0, 0, MARK_W, MARK_H);
+  }
+}
+
+/** Returns `{ texture, dispose }`, or null when there is no DOM to draw on. */
+export function makeMarkTexture() {
+  if (!hasCanvas()) return null;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = MARK_W;
+  canvas.height = MARK_H;
+  const ctx = canvas.getContext("2d");
+  paintMark(ctx, null);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.anisotropy = 8;
+  texture.colorSpace = THREE.SRGBColorSpace;
+
+  const img = new Image();
+  img.onload = () => {
+    paintMark(ctx, img);
+    texture.needsUpdate = true;
+  };
+  img.onerror = () => {};
+  img.src = "brand/logo.png";
+
+  return { texture, dispose: () => texture.dispose() };
+}

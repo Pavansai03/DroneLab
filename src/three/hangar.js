@@ -1,49 +1,55 @@
 import * as THREE from "three";
-import { makeBrandBandTexture, BAND_ASPECT } from "./brand.js";
+import { makeMarkTexture, MARK_ASPECT } from "./brand.js";
 
 /**
  * THE ASSEMBLY PLATFORM
  * =====================
  * The original eight-sided podium, exactly as it was, with the RajUddan mark
- * laid flat on its surface.
+ * repeated across its surface as a livery.
  *
- * WHAT WAS TRIED AND UNDONE
- * -------------------------
- * Two versions came between this and the one it restores. The first raised the
- * platform on a machined drum in dark metal — which fixed a complaint about it
- * looking flat and, in doing so, made the bay look like two different products
- * bolted together, because this is a bright light-blue holographic space and
- * that was gunmetal. The second kept the height but re-skinned it pale and
- * wrapped the brand round the side.
+ * WHY A PATTERN AND NOT A SIGN
+ * ----------------------------
+ * Everything tried before this put the brand somewhere you look AT: a board
+ * behind the bench, a stripe round a raised drum, a strip of lettering on the
+ * deck. All of them are signage, and signage on a floor has one correct reading
+ * angle. This camera orbits without stopping, so for most of every rotation
+ * that lettering was upside down.
  *
- * Both were wrong about the same thing: the podium was never the problem. It is
- * the bench, it has been the bench from the beginning, and the whole scene is
- * composed around it sitting low and unobtrusive under the aircraft. So the
- * height is gone, the geometry and material are the originals to the decimal,
- * and the brand is where it was actually asked for — on top, flat, like the
- * markings on a helipad.
+ * A repeated mark has no reading angle. It is a surface finish rather than a
+ * label — the way a brand appears on a workshop floor, a pit lane or a court —
+ * and it stays right whichever way the camera has come round.
  *
- * TWO DECALS, NOT ONE
- * -------------------
- * The camera orbits continuously. A single decal reads correctly from one side
- * and upside down from the other, which is worse than not having it at all. So
- * there are two, front and back, each turned to face outward — the same reason
- * a real helipad paints its markings at both ends of the approach.
+ * HOW THEY ARE ARRANGED
+ * ---------------------
+ * Three concentric rings with counts that share no common factor (7, 11, 15).
+ * Equal counts would line the marks up into radial spokes, and spokes are the
+ * one thing that makes a scatter look mechanical. The rings are also offset by
+ * half a step, and each mark is turned toward the centre, so the pattern reads as
+ * laid out rather than dropped.
+ *
+ * Sizes fall off toward the rim and so does opacity, which does two things: it
+ * keeps the eye on the aircraft in the middle, and it stops the outer ring
+ * fighting the podium's edge for attention.
  */
 
 /** Top surface of the podium. Set by the aircraft above it; do not move. */
 export const DECK_Y = -0.59;
-/** The bay floor, back where it always was. */
+/** The bay floor. */
 export const FLOOR_Y = -0.72;
+
+/* The hex launch pad sits at -0.585. A hundredth of a metre above it is enough
+   to settle the depth test and far too little to read as floating — any less
+   and the two surfaces flicker against each other as the camera moves. */
+const DECAL_Y = -0.575;
 
 export function buildHangarDais() {
   const g = new THREE.Group();
   g.name = "assemblyPlatform";
   const disposables = [];
 
-  /* The original podium. Geometry, material, position and shadow flag are
-     unchanged from the version this restores — copied rather than re-derived,
-     so "put it back" means exactly that. */
+  /* The original podium. Geometry, material, position and shadow flag copied
+     from the version this restores rather than re-derived, so "put it back"
+     means exactly that. */
   const podium = new THREE.Mesh(
     new THREE.CylinderGeometry(2.7, 2.95, 0.14, 8),
     new THREE.MeshStandardMaterial({ color: 0xeef5fb, roughness: 0.4, metalness: 0.25 })
@@ -52,37 +58,60 @@ export function buildHangarDais() {
   podium.receiveShadow = true;
   g.add(podium);
 
-  /* ----------------------------------------------------- the markings */
-  const brand = makeBrandBandTexture();
-  if (brand) {
-    disposables.push(brand.dispose);
+  /* ------------------------------------------------------- the livery */
+  const mark = makeMarkTexture();
+  if (mark) {
+    disposables.push(mark.dispose);
 
-    const W = 2.5;
-    const H = W / BAND_ASPECT;
+    const RINGS = [
+      { r: 1.16, n: 7, w: 0.52, o: 0.95, phase: 0 },
+      { r: 1.78, n: 11, w: 0.46, o: 0.8, phase: Math.PI / 11 },
+      { r: 2.28, n: 15, w: 0.38, o: 0.62, phase: Math.PI / 15 },
+    ];
 
-    /* Sits just above the hex launch pad at -0.585. A hundredth of a metre is
-       enough to settle the depth test and far too little to read as floating —
-       any less and the two surfaces flicker against each other as the camera
-       moves, which is the one artefact nobody can ignore. */
-    const Y = -0.575;
-
-    for (const [z, turn] of [
-      [1.72, 0],
-      [-1.72, Math.PI],
-    ]) {
-      const decal = new THREE.Mesh(
-        new THREE.PlaneGeometry(W, H),
+    for (const ring of RINGS) {
+      const h = ring.w / MARK_ASPECT;
+      const mesh = new THREE.InstancedMesh(
+        new THREE.PlaneGeometry(ring.w, h),
         new THREE.MeshBasicMaterial({
-          map: brand.texture,
+          map: mark.texture,
           transparent: true,
+          opacity: ring.o,
           depthWrite: false,
-        })
+        }),
+        ring.n
       );
-      decal.rotation.x = -Math.PI / 2; // lie flat
-      decal.rotation.z = turn; // face outward
-      decal.position.set(0, Y, z);
-      decal.renderOrder = 2;
-      g.add(decal);
+
+      const o = new THREE.Object3D();
+      for (let i = 0; i < ring.n; i++) {
+        const a = (i / ring.n) * Math.PI * 2 + ring.phase;
+
+        /* Turned so its top points at the CENTRE, not away from it.
+           This is the opposite of the obvious choice and it matters. The camera
+           looks down and inward, so for the marks nearest it — the ones seen
+           largest and least foreshortened — a top pointing outward is a top
+           pointing at the viewer, which lands upside down on screen. Pointing
+           inward puts those the right way up. The far side inverts instead, but
+           those are smaller, more foreshortened and half behind the aircraft.
+
+           The plane is laid flat by a -90 degree turn about X, which sends its
+           local +Y to world -Z; this solves for the spin that then aims +Y down
+           the inward radius. Worth deriving rather than guessing — an angle out
+           by 90 degrees gives a ring of marks all facing one way, which reads
+           as a mistake rather than as a pattern. */
+        const spin = Math.atan2(Math.cos(a), Math.sin(a));
+
+        o.position.set(Math.cos(a) * ring.r, DECAL_Y, Math.sin(a) * ring.r);
+        o.rotation.set(-Math.PI / 2, 0, spin);
+        o.scale.set(1, 1, 1);
+        o.updateMatrix();
+        mesh.setMatrixAt(i, o.matrix);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      mesh.renderOrder = 2;
+      g.add(mesh);
     }
   }
 
