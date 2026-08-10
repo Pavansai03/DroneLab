@@ -16,6 +16,11 @@ import { adminClient, userClient } from "./supabase.js";
  * always current.
  */
 
+/* Set once the session check has failed, so the warning below is said one time
+   rather than on every request. Module scope on purpose: it is per process, and
+   a restart is exactly when it is worth saying again. */
+let warnedAboutSessionCheck = false;
+
 /** Populates req.auth = { user, token, role, schoolId }. 401 if not signed in. */
 export async function requireAuth(req, res, next) {
   const header = req.get("authorization") || "";
@@ -50,6 +55,22 @@ export async function requireAuth(req, res, next) {
       const { data: current, error: sessionErr } = await admin.rpc("session_is_current", {
         p_session: sessionId,
       });
+
+      /* Failing open is right; failing open SILENTLY is not.
+         If single-session.sql has not been run the function does not exist, this
+         errors on every single request, and one-device-at-a-time is off while
+         appearing to be on — the worst state for a security control to be in.
+         Said once rather than per request, because a line on every request is
+         noise that gets filtered out and then never read. */
+      if (sessionErr && !warnedAboutSessionCheck) {
+        warnedAboutSessionCheck = true;
+        console.error(
+          `[api] session_is_current() failed: ${sessionErr.message}. ` +
+            `ONE-DEVICE-AT-A-TIME IS NOT BEING ENFORCED. ` +
+            `Run supabase/single-session.sql if you have not.`
+        );
+      }
+
       if (!sessionErr && current === false) {
         return res.status(401).json({
           error:

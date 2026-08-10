@@ -769,6 +769,7 @@ function Approvals({ onPending }) {
                 <th>Starts</th>
                 <th>Ends</th>
                 <th>Decided</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -789,10 +790,13 @@ function Approvals({ onPending }) {
                     {a.subscription_starts_at ? new Date(a.subscription_starts_at).toLocaleDateString() : "—"}
                   </td>
                   <td className="mono cell-sub">
-                    {a.subscription_ends_at ? new Date(a.subscription_ends_at).toLocaleDateString() : "—"}
+                    <SubscriptionEnd school={a} onSaved={load} />
                   </td>
                   <td className="mono cell-sub">
                     {a.decided_at ? new Date(a.decided_at).toLocaleDateString() : "—"}
+                  </td>
+                  <td>
+                    <ExtendButton school={a} onSaved={load} />
                   </td>
                 </tr>
               ))}
@@ -1210,5 +1214,119 @@ function StudentApprovals({ onPending }) {
         </div>
       )}
     </>
+  );
+}
+
+/* ================================================ subscription end date */
+
+/** Days from now until a date, negative once it has passed. */
+function daysUntil(iso) {
+  if (!iso) return null;
+  return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+}
+
+/**
+ * The end date, with how long is left.
+ *
+ * A date on its own makes the reader do arithmetic to answer the only question
+ * they have — is this school about to lapse? So it says. Under a fortnight is
+ * marked, and past is marked differently, because "expired" and "expires soon"
+ * call for different actions.
+ */
+function SubscriptionEnd({ school }) {
+  const d = daysUntil(school.subscription_ends_at);
+  if (!school.subscription_ends_at) return <span className="cell-sub">no end date</span>;
+
+  const when = new Date(school.subscription_ends_at).toLocaleDateString();
+  if (d < 0) {
+    return (
+      <>
+        <span className="pill bad">expired</span>
+        <div className="cell-sub">{when}</div>
+      </>
+    );
+  }
+  return (
+    <>
+      <span className={d <= 14 ? "pill warn" : "cell-sub"}>{when}</span>
+      <div className="cell-sub">{d === 0 ? "ends today" : `${d} day${d === 1 ? "" : "s"} left`}</div>
+    </>
+  );
+}
+
+/**
+ * Change when a school's subscription ends.
+ *
+ * The dates could only be set at the moment of approval, which is the one time
+ * nobody knows what they should be — a renewal is agreed months later, and
+ * until now the only way to record one was to reject the school and approve it
+ * again, which issues a new join code and locks out every student holding the
+ * old one.
+ *
+ * Clearing the field is allowed and means no end date. That is the honest
+ * representation of a school with no agreed end, and it is what every school
+ * approved before this feature existed already has.
+ */
+function ExtendButton({ school, onSaved }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  if (school.status !== "approved") return null;
+
+  const start = () => {
+    /* <input type="date"> wants YYYY-MM-DD and nothing else — handing it an ISO
+       timestamp leaves the field silently blank. */
+    setValue(school.subscription_ends_at ? school.subscription_ends_at.slice(0, 10) : "");
+    setErr(null);
+    setOpen(true);
+  };
+
+  async function save() {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.admin.updateSchool(school.id, { subscription_ends_at: value || null });
+      setOpen(false);
+      await onSaved();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button className="btn small" onClick={start}>
+        {school.subscription_ends_at ? "Extend" : "Set end date"}
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ minWidth: 200 }}>
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        style={{ marginBottom: 6 }}
+      />
+      <div className="row" style={{ flexWrap: "nowrap", gap: 6 }}>
+        <button className="btn small" onClick={() => setOpen(false)} disabled={busy}>
+          Cancel
+        </button>
+        <button className="btn small primary" onClick={save} disabled={busy}>
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
+      {value === "" && (
+        <div className="cell-sub" style={{ marginTop: 4 }}>
+          Empty means no end date.
+        </div>
+      )}
+      {err && <div className="note bad">{err}</div>}
+    </div>
   );
 }

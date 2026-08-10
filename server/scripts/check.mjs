@@ -18,14 +18,18 @@
  *
  * One second here would have caught it.
  *
- * TWO PASSES, BECAUSE PARSING IS NOT ENOUGH
- * -----------------------------------------
- * 1. Every file under src/ is parsed. Catches syntax errors in files that the
+ * THREE PASSES, BECAUSE EACH CATCHES WHAT THE LAST CANNOT
+ * -------------------------------------------------------
+ * 1. Every file under src/ is parsed. Catches a syntax error in a file the
  *    entry point only reaches indirectly.
- * 2. The server is actually started and asked for /health. Catches what parsing
- *    cannot: a bad import path, a missing export, a module that throws while
- *    being evaluated. Placeholder credentials are enough — nothing here talks
- *    to Supabase, it only needs to boot and answer.
+ * 2. Every router is asked what routes it declares. Catches a router that
+ *    silently exports nothing — which probing the running API cannot, because
+ *    requireAuth sits in front of everything under /api and an unmounted route
+ *    answers 401 exactly like a mounted one. A sweep of 401s looks like proof
+ *    and is not.
+ * 3. The server is actually started and asked for /health. Catches a bad import
+ *    path, a missing export, a module that throws while being evaluated.
+ *    Placeholder credentials are enough — it only needs to boot and answer.
  */
 
 import { execFileSync, spawn } from "node:child_process";
@@ -76,7 +80,37 @@ if (broken.length) {
 }
 console.log(`parsed ${files.length} files, all fine`);
 
-/* --------------------------------------------------------- 2. actually boot */
+/* ------------------------------------------------- 2. every route is mounted */
+/* Walking the routers' own stacks, because probing the running API cannot tell
+   you this: requireAuth sits in front of everything under /api, so a route that
+   was never mounted answers 401 exactly like one that was. A 401 sweep looks
+   like proof and is not. */
+{
+  const mounts = [
+    ["/api", "../src/routes/student.js"],
+    ["/api/teacher", "../src/routes/teacher.js"],
+    ["/api/school", "../src/routes/school.js"],
+    ["/api/admin", "../src/routes/admin.js"],
+  ];
+
+  let total = 0;
+  const empty = [];
+  for (const [base, rel] of mounts) {
+    const mod = await import(new URL(rel, import.meta.url));
+    const layers = (mod.default?.stack ?? []).filter((l) => l.route);
+    if (!layers.length) empty.push(base);
+    total += layers.length;
+  }
+
+  if (empty.length) {
+    console.error(`
+These routers declare no routes at all: ${empty.join(", ")}`);
+    process.exit(1);
+  }
+  console.log(`${total} routes across ${mounts.length} routers`);
+}
+
+/* --------------------------------------------------------- 3. actually boot */
 /* Placeholder credentials. The point is to evaluate every module and bind the
    port, not to reach a database — and using real ones would make a routine
    check depend on the network being up. */
