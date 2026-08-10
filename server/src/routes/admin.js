@@ -80,12 +80,12 @@ router.post(
     };
     if (req.body?.subscription_starts_at !== undefined) {
       patch.subscription_starts_at = req.body.subscription_starts_at
-        ? parseTimestamp(req.body.subscription_starts_at)
+        ? parseTimestamp(req.body.subscription_starts_at, "Subscription start")
         : null;
     }
     if (req.body?.subscription_ends_at !== undefined) {
       patch.subscription_ends_at = req.body.subscription_ends_at
-        ? parseTimestamp(req.body.subscription_ends_at)
+        ? parseTimestamp(req.body.subscription_ends_at, "Subscription end")
         : null;
     }
     const { data: updated, error } = await db
@@ -253,12 +253,12 @@ router.patch(
     if (typeof req.body?.active === "boolean") patch.active = req.body.active;
     if (req.body?.subscription_starts_at !== undefined) {
       patch.subscription_starts_at = req.body.subscription_starts_at
-        ? parseTimestamp(req.body.subscription_starts_at)
+        ? parseTimestamp(req.body.subscription_starts_at, "Subscription start")
         : null;
     }
     if (req.body?.subscription_ends_at !== undefined) {
       patch.subscription_ends_at = req.body.subscription_ends_at
-        ? parseTimestamp(req.body.subscription_ends_at)
+        ? parseTimestamp(req.body.subscription_ends_at, "Subscription end")
         : null;
     }
 
@@ -451,10 +451,20 @@ router.get(
  * support requests. The letters come from the name, which also means a student
  * mistyping someone else's code is unlikely to land on a real one.
  */
-function parseTimestamp(value) {
+/**
+ * A date from the client, as an ISO string.
+ *
+ * `status` is set so the error handler answers 400 rather than 500. A date
+ * someone mistyped in a form is their mistake to correct, and the generic
+ * "Something went wrong. Reference: ab12cd" tells them nothing they can act on
+ * — it reads as the server being broken.
+ */
+function parseTimestamp(value, field = "date") {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) {
-    throw new Error("Invalid timestamp.");
+    const err = new Error(`${field} is not a date I can read. Use YYYY-MM-DD.`);
+    err.status = 400;
+    throw err;
   }
   return date.toISOString();
 }

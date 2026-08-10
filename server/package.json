@@ -3,9 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Express API for the DroneLab portal — student, teacher and admin panels.",
+  "description": "Express API for the DroneLab portal \u00e2\u20ac\u201d student, teacher and admin panels.",
   "scripts": {
     "dev": "node --watch src/index.js",
+    "check": "node scripts/check.mjs",
+    "prestart": "node scripts/check.mjs",
     "start": "node src/index.js"
   },
   "dependencies": {

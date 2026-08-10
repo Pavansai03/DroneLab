@@ -168,6 +168,15 @@ app.use((req, res) => res.status(404).json({ error: `No route for ${req.method} 
 
 // eslint-disable-next-line no-unused-vars -- Express identifies error handlers by arity
 app.use((err, _req, res, _next) => {
+  /* A 4xx we set ourselves is safe to pass on, and is the only kind worth
+     passing on: it describes what the caller did wrong, in words we wrote. A
+     mistyped date should not read as the server falling over. Anything without
+     an explicit status is unexpected, and falls through to the opaque 500
+     below. */
+  if (err?.status >= 400 && err.status < 500 && typeof err.message === "string") {
+    return res.status(err.status).json({ error: err.message });
+  }
+
   console.error("[api]", err);
   /* Never return err.message to the client. Supabase and Postgres errors
      routinely name tables, columns and constraints, which hands an attacker
