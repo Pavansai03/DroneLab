@@ -223,6 +223,7 @@ export default function App() {
   const [testing, setTesting] = useState(false);
   /* Which destructive action is awaiting confirmation, if any. */
   const [confirm, setConfirm] = useState(null);
+  const [progressResetKey, setProgressResetKey] = useState(0);
   /* Master mute — a listening preference, not part of the build, so it lives
      outside the undo history. It covers the motors as well as the buzzer, which
      is why it is never disabled: rotor noise exists from the first flight,

@@ -30,12 +30,14 @@
 
 -- ---------------------------------------------------------------- roles
 -- schema.sql constrained role to ('student','teacher'). Widen it.
+-- The existing database may already contain the newer 'school' role, so
+-- allow that as well as admin.
 alter table public.user_roles
   drop constraint if exists user_roles_role_check;
 
 alter table public.user_roles
   add constraint user_roles_role_check
-  check (role in ('student', 'teacher', 'admin'));
+  check (role in ('student', 'teacher', 'admin', 'school'));
 
 /* SECURITY DEFINER, like is_teacher(). A policy on user_roles that read
    user_roles directly would recurse forever; running as the owner
@@ -134,6 +136,7 @@ create policy "student updates own profile" on public.profiles
 
 -- ----------------------------------------------- module_progress policies
 drop policy if exists "read own progress" on public.module_progress;
+drop policy if exists "read progress in scope" on public.module_progress;
 create policy "read progress in scope" on public.module_progress
   for select using (
     auth.uid() = user_id
@@ -155,6 +158,7 @@ create policy "delete own progress" on public.module_progress
 
 -- ------------------------------------------------------- builds policies
 drop policy if exists "read own build" on public.builds;
+drop policy if exists "read builds in scope" on public.builds;
 create policy "read builds in scope" on public.builds
   for select using (
     auth.uid() = user_id
@@ -172,6 +176,7 @@ create policy "read builds in scope" on public.builds
 
 -- --------------------------------------------------------- roles policies
 drop policy if exists "read own role" on public.user_roles;
+drop policy if exists "read roles in scope" on public.user_roles;
 create policy "read roles in scope" on public.user_roles
   for select using (auth.uid() = user_id or public.is_admin());
 
@@ -218,6 +223,8 @@ create policy "update own activity" on public.activity_log
 -- ------------------------------------------------------------ the roster
 -- Rebuilt to carry school and role. security_invoker keeps RLS applying to
 -- the querying user, so a student selecting from it still sees one row.
+-- Use explicit drop/create instead of CREATE OR REPLACE VIEW because the
+-- existing view may contain columns that the new definition omits.
 drop view if exists public.class_roster;
 create view public.class_roster
 with (security_invoker = on) as
