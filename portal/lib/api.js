@@ -98,7 +98,7 @@ export const api = {
     stats: () => request("/api/admin/stats"),
     applications: (status) =>
       request(`/api/admin/applications${status ? `?status=${status}` : ""}`),
-    approve: (id) => request(`/api/admin/applications/${id}/approve`, { method: "POST" }),
+    approve: (id, body) => request(`/api/admin/applications/${id}/approve`, { method: "POST", body }),
     reject: (id, note) =>
       request(`/api/admin/applications/${id}/reject`, { method: "POST", body: { note } }),
     schools: () => request("/api/admin/schools"),

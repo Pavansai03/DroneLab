@@ -70,16 +70,27 @@ router.post(
     }
 
     const joinCode = await uniqueJoinCode(db, school.name);
+    const patch = {
+      status: "approved",
+      join_code: joinCode,
+      active: true,
+      decided_at: new Date().toISOString(),
+      decided_by: req.auth.user.id,
+      decision_note: null,
+    };
+    if (req.body?.subscription_starts_at !== undefined) {
+      patch.subscription_starts_at = req.body.subscription_starts_at
+        ? parseTimestamp(req.body.subscription_starts_at)
+        : null;
+    }
+    if (req.body?.subscription_ends_at !== undefined) {
+      patch.subscription_ends_at = req.body.subscription_ends_at
+        ? parseTimestamp(req.body.subscription_ends_at)
+        : null;
+    }
     const { data: updated, error } = await db
       .from("schools")
-      .update({
-        status: "approved",
-        join_code: joinCode,
-        active: true,
-        decided_at: new Date().toISOString(),
-        decided_by: req.auth.user.id,
-        decision_note: null,
-      })
+      .update(patch)
       .eq("id", school.id)
       .select("id, name, join_code, status, contact_email")
       .maybeSingle();
@@ -130,6 +141,8 @@ router.post(
         decided_at: new Date().toISOString(),
         decided_by: req.auth.user.id,
         decision_note: note,
+        subscription_starts_at: null,
+        subscription_ends_at: null,
       })
       .eq("id", school.id);
     if (error) return res.status(400).json({ error: error.message });
@@ -238,13 +251,16 @@ router.patch(
     if (typeof req.body?.name === "string") patch.name = req.body.name.trim();
     if (typeof req.body?.region === "string") patch.region = req.body.region.trim();
     if (typeof req.body?.active === "boolean") patch.active = req.body.active;
-    if (!Object.keys(patch).length) return res.status(400).json({ error: "Nothing to update." });
-
-    const { data, error } = await adminClient()
-      .from("schools")
-      .update(patch)
-      .eq("id", req.params.id)
-      .select()
+      if (req.body?.subscription_starts_at !== undefined) {
+        patch.subscription_starts_at = req.body.subscription_starts_at
+          ? parseTimestamp(req.body.subscription_starts_at)
+          : null;
+      }
+      if (req.body?.subscription_ends_at !== undefined) {
+        patch.subscription_ends_at = req.body.subscription_ends_at
+          ? parseTimestamp(req.body.subscription_ends_at)
+          : null;
+      }
       .maybeSingle();
     if (error) return res.status(400).json({ error: error.message });
     res.json(data);
@@ -427,6 +443,14 @@ router.get(
  * support requests. The letters come from the name, which also means a student
  * mistyping someone else's code is unlikely to land on a real one.
  */
+function parseTimestamp(value) {
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Invalid timestamp.");
+  }
+  return date.toISOString();
+}
+
 function makeJoinCode(name) {
   const letters = name.replace(/[^a-z]/gi, "").toUpperCase().slice(0, 4).padEnd(4, "X");
   const safe = "23456789";

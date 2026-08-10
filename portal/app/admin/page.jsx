@@ -59,7 +59,6 @@ function Panel() {
         {[
           ["approvals", "Approvals", pending + pendingStudents],
           ["overview", "Overview", 0],
-          ["people", "People", 0],
         ].map(([id, label, badge]) => (
           <button
             key={id}
@@ -79,7 +78,6 @@ function Panel() {
         </>
       )}
       {tab === "overview" && <Overview />}
-      {tab === "people" && <People />}
     </>
   );
 }
@@ -589,6 +587,8 @@ function Approvals({ onPending }) {
   const [result, setResult] = useState(null);
   const [rejecting, setRejecting] = useState(null);
   const [note, setNote] = useState("");
+  const [subscriptionStarts, setSubscriptionStarts] = useState({});
+  const [subscriptionEnds, setSubscriptionEnds] = useState({});
 
   const load = () =>
     api.admin
@@ -609,7 +609,11 @@ function Approvals({ onPending }) {
     setErr(null);
     try {
       if (kind === "approve") {
-        const r = await api.admin.approve(a.id);
+        const body = {
+          subscription_starts_at: subscriptionStarts[a.id] || null,
+          subscription_ends_at: subscriptionEnds[a.id] || null,
+        };
+        const r = await api.admin.approve(a.id, body);
         setResult({ kind: "approved", school: r.school, mail: r.mail });
       } else {
         const r = await api.admin.reject(a.id, note);
@@ -705,20 +709,44 @@ function Approvals({ onPending }) {
                   </div>
                 </>
               ) : (
-                <div className="row">
-                  <button className="btn primary" disabled={busy === a.id} onClick={() => decide(a, "approve")}>
-                    {busy === a.id ? "Approving…" : "Approve & send code"}
-                  </button>
-                  <button
-                    className="btn ghost"
-                    onClick={() => {
-                      setRejecting(a.id);
-                      setNote("");
-                    }}
-                  >
-                    Reject
-                  </button>
-                </div>
+                <>
+                  <div className="field" style={{ marginBottom: 10 }}>
+                    <label htmlFor={`ss${a.id}`}>Subscription start</label>
+                    <input
+                      id={`ss${a.id}`}
+                      type="datetime-local"
+                      value={subscriptionStarts[a.id] ?? ""}
+                      onChange={(e) =>
+                        setSubscriptionStarts((prev) => ({ ...prev, [a.id]: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="field" style={{ marginBottom: 10 }}>
+                    <label htmlFor={`se${a.id}`}>Subscription end</label>
+                    <input
+                      id={`se${a.id}`}
+                      type="datetime-local"
+                      value={subscriptionEnds[a.id] ?? ""}
+                      onChange={(e) =>
+                        setSubscriptionEnds((prev) => ({ ...prev, [a.id]: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="row">
+                    <button className="btn primary" disabled={busy === a.id} onClick={() => decide(a, "approve")}>
+                      {busy === a.id ? "Approving…" : "Approve & send code"}
+                    </button>
+                    <button
+                      className="btn ghost"
+                      onClick={() => {
+                        setRejecting(a.id);
+                        setNote("");
+                      }}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           ))}
@@ -738,6 +766,8 @@ function Approvals({ onPending }) {
                 <th>Status</th>
                 <th>Join code</th>
                 <th>Members</th>
+                <th>Starts</th>
+                <th>Ends</th>
                 <th>Decided</th>
               </tr>
             </thead>
@@ -755,6 +785,12 @@ function Approvals({ onPending }) {
                     {a.join_code ? <code className="code-chip">{a.join_code}</code> : <span className="cell-sub">—</span>}
                   </td>
                   <td className="mono">{a.member_count ?? 0}</td>
+                  <td className="mono cell-sub">
+                    {a.subscription_starts_at ? new Date(a.subscription_starts_at).toLocaleDateString() : "—"}
+                  </td>
+                  <td className="mono cell-sub">
+                    {a.subscription_ends_at ? new Date(a.subscription_ends_at).toLocaleDateString() : "—"}
+                  </td>
                   <td className="mono cell-sub">
                     {a.decided_at ? new Date(a.decided_at).toLocaleDateString() : "—"}
                   </td>

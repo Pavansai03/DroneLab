@@ -232,14 +232,11 @@ function TopBar({ me, pathname }) {
         <a
           className="btn small sim-link"
           href={simulatorUrl()}
-          target="_blank"
-          rel="noopener noreferrer"
           onClick={openSimulator}
           title="Open the flight simulator"
         >
           <Icon.Play />
           Simulator
-          <Icon.External style={{ width: 12, height: 0.7 }} />
         </a>
       ) : (
         <a className="btn small" href="/student/join" title="Enter your school's join code to unlock the simulator">

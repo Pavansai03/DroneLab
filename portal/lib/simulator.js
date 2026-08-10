@@ -54,11 +54,11 @@ export async function openSimulator(e) {
         : ""
     }`;
 
-    window.open(target, "_blank", "noopener noreferrer");
+    window.location.assign(target);
     return;
   } catch {
     /* No session, or Supabase unavailable. Fall through — the simulator is
        fully usable signed out, so a handoff failure must never block the link. */
   }
-  window.open(base, "_blank", "noopener noreferrer");
+  window.location.assign(base);
 }

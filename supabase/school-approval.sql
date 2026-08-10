@@ -55,7 +55,9 @@ alter table public.schools
   add column if not exists applied_at timestamptz not null default now(),
   add column if not exists decided_at timestamptz,
   add column if not exists decided_by uuid references auth.users on delete set null,
-  add column if not exists decision_note text;
+  add column if not exists decision_note text,
+  add column if not exists subscription_starts_at timestamptz,
+  add column if not exists subscription_ends_at timestamptz;
 
 /* Existing rows predate approval and are already in use, so they default to
    'approved'. New applications insert 'pending' explicitly. */
@@ -68,6 +70,7 @@ create index if not exists schools_owner_idx on public.schools (owner_id);
 
 -- ------------------------------------------------------------ policies
 drop policy if exists "read own school" on public.schools;
+drop policy if exists "read schools in scope" on public.schools;
 create policy "read schools in scope" on public.schools
   for select using (
     public.is_admin()
@@ -83,7 +86,8 @@ create policy "read schools in scope" on public.schools
 -- ------------------------------------------------- the applications view
 -- What an administrator reviews. Deliberately a view rather than a raw select,
 -- so the panel cannot accidentally show a column it should not.
-create or replace view public.school_applications
+drop view if exists public.school_applications;
+create view public.school_applications
 with (security_invoker = on) as
 select
   s.id,
@@ -96,6 +100,8 @@ select
   s.applied_at,
   s.decided_at,
   s.decision_note,
+  s.subscription_starts_at,
+  s.subscription_ends_at,
   s.owner_id,
   p.full_name as applicant_name,
   (select count(*) from public.profiles px where px.school_id = s.id) as member_count
