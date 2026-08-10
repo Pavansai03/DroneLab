@@ -2223,3 +2223,68 @@ input[type="range"]::-moz-range-thumb {
   color: var(--cyan);
   border-color: var(--cyan);
 }
+
+/* ============================================================ lock screen */
+/* Shown INSTEAD of the workshop when a school's subscription has ended, so
+   there is no scene running behind it. Styled as a page rather than a dialog
+   for the same reason: a modal implies something behind it to go back to. */
+.lock-screen {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+  overflow: auto;
+}
+.lock-card {
+  max-width: 560px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 40px 38px 34px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+}
+.lock-mark {
+  height: 58px;
+  width: auto;
+  margin: 0 auto 22px;
+  display: block;
+}
+.lock-card h1 {
+  font-size: 26px;
+  margin: 0 0 12px;
+  letter-spacing: -0.01em;
+}
+.lock-lead {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text);
+  margin: 0 0 20px;
+}
+/* The reassurance is the most important sentence here, so it is the one thing
+   given a box. A student's first thought is that their work has gone. */
+.lock-note {
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.65;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cyan);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+.lock-sub {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0 0 24px;
+}
+.lock-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}

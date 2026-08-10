@@ -51,7 +51,7 @@ router.get(
     if (schoolId) {
       const { data } = await db
         .from("schools")
-        .select("id, name, join_code, region, status, active")
+        .select("id, name, join_code, region, status, active, subscription_starts_at, subscription_ends_at")
         .eq("id", schoolId)
         .maybeSingle();
       school = data ?? null;
@@ -68,10 +68,30 @@ router.get(
 
        Staff are exempt: a school account is admitted by its own approval, and
        an administrator by being one. */
+    /* THE SUBSCRIPTION.
+       A school whose subscription has run out loses access, and so does every
+       student in it — the licence is the school's, not the individual's, so
+       expiry cannot be something one student escapes by having been approved
+       earlier than another.
+
+       No end date means no expiry. That is not a loophole, it is the only
+       honest reading: every school approved before this feature existed has a
+       null there, and treating null as "expired" would lock out the entire
+       platform the moment this deployed.
+
+       Administrators are never locked out. They are the only people who can
+       lift it, and shutting them out of the panel that holds the button would
+       make an expired subscription unrecoverable. */
+    const expiresAt = school?.subscription_ends_at ?? null;
+    const expired = Boolean(expiresAt && new Date(expiresAt).getTime() <= Date.now());
+
     const staff = role === "admin" || role === "school" || role === "teacher";
     const schoolOk = Boolean(school && school.status === "approved" && school.active);
     const studentOk = (profile?.status ?? "approved") === "approved";
-    const admitted = staff ? schoolOk || role === "admin" : schoolOk && studentOk;
+    const subscriptionOk = role === "admin" || !expired;
+
+    const admitted =
+      (staff ? schoolOk || role === "admin" : schoolOk && studentOk) && subscriptionOk;
 
     res.json({
       id: user.id,
@@ -88,6 +108,19 @@ router.get(
         joinedAt: profile?.joined_at ?? null,
         decidedAt: profile?.decided_at ?? null,
         note: profile?.decision_note ?? null,
+      },
+      /* Separate from `approval`, because "your school's licence ran out" and
+         "an administrator has not approved you" are different situations with
+         different remedies, and a screen that conflates them sends the reader
+         to the wrong person. */
+      subscription: {
+        endsAt: expiresAt,
+        expired,
+        /* Negative once it has passed. The portal warns on this rather than
+           making a teacher compare dates in their head. */
+        daysLeft: expiresAt
+          ? Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86400000)
+          : null,
       },
     });
   })

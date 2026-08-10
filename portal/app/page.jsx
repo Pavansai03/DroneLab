@@ -34,7 +34,12 @@ export default function Home() {
 
         try {
           const me = await api.me();
-          if (me.role === "admin") router.replace("/admin");
+          /* Checked before the role split: an expired school sends its staff
+             and its students to the same place, and only an administrator
+             carries on to a panel. */
+          if (me.subscription?.expired && me.role !== "admin") {
+            router.replace("/expired");
+          } else if (me.role === "admin") router.replace("/admin");
           else if (me.role === "school" || me.role === "teacher") {
             /* A school account with an undecided application belongs on the
                pending screen, not on a dashboard with nothing in it. */

@@ -42,6 +42,8 @@ import TeacherDashboard from "./components/TeacherDashboard.jsx";
 import { Arrow, ArrowLeft, Reset, Bolt, Warn, Undo, Redo, SpeakerOn, SpeakerOff, Sun, Moon } from "./components/Icons.jsx";
 import { initialTheme, applyTheme } from "./lib/theme.js";
 import { hasPortal, goToPortal } from "./lib/portal.js";
+import { useSchoolAccess } from "./lib/useSchoolAccess.js";
+import SubscriptionLock from "./components/SubscriptionLock.jsx";
 import { loadEarned, saveEarned, clearEarned } from "./lib/achievements.js";
 import {
   setBuzzerEnabled,
@@ -148,6 +150,11 @@ export default function App() {
   /* All of this is inert when Supabase is not configured, so the simulator is
      unchanged offline — no feature is locked behind an account. */
   const auth = useAuthSession();
+
+  /* Is this account's school still subscribed?
+     Checked here rather than left to the portal, because the portal hiding its
+     "Simulator" button stops nobody who knows the URL. */
+  const access = useSchoolAccess(auth.user, auth.role);
 
   const applyCloudBuild = useCallback(
     (loaded) => resetHistory(loaded),
@@ -1043,6 +1050,23 @@ export default function App() {
 
   const currentTask = progress.current;
 
+  /* LOCKED OUT.
+     Returned INSTEAD of the workshop, not layered over it: nothing below this
+     line is constructed, so there is no live three.js scene sitting behind a
+     modal for a curious student to reveal by deleting one element in the
+     inspector.
+
+     Placed here, after every hook, and not one line earlier. React requires
+     hooks to run unconditionally in the same order on every render, and an
+     early return above them skips the forty that follow — which does not fail
+     politely, it corrupts state. The check itself is cheap; where it sits is
+     not negotiable.
+
+     Only once the check has finished, so the lock never flashes at a student
+     while the query is still in flight. */
+  if (!access.checking && access.locked) {
+    return <SubscriptionLock schoolName={access.schoolName} endsAt={access.endsAt} />;
+  }
   return (
     <div className="app">
       {/* ============================================= top bar */}

@@ -70,6 +70,16 @@ export default function Shell({ children, requireRole }) {
         const profile = await api.me();
         if (!alive) return;
 
+        /* THE SUBSCRIPTION, ENFORCED BEFORE ANYTHING ELSE.
+           Before the approval gate below, because it applies to staff as well
+           as students: a school whose licence has run out should not be reading
+           its own dashboard either. Administrators are exempt at the server —
+           they are the only people who can lift it, and locking them out of the
+           panel holding the button would make expiry unrecoverable. */
+        if (profile.subscription?.expired && pathname !== "/expired") {
+          return router.replace("/expired");
+        }
+
         /* THE GATE, ENFORCED ON EVERY PANEL PAGE.
            Hiding the simulator button from an unapproved student is a courtesy,
            not a control — the panel itself is still behind approval, and typing

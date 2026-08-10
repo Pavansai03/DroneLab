@@ -11,7 +11,8 @@
     "supabase:keys": "node supabase/generate-keys.mjs",
     "supabase:check": "node supabase/check-connection.mjs",
     "build:all": "node scripts/build-merged.mjs",
-    "test:progress": "node scripts/test-progress.mjs"
+    "test:progress": "node scripts/test-progress.mjs",
+    "test:subscription": "node scripts/test-subscription.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.9",
