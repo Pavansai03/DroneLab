@@ -41,19 +41,24 @@ export async function openSimulator(e) {
       data: { session },
     } = await supabase().auth.getSession();
 
-    if (session?.access_token && session?.refresh_token) {
-      const payload = btoa(
-        JSON.stringify({
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
-        })
-      );
-      window.location.assign(`${base}#dl_session=${encodeURIComponent(payload)}`);
-      return;
-    }
+    const target = `${base}${
+      session?.access_token && session?.refresh_token
+        ? `#dl_session=${encodeURIComponent(
+            btoa(
+              JSON.stringify({
+                access_token: session.access_token,
+                refresh_token: session.refresh_token,
+              })
+            )
+          )}`
+        : ""
+    }`;
+
+    window.open(target, "_blank", "noopener noreferrer");
+    return;
   } catch {
     /* No session, or Supabase unavailable. Fall through — the simulator is
        fully usable signed out, so a handoff failure must never block the link. */
   }
-  window.location.assign(base);
+  window.open(base, "_blank", "noopener noreferrer");
 }

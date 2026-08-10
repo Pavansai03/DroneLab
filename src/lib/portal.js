@@ -38,9 +38,16 @@ export function goToPortal() {
        constructor rejects those without a base. Resolving against the current
        location handles both forms. */
     const target = new URL(url, window.location.href);
-    if (ref && new URL(ref).origin === target.origin && window.history.length > 1) {
-      window.history.back();
-      return;
+    if (ref) {
+      const refUrl = new URL(ref);
+      if (refUrl.origin === target.origin) {
+        if (window.history.length > 1) {
+          window.history.back();
+          return;
+        }
+        window.location.assign(ref);
+        return;
+      }
     }
   } catch {
     /* A malformed referrer or URL is not worth failing navigation over. */
