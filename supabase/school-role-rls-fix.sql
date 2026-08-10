@@ -49,6 +49,10 @@ create policy "read progress in scope" on public.module_progress
     )
   );
 
+drop policy if exists "delete own progress" on public.module_progress;
+create policy "delete own progress" on public.module_progress
+  for delete using (auth.uid() = user_id);
+
 -- --------------------------------------------------------- builds
 drop policy if exists "read builds in scope" on public.builds;
 create policy "read builds in scope" on public.builds

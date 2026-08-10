@@ -230,7 +230,7 @@ export function useBuildSync({ user, build, earned, applyBuild, applyEarned, fal
 
 /* -------------------------------------------------------- progress sync */
 
-export function useProgressSync({ user, moduleId, progress }) {
+export function useProgressSync({ user, moduleId, progress, resetKey }) {
   const lastKey = useRef(null);
   /* The most recent snapshot, kept in a ref so the cleanup can flush it without
      re-subscribing the effect on every keystroke of progress. */
@@ -239,6 +239,14 @@ export function useProgressSync({ user, moduleId, progress }) {
      Seeded from the database so it survives a reload, not just a tab. */
   const best = useRef(new Map());
   const seededFor = useRef(null);
+
+  useEffect(() => {
+    if (resetKey == null) return;
+    best.current = new Map();
+    seededFor.current = null;
+    lastKey.current = null;
+    pendingRef.current = null;
+  }, [resetKey]);
 
   /* Read the existing marks once per signed-in user. Until this resolves the
      map is empty, which only ever means "no floor yet" — never a false floor. */
@@ -340,6 +348,12 @@ export async function fetchCompletedModules(userId) {
     .eq("user_id", userId)
     .eq("completed", true);
   return new Set((data ?? []).map((r) => r.module_id));
+}
+
+export async function clearRemoteProgress(userId) {
+  if (!isSupabaseConfigured || !userId) return null;
+  const { error } = await supabase.from("module_progress").delete().eq("user_id", userId);
+  return error ? describeError(error) : null;
 }
 
 /** Teacher view: the whole class, rolled up. RLS returns only your own row if

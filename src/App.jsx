@@ -20,6 +20,7 @@ import {
   useBuildSync,
   useProgressSync,
   fetchCompletedModules,
+  clearRemoteProgress,
 } from "./lib/useCloudSync.js";
 
 import Viewport from "./components/Viewport.jsx";
@@ -41,7 +42,7 @@ import TeacherDashboard from "./components/TeacherDashboard.jsx";
 import { Arrow, ArrowLeft, Reset, Bolt, Warn, Undo, Redo, SpeakerOn, SpeakerOff, Sun, Moon } from "./components/Icons.jsx";
 import { initialTheme, applyTheme } from "./lib/theme.js";
 import { hasPortal, goToPortal } from "./lib/portal.js";
-import { loadEarned, saveEarned } from "./lib/achievements.js";
+import { loadEarned, saveEarned, clearEarned } from "./lib/achievements.js";
 import {
   setBuzzerEnabled,
   setBuzzerMuted,
@@ -384,7 +385,7 @@ export default function App() {
 
   /* Mirror progress into Supabase, and restore it on sign-in so the module rail
      reflects work done on another machine. Both are no-ops when offline. */
-  useProgressSync({ user: auth.user, moduleId, progress });
+  useProgressSync({ user: auth.user, moduleId, progress, resetKey: progressResetKey });
 
   useEffect(() => {
     if (!auth.user) return;
@@ -753,6 +754,16 @@ export default function App() {
   const resetBuild = useCallback(() => {
     resetHistory(makeInitialBuild(frameId));
     setCompletedModules(new Set());
+    setEarned(new Set());
+    clearEarned(auth.user?.id);
+    if (auth.user?.id) {
+      void clearRemoteProgress(auth.user.id).then((error) => {
+        if (error) {
+          console.warn("Failed to clear remote progress:", error);
+        }
+      });
+    }
+    setProgressResetKey((n) => n + 1);
     setModuleId("m1");
     setCrashReport(null);
     setTelemetry(null);
@@ -760,7 +771,7 @@ export default function App() {
     setSidebarTab("tasks");
     simRef.current?.reset();
     setNotice("Build stripped and module progress cleared. Start again at Module 1.");
-  }, [resetHistory, frameId]);
+  }, [resetHistory, frameId, auth.user?.id]);
 
   /** The motor test from the task chain: spin each motor and verify direction. */
   const runMotorTest = useCallback(() => {

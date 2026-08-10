@@ -92,6 +92,10 @@ drop policy if exists "update own progress" on public.module_progress;
 create policy "update own progress" on public.module_progress
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "delete own progress" on public.module_progress;
+create policy "delete own progress" on public.module_progress
+  for delete using (auth.uid() = user_id);
+
 -- --------------------------------------------------------- saved builds
 -- One saved aircraft per student, so they can resume on another machine.
 create table if not exists public.builds (
@@ -146,7 +150,11 @@ create trigger on_auth_user_created
 
 -- ------------------------------------------------- teacher roster view
 -- One row per student with their progress rolled up, for the dashboard.
-create or replace view public.class_roster
+-- `CREATE OR REPLACE VIEW` will fail if the existing view has columns that
+-- are not present in the new definition. Drop and recreate explicitly so
+-- schema deployment is repeatable and future updates do not confuse the editor.
+drop view if exists public.class_roster;
+create view public.class_roster
 with (security_invoker = on) as
 select
   p.id            as user_id,

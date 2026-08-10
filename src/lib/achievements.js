@@ -52,3 +52,13 @@ export function saveEarned(userId, set) {
     /* quota, or storage disabled mid-session */
   }
 }
+
+export function clearEarned(userId) {
+  const store = storage();
+  if (!store) return;
+  try {
+    store.removeItem(keyFor(userId));
+  } catch {
+    /* quota, or storage disabled mid-session */
+  }
+}
