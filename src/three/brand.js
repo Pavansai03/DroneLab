@@ -10,7 +10,7 @@ import * as THREE from "three";
  * A logotype drawn with canvas paths will never be the real thing — the
  * letterforms and the wing beside them ARE the brand, and an approximation of
  * someone's logo is worse than an honest placeholder because it looks finished.
- * So this loads `public/brand/logo.png` and uses it the moment it exists.
+ * So this loads `public/brand/logo-mark.png` and uses it the moment it exists.
  *
  * Until it does, it draws a stand-in: the right colours, the right shapes,
  * clearly not the real artwork. Loading is asynchronous and non-blocking — the
@@ -42,9 +42,9 @@ function roundRect(ctx, x, y, w, h, r) {
 /**
  * The RajUddan mark, drawn.
  *
- * Reproduced from the supplied artwork rather than loaded from it, because the
- * file is not in the repository. `public/brand/logo.png` still wins whenever it
- * is there — this is what stands in until then.
+ * Reproduced from the supplied artwork rather than loaded from it, for the case
+ * where the file is missing. `public/brand/logo-mark.png` wins whenever it is
+ * there — this is only what stands in until then.
  *
  * MEASURED, THEN SCALED TO FIT.
  * The first attempt set the type at a fixed fraction of the tile and drew the
@@ -215,7 +215,7 @@ export function makeBrandTexture() {
   img.onerror = () => {};
   /* Resolved against the app's base, not the document. Served from /sim the
      document URL may or may not carry a trailing slash, and a bare relative
-     path silently resolves to the PORTAL's /brand/logo.png in one of those
+     path silently resolves to the PORTAL's /brand/logo-mark.png in one of those
      cases — a 404 that shows up only as the fallback mark quietly staying. */
   img.src = `${import.meta.env.BASE_URL}brand/logo-mark.png`;
 
@@ -325,7 +325,7 @@ export function makeBrandBandTexture() {
   img.onerror = () => {};
   /* Resolved against the app's base, not the document. Served from /sim the
      document URL may or may not carry a trailing slash, and a bare relative
-     path silently resolves to the PORTAL's /brand/logo.png in one of those
+     path silently resolves to the PORTAL's /brand/logo-mark.png in one of those
      cases — a 404 that shows up only as the fallback mark quietly staying. */
   img.src = `${import.meta.env.BASE_URL}brand/logo-mark.png`;
 
@@ -393,7 +393,7 @@ export function makeMarkTexture(onAspect) {
   img.onerror = () => {};
   /* Resolved against the app's base, not the document. Served from /sim the
      document URL may or may not carry a trailing slash, and a bare relative
-     path silently resolves to the PORTAL's /brand/logo.png in one of those
+     path silently resolves to the PORTAL's /brand/logo-mark.png in one of those
      cases — a 404 that shows up only as the fallback mark quietly staying. */
   img.src = `${import.meta.env.BASE_URL}brand/logo-mark.png`;
 
