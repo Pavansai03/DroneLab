@@ -48,6 +48,33 @@ as $$
   );
 $$;
 
+/* WHO COUNTS AS STAFF
+   -------------------
+   'teacher' is the original role and 'school' is what a school account gets on
+   registration, so a check for the literal 'teacher' misses every real school.
+   That bug cost a day once: school accounts passed the API's role check,
+   reached their own dashboard, and had the DATABASE return zero rows for every
+   query. Nothing errored — an empty result is indistinguishable from an empty
+   school unless you already know the school is not empty.
+
+   Defined HERE, in the base schema, and not in a patch on top of it. It was in
+   a patch, and re-running this file quietly reverted every policy that depended
+   on it — which is a worse failure than the one the patch fixed, because it
+   comes back every time someone reapplies the schema. Anything that decides
+   what school staff may see must call this. */
+create or replace function public.is_school_staff()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.user_roles
+    where user_id = auth.uid() and role in ('teacher', 'school', 'admin')
+  );
+$$;
+
 -- ------------------------------------------------------------- profiles
 create table if not exists public.profiles (
   id         uuid primary key references auth.users on delete cascade,
@@ -60,7 +87,7 @@ alter table public.profiles enable row level security;
 
 drop policy if exists "student reads own profile" on public.profiles;
 create policy "student reads own profile" on public.profiles
-  for select using (auth.uid() = id or public.is_teacher());
+  for select using (auth.uid() = id or public.is_school_staff());
 
 drop policy if exists "student updates own profile" on public.profiles;
 create policy "student updates own profile" on public.profiles
@@ -82,7 +109,7 @@ alter table public.module_progress enable row level security;
 
 drop policy if exists "read own progress" on public.module_progress;
 create policy "read own progress" on public.module_progress
-  for select using (auth.uid() = user_id or public.is_teacher());
+  for select using (auth.uid() = user_id or public.is_school_staff());
 
 drop policy if exists "write own progress" on public.module_progress;
 create policy "write own progress" on public.module_progress
@@ -109,7 +136,7 @@ alter table public.builds enable row level security;
 
 drop policy if exists "read own build" on public.builds;
 create policy "read own build" on public.builds
-  for select using (auth.uid() = user_id or public.is_teacher());
+  for select using (auth.uid() = user_id or public.is_school_staff());
 
 drop policy if exists "write own build" on public.builds;
 create policy "write own build" on public.builds

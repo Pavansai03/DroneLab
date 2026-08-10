@@ -55,6 +55,25 @@ as $$
   );
 $$;
 
+/* Staff, for every policy below that scopes data to a school.
+   Defined here as well as in schema.sql so this file can be applied on its own
+   — `create or replace` makes that harmless. It is deliberately NOT is_teacher():
+   'school' is the role a school account actually gets, and checking for the
+   literal 'teacher' returns zero rows for every real school while erroring on
+   nothing. */
+create or replace function public.is_school_staff()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.user_roles
+    where user_id = auth.uid() and role in ('teacher', 'school', 'admin')
+  );
+$$;
+
 create or replace function public.my_role()
 returns text
 language sql
@@ -118,7 +137,7 @@ create policy "read profiles in scope" on public.profiles
     auth.uid() = id
     or public.is_admin()
     or (
-      public.is_teacher()
+      public.is_school_staff()
       and school_id is not null
       and school_id = public.my_school_id()
     )
@@ -142,7 +161,7 @@ create policy "read progress in scope" on public.module_progress
     auth.uid() = user_id
     or public.is_admin()
     or (
-      public.is_teacher()
+      public.is_school_staff()
       and exists (
         select 1 from public.profiles p
         where p.id = module_progress.user_id
@@ -164,7 +183,7 @@ create policy "read builds in scope" on public.builds
     auth.uid() = user_id
     or public.is_admin()
     or (
-      public.is_teacher()
+      public.is_school_staff()
       and exists (
         select 1 from public.profiles p
         where p.id = builds.user_id
@@ -202,7 +221,7 @@ create policy "read activity in scope" on public.activity_log
     auth.uid() = user_id
     or public.is_admin()
     or (
-      public.is_teacher()
+      public.is_school_staff()
       and exists (
         select 1 from public.profiles p
         where p.id = activity_log.user_id
