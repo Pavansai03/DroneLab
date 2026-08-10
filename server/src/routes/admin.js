@@ -251,16 +251,24 @@ router.patch(
     if (typeof req.body?.name === "string") patch.name = req.body.name.trim();
     if (typeof req.body?.region === "string") patch.region = req.body.region.trim();
     if (typeof req.body?.active === "boolean") patch.active = req.body.active;
-      if (req.body?.subscription_starts_at !== undefined) {
-        patch.subscription_starts_at = req.body.subscription_starts_at
-          ? parseTimestamp(req.body.subscription_starts_at)
-          : null;
-      }
-      if (req.body?.subscription_ends_at !== undefined) {
-        patch.subscription_ends_at = req.body.subscription_ends_at
-          ? parseTimestamp(req.body.subscription_ends_at)
-          : null;
-      }
+    if (req.body?.subscription_starts_at !== undefined) {
+      patch.subscription_starts_at = req.body.subscription_starts_at
+        ? parseTimestamp(req.body.subscription_starts_at)
+        : null;
+    }
+    if (req.body?.subscription_ends_at !== undefined) {
+      patch.subscription_ends_at = req.body.subscription_ends_at
+        ? parseTimestamp(req.body.subscription_ends_at)
+        : null;
+    }
+
+    if (!Object.keys(patch).length) return res.status(400).json({ error: "Nothing to update." });
+
+    const { data, error } = await adminClient()
+      .from("schools")
+      .update(patch)
+      .eq("id", req.params.id)
+      .select()
       .maybeSingle();
     if (error) return res.status(400).json({ error: error.message });
     res.json(data);
