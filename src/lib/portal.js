@@ -8,13 +8,15 @@
  */
 
 export const portalUrl = () => {
+  /* When the simulator is built into the portal under /sim, the portal is
+     simply the site root. In that case we ignore any stale VITE_PORTAL_URL
+     value and return the local root, because the portal is on the same origin.
+     This prevents a merged deployment from redirecting back to a development
+     or old domain. */
+  if (import.meta.env.BASE_URL === "/sim/") return "/";
+
   const configured = import.meta.env.VITE_PORTAL_URL;
-  if (configured) return configured;
-  /* Served from /sim inside the portal's own deployment, the portal is simply
-     the root of this origin — no configuration needed, and the back control
-     appears by default rather than only when someone remembers a variable.
-     A standalone build (base "/") has no portal to return to. */
-  return import.meta.env.BASE_URL === "/sim/" ? "/" : "";
+  return configured || "";
 };
 
 /** Is there a portal to return to at all? */
