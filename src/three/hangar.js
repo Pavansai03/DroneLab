@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { makeMarkTexture, MARK_ASPECT } from "./brand.js";
+import { loadMarkTexture } from "./brand.js";
 
 /**
  * THE ASSEMBLY PLATFORM
@@ -52,60 +52,53 @@ export function buildHangarDais() {
   g.add(podium);
 
   /* ------------------------------------------------------- the livery */
-  /* ONE mark, as large as the platform will hold.
-     Sized from the pad's radius rather than picked by eye: a rectangle of the
-     artwork's own proportions, scaled until its diagonal exactly meets the
-     2.6m pad. That is the largest it can be without a corner hanging over the
-     edge, and it is arithmetic rather than a guess, so it stays right if the
-     artwork is ever replaced with one of different proportions. */
-  /* Sized from the podium, and reshaped when the artwork reports its true
-     proportions — see makeMarkTexture. The plane is built 1x1 and scaled, so
-     replacing the logo with one of a different shape needs no code change.
+  /* ONE mark, as large as the platform will hold, added when it arrives.
+     The decal is built inside the load callback rather than up front with a
+     placeholder texture. Nothing is drawn until the real artwork is in hand, so
+     there is no moment where the platform shows something that is not the logo
+     — which is the whole failure this replaced.
 
      REACH is how far the rectangle's CORNERS may sit from the centre. It is
      deliberately larger than the octagon's 2.49m inradius: the corners of this
      artwork are empty, with ink reaching only 87% of the way into them, so the
-     rectangle may overhang a little while the logo itself stays on the deck.
-     2.85 x 0.87 = 2.48, which lands just inside. */
+     rectangle may overhang a little while the ink itself stays on the deck.
+     2.85 x 0.87 = 2.48, which lands just inside.
+
+     Sized from the artwork's own proportions, so replacing the logo with one of
+     a different shape needs no code change. */
   const REACH = 2.85;
 
-  const sizeFor = (aspect) => {
-    // (w/2)^2 + (h/2)^2 = REACH^2, with h = w / aspect
-    const w = (2 * REACH) / Math.sqrt(1 + 1 / (aspect * aspect));
-    return [w, w / aspect];
-  };
+  loadMarkTexture()
+    .then(({ texture, aspect }) => {
+      // (w/2)^2 + (h/2)^2 = REACH^2, with h = w / aspect
+      const w = (2 * REACH) / Math.sqrt(1 + 1 / (aspect * aspect));
+      const h = w / aspect;
 
-  let decal = null;
-  const mark = makeMarkTexture((aspect) => {
-    if (!decal) return;
-    const [w, h] = sizeFor(aspect);
-    decal.scale.set(w, h, 1);
-  });
+      const decal = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, h),
+        new THREE.MeshBasicMaterial({
+          map: texture,
+          transparent: true,
+          opacity: 0.95,
+          depthWrite: false,
+        })
+      );
 
-  if (mark) {
-    disposables.push(mark.dispose);
-    const [w, h] = sizeFor(MARK_ASPECT);
+      /* Squared to where the camera starts (azimuth 35 degrees), so the mark is
+         upright the moment the bay opens. With a single mark there is no
+         orientation that is right from everywhere — the camera orbits — so the
+         one to get right is the first one anybody sees. */
+      decal.rotation.set(-Math.PI / 2, 0, (35 * Math.PI) / 180);
+      decal.position.set(0, DECAL_Y, 0);
+      decal.renderOrder = 2;
+      g.add(decal);
 
-    decal = new THREE.Mesh(
-      new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({
-        map: mark.texture,
-        transparent: true,
-        opacity: 0.95,
-        depthWrite: false,
-      })
-    );
-    decal.scale.set(w, h, 1);
-
-    /* Squared to where the camera starts (azimuth 35 degrees), so the mark is
-       upright the moment the bay opens. With a single mark there is no
-       orientation that is right from everywhere — the camera orbits — so the
-       one to get right is the first one anybody sees. */
-    decal.rotation.set(-Math.PI / 2, 0, (35 * Math.PI) / 180);
-    decal.position.set(0, DECAL_Y, 0);
-    decal.renderOrder = 2;
-    g.add(decal);
-  }
+      disposables.push(() => texture.dispose());
+    })
+    .catch(() => {
+      /* loadMarkTexture has already said so in the console. Nothing is drawn,
+         which is the correct outcome: an empty platform is honest. */
+    });
 
   g.userData.dispose = () => disposables.forEach((d) => d());
   return g;
