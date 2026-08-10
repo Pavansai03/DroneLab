@@ -115,6 +115,24 @@ writeFileSync(
 
 console.log(`\nCopied ${readdirSync(dist).length} entries -> portal/public/sim`);
 
+/* 3b — the brand assets, for the portal itself.
+   The simulator's copy arrives inside dist/, but the portal's own pages need
+   them at /brand/... on the site root. Copied from the one source rather than
+   committed twice, so updating the logo means replacing a single file. */
+{
+  const brandSrc = resolve(root, "public", "brand");
+  const brandDst = resolve(root, "portal", "public", "brand");
+  if (existsSync(brandSrc)) {
+    rmSync(brandDst, { recursive: true, force: true });
+    cpSync(brandSrc, brandDst, { recursive: true });
+    writeFileSync(
+      resolve(brandDst, ".gitignore"),
+      "# Copied from public/brand by scripts/build-merged.mjs.\n*\n!.gitignore\n"
+    );
+    console.log("Copied brand assets -> portal/public/brand");
+  }
+}
+
 /* 4 — the portal, which now has the simulator inside its public directory and
    will serve it as static files at /sim. */
 run("npm run build", resolve(root, "portal"));

@@ -217,7 +217,7 @@ export function makeBrandTexture() {
      document URL may or may not carry a trailing slash, and a bare relative
      path silently resolves to the PORTAL's /brand/logo.png in one of those
      cases — a 404 that shows up only as the fallback mark quietly staying. */
-  img.src = `${import.meta.env.BASE_URL}brand/logo.png`;
+  img.src = `${import.meta.env.BASE_URL}brand/logo-mark.png`;
 
   return { texture, dispose: () => texture.dispose() };
 }
@@ -327,7 +327,7 @@ export function makeBrandBandTexture() {
      document URL may or may not carry a trailing slash, and a bare relative
      path silently resolves to the PORTAL's /brand/logo.png in one of those
      cases — a 404 that shows up only as the fallback mark quietly staying. */
-  img.src = `${import.meta.env.BASE_URL}brand/logo.png`;
+  img.src = `${import.meta.env.BASE_URL}brand/logo-mark.png`;
 
   return { texture, dispose: () => texture.dispose() };
 }
@@ -390,7 +390,7 @@ export function makeMarkTexture() {
      document URL may or may not carry a trailing slash, and a bare relative
      path silently resolves to the PORTAL's /brand/logo.png in one of those
      cases — a 404 that shows up only as the fallback mark quietly staying. */
-  img.src = `${import.meta.env.BASE_URL}brand/logo.png`;
+  img.src = `${import.meta.env.BASE_URL}brand/logo-mark.png`;
 
   return { texture, dispose: () => texture.dispose() };
 }

@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase, isConfigured } from "../../lib/supabase.js";
 import { api } from "../../lib/api.js";
+import Brand from "../../components/Brand.jsx";
 import { HeroDrone, DroneBackdrop, Icon, Loader } from "../../components/DroneArt.jsx";
 import { useAuthProviders } from "../../lib/providers.js";
 
@@ -185,11 +186,11 @@ function LoginForm() {
       <DroneBackdrop dense />
       <div className="auth-wrap">
         <section className="auth-show">
-          <div className="brand rise">
-            <span className="mark">
-              <Icon.Bolt />
-            </span>
-            DRONE<em>LAB</em>
+          {/* Larger here than in the top bar: this is the first page anyone
+              sees, and the one place the identity should carry the screen
+              rather than sit politely in a corner. */}
+          <div className="rise">
+            <Brand size={56} />
           </div>
 
           {/* Deliberately a <p>, not an <h2>. The site-wide h2 is the small

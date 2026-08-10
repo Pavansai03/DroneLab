@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase.js";
 import { api } from "../../../lib/api.js";
+import Brand from "../../../components/Brand.jsx";
 import { DroneBackdrop, HeroDrone, Icon, Loader } from "../../../components/DroneArt.jsx";
 
 /**
@@ -72,12 +73,7 @@ export default function StudentPendingPage() {
       <DroneBackdrop />
       <div className="shell">
         <header className="topbar">
-          <div className="brand">
-            <span className="mark">
-              <Icon.Bolt />
-            </span>
-            DRONE<em>LAB</em>
-          </div>
+          <Brand />
           <div className="spacer" />
           <button className="btn small" onClick={leave}>
             Sign out

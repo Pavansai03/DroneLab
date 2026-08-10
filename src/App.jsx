@@ -95,6 +95,26 @@ function deriveFaultState(faults) {
   return s;
 }
 
+/**
+ * The RajUddan mark in the top bar.
+ *
+ * Resolved against the app's base so it works whether the simulator is served
+ * at the root of its own origin or from /sim inside the portal. Hides itself if
+ * the file is not there rather than leaving a broken image.
+ */
+function BrandMark() {
+  const [broken, setBroken] = useState(false);
+  if (broken) return <span className="dot">&#9670;</span>;
+  return (
+    <img
+      className="brand-mark"
+      src={`${import.meta.env.BASE_URL}brand/logo-mark.png`}
+      alt="RajUddan"
+      onError={() => setBroken(true)}
+    />
+  );
+}
+
 export default function App() {
   /* ------------------------------------------------------- curriculum */
   const [moduleId, setModuleId] = useState("m1");
@@ -1029,7 +1049,10 @@ export default function App() {
           </button>
         )}
         <div className="brand">
-          <span className="dot">&#9670;</span>
+          {/* The company's mark, then the product's name. Falls back to the
+              diamond if the asset is missing, so a top bar is never left with a
+              broken-image glyph in it. */}
+          <BrandMark />
           <b>DRONELAB</b>
           <span className="mono">
             / {mode === "assembly" ? "ASSEMBLY BAY" : "FLIGHT TEST FIELD"} /{" "}

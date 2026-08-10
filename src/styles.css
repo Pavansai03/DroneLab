@@ -209,9 +209,17 @@ body {
 
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 9px;
   white-space: nowrap;
+}
+/* Height is fixed, width follows: the artwork is the mark above the wordmark,
+   so it is wider than it is tall and squaring it would letterbox it. */
+.brand-mark {
+  height: 26px;
+  width: auto;
+  display: block;
+  flex-shrink: 0;
 }
 .brand b {
   font-size: 15px;

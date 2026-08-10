@@ -183,11 +183,30 @@ main,
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   font-weight: 900;
   letter-spacing: 0.04em;
   font-size: 17px;
   white-space: nowrap;
+}
+/* The supplied artwork is the mark above the wordmark, so it is wider than it
+   is tall and needs its own width — forcing it square would letterbox it. The
+   height is what the caller controls; width follows. */
+.brand-mark {
+  width: auto;
+  flex-shrink: 0;
+  object-fit: contain;
+  display: block;
+}
+.brand-name {
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+/* Stacked, for the places where the lockup is the page rather than a corner. */
+.brand.stacked {
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
 }
 .brand .mark {
   width: 30px;
@@ -204,12 +223,14 @@ main,
   width: 19px;
   height: 19px;
 }
-.brand em {
+.brand em,
+.brand-name em {
   font-style: normal;
   background: var(--grad);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
 .topbar nav {

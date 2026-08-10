@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../lib/supabase.js";
 import { api } from "../lib/api.js";
+import Brand from "./Brand.jsx";
 import { DroneBackdrop, Icon, Loader } from "./DroneArt.jsx";
 import { simulatorUrl, openSimulator } from "../lib/simulator.js";
 import { apiUrl } from "../lib/api.js";
@@ -106,12 +107,7 @@ export default function Shell({ children, requireRole }) {
         <DroneBackdrop />
         <div className="shell">
           <header className="topbar">
-            <div className="brand">
-              <span className="mark">
-                <Icon.Bolt />
-              </span>
-              DRONE<em>LAB</em>
-            </div>
+            <Brand />
             <div className="spacer" />
             <a className="btn small sim-link" href={simulatorUrl()} onClick={openSimulator}>
               <Icon.Play />
@@ -216,12 +212,7 @@ function TopBar({ me, pathname }) {
 
   return (
     <header className="topbar">
-      <div className="brand">
-        <span className="mark">
-          <Icon.Bolt />
-        </span>
-        DRONE<em>LAB</em>
-      </div>
+      <Brand />
       <nav>
         {links.map((l) => (
           <Link key={l.href} href={l.href} className={pathname === l.href ? "active" : ""}>
