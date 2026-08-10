@@ -58,33 +58,49 @@ export function buildHangarDais() {
      2.6m pad. That is the largest it can be without a corner hanging over the
      edge, and it is arithmetic rather than a guess, so it stays right if the
      artwork is ever replaced with one of different proportions. */
-  const mark = makeMarkTexture();
+  /* Sized from the podium, and reshaped when the artwork reports its true
+     proportions — see makeMarkTexture. The plane is built 1x1 and scaled, so
+     replacing the logo with one of a different shape needs no code change.
+
+     REACH is how far the rectangle's CORNERS may sit from the centre. It is
+     deliberately larger than the octagon's 2.49m inradius: the corners of this
+     artwork are empty, with ink reaching only 87% of the way into them, so the
+     rectangle may overhang a little while the logo itself stays on the deck.
+     2.85 x 0.87 = 2.48, which lands just inside. */
+  const REACH = 2.85;
+
+  const sizeFor = (aspect) => {
+    // (w/2)^2 + (h/2)^2 = REACH^2, with h = w / aspect
+    const w = (2 * REACH) / Math.sqrt(1 + 1 / (aspect * aspect));
+    return [w, w / aspect];
+  };
+
+  let decal = null;
+  const mark = makeMarkTexture((aspect) => {
+    if (!decal) return;
+    const [w, h] = sizeFor(aspect);
+    decal.scale.set(w, h, 1);
+  });
+
   if (mark) {
     disposables.push(mark.dispose);
+    const [w, h] = sizeFor(MARK_ASPECT);
 
-    const PAD_R = 2.6;
-    // (w/2)^2 + (h/2)^2 = PAD_R^2, with h = w / MARK_ASPECT
-    const w = (2 * PAD_R) / Math.sqrt(1 + 1 / (MARK_ASPECT * MARK_ASPECT));
-    const h = w / MARK_ASPECT;
-
-    const decal = new THREE.Mesh(
-      new THREE.PlaneGeometry(w, h),
+    decal = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
       new THREE.MeshBasicMaterial({
         map: mark.texture,
         transparent: true,
-        opacity: 0.92,
+        opacity: 0.95,
         depthWrite: false,
       })
     );
+    decal.scale.set(w, h, 1);
 
     /* Squared to where the camera starts (azimuth 35 degrees), so the mark is
        upright the moment the bay opens. With a single mark there is no
        orientation that is right from everywhere — the camera orbits — so the
-       one to get right is the first one anybody sees.
-
-       Laying the plane flat sends its local +Y to world -Z; this turn then aims
-       it directly away from the opening camera position, which is what puts the
-       top of the logo at the top of the screen. */
+       one to get right is the first one anybody sees. */
     decal.rotation.set(-Math.PI / 2, 0, (35 * Math.PI) / 180);
     decal.position.set(0, DECAL_Y, 0);
     decal.renderOrder = 2;

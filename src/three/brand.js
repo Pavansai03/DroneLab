@@ -346,35 +346,35 @@ export function makeBrandBandTexture() {
  */
 const MARK_W = 560;
 const MARK_H = 320;
+/** The stand-in's proportions, used until the real artwork reports its own. */
 export const MARK_ASPECT = MARK_W / MARK_H;
 
-function paintMark(ctx, logo) {
-  ctx.clearRect(0, 0, MARK_W, MARK_H);
-  if (logo) {
-    /* Contain, not cover. The supplied artwork is wider than it is tall and
-       cropping a logo to fill a box is how you lose the end of the wing. */
-    const k = Math.min(MARK_W / logo.width, MARK_H / logo.height);
-    ctx.drawImage(
-      logo,
-      (MARK_W - logo.width * k) / 2,
-      (MARK_H - logo.height * k) / 2,
-      logo.width * k,
-      logo.height * k
-    );
-  } else {
-    drawFallbackMark(ctx, 0, 0, MARK_W, MARK_H);
-  }
-}
-
-/** Returns `{ texture, dispose }`, or null when there is no DOM to draw on. */
-export function makeMarkTexture() {
+/**
+ * Returns `{ texture, dispose }`, or null when there is no DOM to draw on.
+ *
+ * `onAspect` is called with the artwork's true width/height once it loads.
+ *
+ * WHY THE CALLER HAS TO BE TOLD
+ * -----------------------------
+ * The canvas was a fixed 560x320 and the logo was drawn "contained" inside it.
+ * That is safe — nothing is ever cropped — but it silently wastes whatever the
+ * artwork does not fill. The current mark is 1.33:1 against a 1.75:1 canvas, so
+ * 24% of the texture was transparent margin and the decal on the platform came
+ * out a quarter smaller than the space allotted to it. It looked like the logo
+ * was too small. It was not: the frame around it was too wide.
+ *
+ * So the canvas is resized to the artwork on load and the image fills it edge
+ * to edge, and the caller is told the new proportions so it can reshape
+ * whatever it mapped the texture onto.
+ */
+export function makeMarkTexture(onAspect) {
   if (!hasCanvas()) return null;
 
   const canvas = document.createElement("canvas");
   canvas.width = MARK_W;
   canvas.height = MARK_H;
   const ctx = canvas.getContext("2d");
-  paintMark(ctx, null);
+  drawFallbackMark(ctx, 0, 0, MARK_W, MARK_H);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.anisotropy = 8;
@@ -382,8 +382,13 @@ export function makeMarkTexture() {
 
   const img = new Image();
   img.onload = () => {
-    paintMark(ctx, img);
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const c = canvas.getContext("2d");
+    c.clearRect(0, 0, img.width, img.height);
+    c.drawImage(img, 0, 0);
     texture.needsUpdate = true;
+    onAspect?.(img.width / img.height);
   };
   img.onerror = () => {};
   /* Resolved against the app's base, not the document. Served from /sim the

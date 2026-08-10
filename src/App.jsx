@@ -1053,7 +1053,7 @@ export default function App() {
               diamond if the asset is missing, so a top bar is never left with a
               broken-image glyph in it. */}
           <BrandMark />
-          <b>DRONELAB</b>
+          <b>DRONE<em>LAB</em></b>
           <span className="mono">
             / {mode === "assembly" ? "ASSEMBLY BAY" : "FLIGHT TEST FIELD"} /{" "}
             {frame.label.toUpperCase()}
@@ -1062,7 +1062,7 @@ export default function App() {
 
         <div style={{ flex: 1 }} />
 
-        <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>
+        <div className="topbar-module mono">
           MODULE {module.number} &mdash; {module.title.toUpperCase()}
         </div>
         <div className="progress-track" style={{ maxWidth: 170 }}>

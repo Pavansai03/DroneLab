@@ -226,6 +226,34 @@ body {
   font-weight: 800;
   letter-spacing: 0.06em;
 }
+/* Matches the portal, where the product name is half solid and half gradient.
+   -webkit-text-fill-color is not redundant: without it WebKit paints the solid
+   colour over the clipped gradient and the word comes out flat. */
+.brand b em {
+  font-style: normal;
+  background: linear-gradient(135deg, var(--cyan), var(--amber));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* The module name is the one label up here that must stay on one line.
+   The top bar is a flex row, and once the brand gained an image there was less
+   room to go round: this shrank and broke itself across four lines, a word at a
+   time. It holds its width now, and the aircraft description beside the brand —
+   which nobody reads twice — gives way instead. */
+.topbar-module {
+  font-size: 10.5px;
+  color: var(--dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.brand span.mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
 .brand .dot {
   color: var(--cyan);
   font-size: 15px;
