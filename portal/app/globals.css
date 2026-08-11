@@ -654,6 +654,119 @@ label {
   margin-bottom: 16px;
 }
 
+/* A label with something on the far right of the same line — "Forgot password?"
+   sitting opposite PASSWORD. Baseline-aligned rather than centred, because the
+   label is uppercase 10.5px and the link is 12.5px, and centring two different
+   type sizes leaves both looking slightly wrong. */
+.field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.field-head label {
+  margin-bottom: 7px;
+}
+.link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  width: auto;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--accent);
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.18s;
+}
+.link-btn:hover {
+  border-bottom-color: currentColor;
+}
+
+/* ------------------------------------------------- password reveal toggle */
+.pw-wrap {
+  position: relative;
+}
+/* Room for the button, so a long password never slides underneath it. */
+.pw-wrap input {
+  padding-right: 46px;
+}
+.pw-eye {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--faint);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: color 0.18s, background 0.18s;
+}
+.pw-eye:hover {
+  color: var(--accent);
+  background: rgba(46, 125, 50, 0.08);
+}
+.pw-eye:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  color: var(--accent);
+}
+.pw-eye svg {
+  width: 19px;
+  height: 19px;
+  display: block;
+  overflow: visible;
+}
+
+/* The two moving parts. Both are driven off data-shown on the button, so the
+   icon animates in one direction on reveal and back on hide — a swap of two
+   images reads as a flicker at this size, a stroke drawing across does not. */
+.pw-eye .pw-pupil {
+  transform-origin: 12px 12px;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.pw-eye[data-shown="true"] .pw-pupil {
+  transform: scale(0.6);
+}
+
+.pw-eye .pw-slash,
+.pw-eye .pw-slash-cut {
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.pw-eye .pw-slash {
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
+/* Drawn first and thicker, in the field's own background, so the line cuts a
+   clean channel through the eyelid instead of smudging into it. */
+.pw-eye .pw-slash-cut {
+  stroke: var(--panel);
+  stroke-width: 3.6;
+}
+.pw-eye[data-shown="true"] .pw-slash,
+.pw-eye[data-shown="true"] .pw-slash-cut {
+  stroke-dashoffset: 0;
+}
+
+/* Someone who has asked for less movement still needs to see which state the
+   toggle is in — the drawing changes, it just changes at once. */
+@media (prefers-reduced-motion: reduce) {
+  .pw-eye .pw-pupil,
+  .pw-eye .pw-slash,
+  .pw-eye .pw-slash-cut {
+    transition: none;
+  }
+}
+
 .btn {
   background: var(--panel-2);
   border: 1px solid var(--line);

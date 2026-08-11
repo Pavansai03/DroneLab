@@ -7,6 +7,7 @@ import { api } from "../../lib/api.js";
 import Brand from "../../components/Brand.jsx";
 import { HeroDrone, DroneBackdrop, Icon, Loader } from "../../components/DroneArt.jsx";
 import { useAuthProviders } from "../../lib/providers.js";
+import PasswordField from "../../components/PasswordField.jsx";
 
 /**
  * Turn whatever Supabase threw into something a human can act on.
@@ -39,6 +40,9 @@ function describeAuthError(err) {
   }
   if (/already registered|already exists/i.test(text)) {
     return "An account already exists with that email. Sign in instead.";
+  }
+  if (/rate limit|too many requests|for security purposes/i.test(text)) {
+    return "Too many attempts in a short time. Wait a minute and try again.";
   }
   if (text) return text;
   const status = err?.status ?? err?.code;
@@ -88,6 +92,12 @@ function LoginForm() {
   const providers = useAuthProviders();
 
   const isSchoolSignup = role === "school" && mode === "signup";
+  /* A third mode alongside signin and signup. Deliberately part of this form
+     rather than a page of its own: whoever needs it has just failed to sign in
+     and is looking at this card, and sending them somewhere else to type the
+     same email address again is a worse moment than the one they are already
+     having. */
+  const isForgot = mode === "forgot";
 
   if (!isConfigured()) {
     return (
@@ -128,7 +138,46 @@ function LoginForm() {
     }
   }
 
+  /**
+   * Send the reset link.
+   *
+   * THE SAME ANSWER EITHER WAY.
+   * Supabase reports success whether or not that address has an account, and
+   * the message here says "if there is an account" for the same reason: a form
+   * that distinguishes the two is a way to find out who is registered, and the
+   * addresses in question belong to schoolchildren. It costs nothing — someone
+   * who mistyped their own address is no worse served by being told to check
+   * the inbox they cannot find the mail in.
+   *
+   * The link lands on /auth/callback, which already exists for Google: the
+   * recovery token is exchanged for a session server-side, and the session is
+   * what /reset needs before it can set a new password.
+   */
+  async function sendReset(e) {
+    e.preventDefault();
+    setError(null);
+    setNotice(null);
+
+    if (!email.trim()) return setError("Enter the email address for the account.");
+
+    setBusy(true);
+    try {
+      const { error } = await supabase().auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent("/reset")}`,
+      });
+      if (error) throw error;
+      setNotice(
+        `If there is an account for ${email.trim()}, a link to set a new password is on its way. ` +
+          "It is valid for one hour, and it will only work once."
+      );
+    } catch (err) {
+      setError(describeAuthError(err));
+    }
+    setBusy(false);
+  }
+
   async function submit(e) {
+    if (isForgot) return sendReset(e);
     e.preventDefault();
     setError(null);
     setNotice(null);
@@ -250,33 +299,50 @@ function LoginForm() {
         <section className="auth-form">
           <div className="auth-card rise d1">
             <h1 style={{ fontSize: 27 }}>
-              {mode === "signin" ? "Sign in" : isSchoolSignup ? "Register your school" : "Create your account"}
+              {isForgot
+                ? "Reset your password"
+                : mode === "signin"
+                  ? "Sign in"
+                  : isSchoolSignup
+                    ? "Register your school"
+                    : "Create your account"}
             </h1>
             <p className="sub" style={{ marginBottom: 18 }}>
-              {mode === "signin" ? "Choose how you are signing in." : activeRole.blurb}
+              {isForgot
+                ? "Enter the email you sign in with and we will send you a link to set a new one."
+                : mode === "signin"
+                  ? "Choose how you are signing in."
+                  : activeRole.blurb}
             </p>
 
             {/* The role selector. Cards rather than a <select> — this decides
                 which of three quite different journeys you are starting, and a
-                collapsed dropdown hides that from someone seeing it once. */}
-            <div className="role-picker">
-              {ROLES.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  className={`role-opt ${role === r.id ? "active" : ""}`}
-                  onClick={() => {
-                    setRole(r.id);
-                    setError(null);
-                    setNotice(null);
-                    if (r.id === "admin") setMode("signin");
-                  }}
-                >
-                  <r.icon />
-                  <span>{r.label}</span>
-                </button>
-              ))}
-            </div>
+                collapsed dropdown hides that from someone seeing it once.
+
+                Hidden while resetting, because it would be a lie: a reset is
+                found by email address alone and works identically for a
+                student, a school and an administrator. Asking which one you
+                are would imply the answer mattered. */}
+            {!isForgot && (
+              <div className="role-picker">
+                {ROLES.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={`role-opt ${role === r.id ? "active" : ""}`}
+                    onClick={() => {
+                      setRole(r.id);
+                      setError(null);
+                      setNotice(null);
+                      if (r.id === "admin") setMode("signin");
+                    }}
+                  >
+                    <r.icon />
+                    <span>{r.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {role === "admin" && mode === "signup" && (
               <div className="note" style={{ marginBottom: 16 }}>
@@ -285,7 +351,7 @@ function LoginForm() {
             )}
 
             {/* Google, students only, and only when the server has it enabled. */}
-            {role === "student" && providers?.google && (
+            {role === "student" && providers?.google && !isForgot && (
               <>
                 <button type="button" className="btn oauth" onClick={() => signInWith("google")} disabled={busy}>
                   <Icon.Google />
@@ -298,7 +364,7 @@ function LoginForm() {
             )}
 
             <form onSubmit={submit} className="card">
-              {mode === "signup" && !isSchoolSignup && (
+              {mode === "signup" && !isSchoolSignup && !isForgot && (
                 <div className="field">
                   <label htmlFor="name">Full name</label>
                   <input id="name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
@@ -345,32 +411,46 @@ function LoginForm() {
                 )}
               </div>
 
-              <div className="field">
-                <label htmlFor="password">Password</label>
-                <input
+              {!isForgot && (
+                <PasswordField
                   id="password"
-                  type="password"
-                  autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                  label="Password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  minLength={6}
-                  required
+                  autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                  /* Offered on sign-in only. Next to the field it belongs to
+                     rather than buried under the button, because that is where
+                     someone looks the moment the password they typed is
+                     refused. Not shown while signing up: an account that does
+                     not exist yet cannot have a forgotten password, and the
+                     link would only send them round a loop. */
+                  after={
+                    mode === "signin" ? (
+                      <button
+                        type="button"
+                        className="link-btn"
+                        onClick={() => {
+                          setMode("forgot");
+                          setPassword("");
+                          setError(null);
+                          setNotice(null);
+                        }}
+                      >
+                        Forgot password?
+                      </button>
+                    ) : null
+                  }
                 />
-              </div>
+              )}
 
               {mode === "signup" && (
-                <div className="field">
-                  <label htmlFor="confirm">Confirm password</label>
-                  <input
-                    id="confirm"
-                    type="password"
-                    autoComplete="new-password"
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                    minLength={6}
-                    required
-                  />
-                </div>
+                <PasswordField
+                  id="confirm"
+                  label="Confirm password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  autoComplete="new-password"
+                />
               )}
 
               {error && <div className="note bad" style={{ marginBottom: 14 }}>{error}</div>}
@@ -379,15 +459,32 @@ function LoginForm() {
               <button className="btn primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
                 {busy
                   ? "Working…"
-                  : mode === "signin"
-                    ? "Sign in"
-                    : isSchoolSignup
-                      ? "Submit for approval"
-                      : "Create account"}
+                  : isForgot
+                    ? "Send the reset link"
+                    : mode === "signin"
+                      ? "Sign in"
+                      : isSchoolSignup
+                        ? "Submit for approval"
+                        : "Create account"}
               </button>
             </form>
 
-            {role !== "admin" && (
+            {isForgot && (
+              <div className="row" style={{ marginTop: 18, justifyContent: "center" }}>
+                <button
+                  className="btn small ghost"
+                  onClick={() => {
+                    setMode("signin");
+                    setError(null);
+                    setNotice(null);
+                  }}
+                >
+                  Back to sign in
+                </button>
+              </div>
+            )}
+
+            {role !== "admin" && !isForgot && (
               <div className="row" style={{ marginTop: 18, justifyContent: "center" }}>
                 <span className="sub" style={{ margin: 0 }}>
                   {mode === "signin"

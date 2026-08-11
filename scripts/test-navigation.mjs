@@ -87,6 +87,18 @@ function schoolPending(u) {
   return "/school/pending";
 }
 
+/** app/reset/page.jsx — where a password reset link lands.
+    Ungated on purpose beyond needing the recovery session: an unapproved
+    student, a lapsed school and an administrator can all be locked out by a
+    forgotten password, and none of those states is a reason to refuse someone
+    their own account back. Gating it on the subscription in particular would
+    mean a school could not recover the account it needs in order to ask for
+    the renewal that would ungate it. */
+function resetPage(u) {
+  if (!u.signedIn) return LOGIN;
+  return "/reset";
+}
+
 const PAGES = {
   "/": root,
   "/login": () => LOGIN,
@@ -99,6 +111,7 @@ const PAGES = {
   "/expired": expiredPage,
   "/student/pending": studentPending,
   "/school/pending": schoolPending,
+  "/reset": resetPage,
 };
 
 /* --------------------------------------------------------------- the people */
@@ -128,6 +141,7 @@ const FORBIDDEN = {
   "student, no school": ["/student", "/student/profile", "/admin", "/school", "/teacher"],
   "student, awaiting approval": ["/student", "/student/profile", "/admin"],
   "student, rejected": ["/student", "/student/profile", "/admin"],
+  /* /reset is absent from both of these on purpose — see resetPage(). */
   "student, school expired": ["/student", "/student/pending", "/student/join", "/admin"],
   "school, expired": ["/school", "/teacher", "/admin"],
   /* An administrator must never come to rest on the expiry screen. They are the
