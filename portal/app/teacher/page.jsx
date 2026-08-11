@@ -79,9 +79,12 @@ function Panel({ me }) {
             <HeroDrone />
           </div>
         </div>
-        {/* The school's own report, where the school's own details are. */}
-        <div className="row" style={{ marginTop: 6 }}>
+        {/* The school's own report and its licence, where the school's own
+            details are. A school should not have to ask an administrator when
+            its subscription runs out. */}
+        <div className="row" style={{ marginTop: 6, alignItems: "center", gap: 14 }}>
           <ExportSchool school={school} roster={data.roster} summary={data.summary} />
+          <SubscriptionBadge endsAt={school?.subscription_ends_at} />
         </div>
       </section>
 
@@ -502,5 +505,40 @@ function Roster({ rows, view, onSelect }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * How long this school's subscription has left.
+ *
+ * Shown to the school itself, not only to administrators. A licence that lapses
+ * without warning in the middle of a lesson is a bad afternoon for a teacher
+ * who was never told it was close — and they are the person who can chase it.
+ *
+ * The end date counts THROUGH that day: an end date of the 11th is valid until
+ * the end of the 11th, matching what the API enforces.
+ */
+function SubscriptionBadge({ endsAt }) {
+  if (!endsAt) return null;
+
+  const d = new Date(endsAt);
+  const endOfDay = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999);
+  const days = Math.ceil((endOfDay - Date.now()) / 86400000);
+  const when = d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+
+  if (days < 0) {
+    return (
+      <span className="cell-sub">
+        <span className="pill bad">Subscription ended</span> {when}
+      </span>
+    );
+  }
+  return (
+    <span className="cell-sub">
+      <span className={`pill ${days <= 14 ? "warn" : "ok"}`}>
+        {days === 0 ? "Subscription ends today" : `${days} day${days === 1 ? "" : "s"} of subscription left`}
+      </span>{" "}
+      until {when}
+    </span>
   );
 }

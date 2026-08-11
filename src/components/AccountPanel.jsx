@@ -104,8 +104,13 @@ export default function AccountPanel({ auth, syncStatus, syncError, onSignedIn }
             {auth.user.email}
           </div>
           <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-            <span className={`sev ${auth.isTeacher ? "nominal" : "warning"}`}>
-              {auth.isTeacher ? "TEACHER" : "STUDENT"}
+            {/* The real role, not a guess from one boolean. `isTeacher` only
+                matches the literal 'teacher', so a school account and an
+                administrator both showed up here as STUDENT — which is exactly
+                the sort of thing that makes someone doubt everything else on
+                the screen. */}
+            <span className={`sev ${auth.role && auth.role !== "student" ? "nominal" : "warning"}`}>
+              {(auth.role ?? "student").toUpperCase()}
             </span>
             {auth.profile?.class_code && (
               <span className="opt-flag">CLASS {auth.profile.class_code}</span>
@@ -130,7 +135,7 @@ export default function AccountPanel({ auth, syncStatus, syncError, onSignedIn }
           </div>
         </div>
 
-        {!auth.isTeacher && (
+        {auth.role === "student" && (
           <div className="sect-note">
             Teacher accounts are granted in Supabase Studio, not from here — a
             student cannot promote themselves.

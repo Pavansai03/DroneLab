@@ -221,7 +221,34 @@ export function useBuildSync({ user, build, earned, applyBuild, applyEarned, fal
       setStatus("saved");
     }, 1500);
 
-    return () => clearTimeout(saveTimer.current);
+    return () => {
+      clearTimeout(saveTimer.current);
+      /* FLUSH, do not drop.
+         Resetting the build clears the flight achievements and writes an empty
+         set — and a student who resets and immediately clicks through to the
+         portal unmounts this inside the 1500ms debounce. The write was simply
+         cancelled, so the cloud kept the old achievements and merged them back
+         on return: the Hover task came back ticked on a drone that had never
+         left the ground.
+
+         The debounce exists so that dragging a part does not hammer the
+         database, not so that the last thing someone did is discarded. */
+      if (json !== lastSaved.current) {
+        lastSaved.current = json;
+        void supabase
+          .from("builds")
+          .upsert(
+            {
+              user_id: user.id,
+              frame_id: payload.frameId,
+              state: payload,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id" }
+          )
+          .then(() => {});
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [build, earned, user?.id]);
 

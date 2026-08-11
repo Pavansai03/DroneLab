@@ -90,8 +90,7 @@ export function useSchoolAccess(user, role) {
           return setAccess({ ...OPEN, reason: DENIED.SCHOOL_INACTIVE, schoolName });
         }
 
-        // A missing end date means no expiry — see the API for why null is not "expired".
-        if (endsAt && new Date(endsAt).getTime() <= Date.now()) {
+        if (subscriptionExpired(endsAt)) {
           return setAccess({ ...OPEN, reason: DENIED.EXPIRED, schoolName, endsAt });
         }
 
@@ -107,4 +106,36 @@ export function useSchoolAccess(user, role) {
   }, [user?.id, role]);
 
   return access;
+}
+
+/**
+ * Has a subscription end date passed?
+ *
+ * THROUGH that date, not up to the start of it. An administrator picking
+ * 11 August in a date field means "valid for the whole of the 11th" — but a
+ * <input type="date"> submits a bare YYYY-MM-DD, which parses to midnight at
+ * the START of the day, so the school was locked out for the entire day it had
+ * paid for. Rounding up to the end of the day is the only reading that matches
+ * what the person choosing the date meant.
+ *
+ * Done at comparison time rather than when storing, so the dates already in the
+ * database behave correctly too, without a migration.
+ *
+ * UTC deliberately. The server, the database and the browser can each be in a
+ * different zone, and a licence that lapses at a different moment depending on
+ * who is asking is worse than one that runs a few hours long. Erring long also
+ * errs in the school's favour, which is the right direction for the one of the
+ * two that is a paying customer.
+ */
+function subscriptionExpired(endsAt) {
+  if (!endsAt) return false; // no end date means no expiry
+  const d = new Date(endsAt);
+  if (Number.isNaN(d.getTime())) return false;
+  const endOfDay = Date.UTC(
+    d.getUTCFullYear(),
+    d.getUTCMonth(),
+    d.getUTCDate(),
+    23, 59, 59, 999
+  );
+  return Date.now() > endOfDay;
 }

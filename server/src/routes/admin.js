@@ -1,7 +1,13 @@
 import { Router } from "express";
 import { route, requireRole } from "../auth.js";
 import { adminClient } from "../supabase.js";
-import { sendMail, schoolApprovedEmail, schoolRejectedEmail, mailConfigured } from "../mailer.js";
+/* NO EMAIL IS SENT TO SCHOOLS.
+   Approving and rejecting used to email the school, which meant the whole
+   product depended on SMTP being configured and correct — and when it was not,
+   the panel had to explain that in a notice nobody wanted to read. The join
+   code is shown to the administrator at the moment of approval instead, and
+   passed on by whoever is already talking to the school. The mailer module is
+   left in place; nothing calls it. */
 
 /**
  * SUPER ADMIN ROUTES
@@ -35,13 +41,12 @@ router.get(
     res.json({
       applications: data ?? [],
       pending: (data ?? []).filter((a) => a.status === "pending").length,
-      mailConfigured,
     });
   })
 );
 
 /**
- * Approve a school: mint its join code and tell it.
+ * Approve a school and mint its join code.
  *
  * The code is generated HERE, at the moment of approval, rather than at
  * application time. A code that exists before anyone has vetted the school is a
@@ -49,10 +54,8 @@ router.get(
  * unapproved; generating it on approval means an unapproved school has nothing
  * to leak.
  *
- * The email is sent after the database is already committed, and its failure is
- * reported rather than thrown. Approving a school is an administrative decision
- * that must not be undone by an SMTP outage — the panel shows whether the
- * message went out so the code can be passed on by hand if it did not.
+ * Nothing is emailed. The code comes back in the response and the panel shows
+ * it, for whoever is already in touch with the school to pass on.
  */
 router.post(
   "/applications/:id/approve",
@@ -107,15 +110,7 @@ router.post(
       await db.from("profiles").update({ school_id: school.id }).eq("id", school.owner_id);
     }
 
-    const portalUrl = process.env.PORTAL_URL || "http://localhost:3000";
-    const mail = school.contact_email
-      ? await sendMail({
-          to: school.contact_email,
-          ...schoolApprovedEmail({ schoolName: updated.name, joinCode, portalUrl }),
-        })
-      : { sent: false, reason: "No contact email on the application." };
-
-    res.json({ school: updated, mail });
+    res.json({ school: updated });
   })
 );
 
@@ -147,15 +142,7 @@ router.post(
       .eq("id", school.id);
     if (error) return res.status(400).json({ error: error.message });
 
-    const portalUrl = process.env.PORTAL_URL || "http://localhost:3000";
-    const mail = school.contact_email
-      ? await sendMail({
-          to: school.contact_email,
-          ...schoolRejectedEmail({ schoolName: school.name, reason: note, portalUrl }),
-        })
-      : { sent: false, reason: "No contact email on the application." };
-
-    res.json({ id: school.id, status: "rejected", mail });
+    res.json({ id: school.id, status: "rejected" });
   })
 );
 

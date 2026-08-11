@@ -83,7 +83,7 @@ router.get(
        lift it, and shutting them out of the panel that holds the button would
        make an expired subscription unrecoverable. */
     const expiresAt = school?.subscription_ends_at ?? null;
-    const expired = Boolean(expiresAt && new Date(expiresAt).getTime() <= Date.now());
+    const expired = subscriptionExpired(expiresAt);
 
     const staff = role === "admin" || role === "school" || role === "teacher";
     const schoolOk = Boolean(school && school.status === "approved" && school.active);
@@ -118,9 +118,7 @@ router.get(
         expired,
         /* Negative once it has passed. The portal warns on this rather than
            making a teacher compare dates in their head. */
-        daysLeft: expiresAt
-          ? Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86400000)
-          : null,
+        daysLeft: expiresAt ? daysUntilEndOf(expiresAt) : null,
       },
     });
   })
@@ -380,6 +378,45 @@ function streakFrom(rows) {
     d.setDate(d.getDate() - 1);
   }
   return n;
+}
+
+/**
+ * Has a subscription end date passed?
+ *
+ * THROUGH that date, not up to the start of it. An administrator picking
+ * 11 August in a date field means "valid for the whole of the 11th" — but a
+ * <input type="date"> submits a bare YYYY-MM-DD, which parses to midnight at
+ * the START of the day, so the school was locked out for the entire day it had
+ * paid for. Rounding up to the end of the day is the only reading that matches
+ * what the person choosing the date meant.
+ *
+ * Done at comparison time rather than when storing, so the dates already in the
+ * database behave correctly too, without a migration.
+ *
+ * UTC deliberately. The server, the database and the browser can each be in a
+ * different zone, and a licence that lapses at a different moment depending on
+ * who is asking is worse than one that runs a few hours long. Erring long also
+ * errs in the school's favour, which is the right direction for the one of the
+ * two that is a paying customer.
+ */
+function subscriptionExpired(endsAt) {
+  if (!endsAt) return false; // no end date means no expiry
+  const d = new Date(endsAt);
+  if (Number.isNaN(d.getTime())) return false;
+  const endOfDay = Date.UTC(
+    d.getUTCFullYear(),
+    d.getUTCMonth(),
+    d.getUTCDate(),
+    23, 59, 59, 999
+  );
+  return Date.now() > endOfDay;
+}
+
+/** Whole days remaining, counting the end date itself as one of them. */
+function daysUntilEndOf(endsAt) {
+  const d = new Date(endsAt);
+  const endOfDay = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999);
+  return Math.ceil((endOfDay - Date.now()) / 86400000);
 }
 
 export default router;

@@ -575,10 +575,9 @@ function AdminList() {
  * rather than a list to be browsed — a school waiting three days should not sit
  * below one that applied this morning.
  *
- * Approving mints the join code and emails it. The result of that email is
- * REPORTED rather than assumed: with no SMTP configured, the code is shown here
- * so it can be passed on by hand. An approval that silently produced a code
- * nobody received would look like success and leave a school stuck.
+ * Approving mints the join code and shows it here. Nothing is emailed — the
+ * code is passed to the school by whoever is already in touch with them, which
+ * is one fewer thing to configure and one fewer thing to fail silently.
  */
 function Approvals({ onPending }) {
   const [data, setData] = useState(null);
@@ -614,10 +613,10 @@ function Approvals({ onPending }) {
           subscription_ends_at: subscriptionEnds[a.id] || null,
         };
         const r = await api.admin.approve(a.id, body);
-        setResult({ kind: "approved", school: r.school, mail: r.mail });
+        setResult({ kind: "approved", school: r.school });
       } else {
         const r = await api.admin.reject(a.id, note);
-        setResult({ kind: "rejected", name: a.name, mail: r.mail });
+        setResult({ kind: "rejected", name: a.name });
         setRejecting(null);
         setNote("");
       }
@@ -642,26 +641,18 @@ function Approvals({ onPending }) {
           {result.kind === "approved" ? (
             <>
               <strong>{result.school.name} approved.</strong> Join code{" "}
-              <code className="code-chip">{result.school.join_code}</code>{" "}
-              {result.mail?.sent
-                ? `— emailed to ${result.school.contact_email}.`
-                : `— the email did NOT go out (${result.mail?.reason}), so pass this code on yourself.`}
+              <code className="code-chip">{result.school.join_code}</code> — pass this on to the
+              school. It is the only place the code is shown, so copy it now.
             </>
           ) : (
             <>
-              <strong>{result.name} rejected.</strong>{" "}
-              {result.mail?.sent ? "The school has been told." : `No email was sent (${result.mail?.reason}).`}
+              <strong>{result.name} rejected.</strong> Let the school know yourself — nothing has
+              been sent to them.
             </>
           )}
         </div>
       )}
 
-      {!data.mailConfigured && (
-        <div className="note" style={{ marginBottom: 18 }}>
-          SMTP is not configured, so approval emails cannot be sent. Approving still works and the
-          join code is shown here — you will need to pass it on yourself.
-        </div>
-      )}
 
       {/* Named to match the students queue below it. "Waiting for a decision"
           described the queue without saying whose, which read as ambiguous the
@@ -991,7 +982,7 @@ function Decide({ school, onDone }) {
         <input
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="Reason (emailed to the school)"
+          placeholder="Reason (recorded, and shown to the school in its panel)"
           style={{ marginBottom: 6 }}
         />
         <div className="row" style={{ flexWrap: "nowrap", gap: 6 }}>
@@ -1220,9 +1211,14 @@ function StudentApprovals({ onPending }) {
 /* ================================================ subscription end date */
 
 /** Days from now until a date, negative once it has passed. */
+/* Counts THROUGH the end date, matching what the API enforces: an end date of
+   the 11th is valid until the end of the 11th. Showing "expired" on a morning
+   the school has actually paid for is how this was wrong before. */
 function daysUntil(iso) {
   if (!iso) return null;
-  return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+  const d = new Date(iso);
+  const endOfDay = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999);
+  return Math.ceil((endOfDay - Date.now()) / 86400000);
 }
 
 /**

@@ -110,7 +110,7 @@ router.get(
     if (!schoolId) return res.json({ school: null });
     const { data } = await db
       .from("schools")
-      .select("id, name, join_code, region, created_at")
+      .select("id, name, join_code, region, created_at, subscription_starts_at, subscription_ends_at")
       .eq("id", schoolId)
       .maybeSingle();
     res.json({ school: data ?? null });
