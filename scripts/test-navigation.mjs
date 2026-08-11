@@ -65,6 +65,9 @@ function shell(u, path, requireRole) {
 function expiredPage(u) {
   if (!u.signedIn) return LOGIN;
   if (!u.expired) return u.role === "student" ? "/student" : "/";
+  /* Never an administrator: this screen says "someone else must fix this", and
+     for them there is nobody else. The remedy is on /admin. */
+  if (u.role === "admin") return "/admin";
   return "/expired";
 }
 
@@ -127,6 +130,9 @@ const FORBIDDEN = {
   "student, rejected": ["/student", "/student/profile", "/admin"],
   "student, school expired": ["/student", "/student/pending", "/student/join", "/admin"],
   "school, expired": ["/school", "/teacher", "/admin"],
+  /* An administrator must never come to rest on the expiry screen. They are the
+     only person who can lift an expiry, and the button is on /admin. */
+  "admin, a school expired": ["/expired"],
   "signed out": ENTRIES.filter((p) => p !== "/login"),
 };
 

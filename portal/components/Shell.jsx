@@ -75,8 +75,17 @@ export default function Shell({ children, requireRole }) {
            as students: a school whose licence has run out should not be reading
            its own dashboard either. Administrators are exempt at the server —
            they are the only people who can lift it, and locking them out of the
-           panel holding the button would make expiry unrecoverable. */
-        if (profile.subscription?.expired && pathname !== "/expired") {
+           panel holding the button would make expiry unrecoverable.
+
+           The exemption has to be repeated HERE, not left to the server. /me
+           reports `subscription.expired` for the caller's own school truthfully,
+           whoever is asking — and an administrator whose profile happens to
+           carry a school_id has one. Without this role check that administrator
+           was redirected off /admin to /expired, which then kept them there,
+           and the only remedy for an expiry was behind the page they could no
+           longer open. app/page.jsx has always checked the role; this did not.
+           scripts/test-navigation.mjs found the disagreement. */
+        if (profile.subscription?.expired && profile.role !== "admin" && pathname !== "/expired") {
           return router.replace("/expired");
         }
 

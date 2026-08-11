@@ -46,6 +46,11 @@ export default function ExpiredPage() {
         if (!data.subscription?.expired) {
           return router.replace(data.role === "student" ? "/student" : "/");
         }
+        /* An administrator is never held here, even when their own school's
+           licence has lapsed. This screen's whole message is "someone else must
+           fix this" — and for them there is no someone else. The button is on
+           /admin, so that is where they go. */
+        if (data.role === "admin") return router.replace("/admin");
         setMe(data);
       } catch (e) {
         if (alive) setError(e.message);
