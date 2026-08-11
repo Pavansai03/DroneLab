@@ -88,14 +88,19 @@ function schoolPending(u) {
 }
 
 /** app/reset/page.jsx — where a password reset link lands.
-    Ungated on purpose beyond needing the recovery session: an unapproved
-    student, a lapsed school and an administrator can all be locked out by a
-    forgotten password, and none of those states is a reason to refuse someone
-    their own account back. Gating it on the subscription in particular would
-    mean a school could not recover the account it needs in order to ask for
-    the renewal that would ungate it. */
-function resetPage(u) {
-  if (!u.signedIn) return LOGIN;
+    Ungated on purpose, and the ONLY page that a signed-out visitor may rest on
+    besides /login. Redirecting them away was the bug: the recovery session
+    arrives in the URL fragment, so for a moment the page legitimately has no
+    session, and bouncing to /login threw the tokens away. It now stays put and
+    offers the six-digit code from the same email instead.
+
+    No role, subscription or approval check either. An unapproved student, a
+    lapsed school and an administrator can all be locked out by a forgotten
+    password, and none of those states is a reason to refuse someone their own
+    account back — gating it on the subscription would mean a school could not
+    recover the account it needs in order to ask for the renewal that would
+    ungate it. */
+function resetPage() {
   return "/reset";
 }
 
@@ -147,7 +152,9 @@ const FORBIDDEN = {
   /* An administrator must never come to rest on the expiry screen. They are the
      only person who can lift an expiry, and the button is on /admin. */
   "admin, a school expired": ["/expired"],
-  "signed out": ENTRIES.filter((p) => p !== "/login"),
+  /* /reset is the one exception: a person mid-recovery is signed out by
+     definition, and sending them to /login is what lost the session. */
+  "signed out": ENTRIES.filter((p) => p !== "/login" && p !== "/reset"),
 };
 
 /* ------------------------------------------------------------------- walk it */

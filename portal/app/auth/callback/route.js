@@ -30,8 +30,23 @@ export async function GET(request) {
     );
   }
 
+  /* NO CODE IS NOT THE SAME AS NO SESSION.
+     GoTrue answers a recovery link with whichever flow it feels like. This
+     instance ignores the PKCE challenge the client sends and uses the implicit
+     flow instead — it verifies the token itself and puts the session in the URL
+     FRAGMENT: #access_token=...&type=recovery.
+
+     A fragment never reaches a server. So this route saw a bare request, sent
+     the visitor to /login, and threw the session away with the redirect. From
+     the outside that looked like the reset link doing nothing at all.
+
+     Redirecting to `next` instead fixes it without needing to know which flow
+     was used, because a browser carries the fragment across a redirect whose
+     target has none of its own. The tokens arrive at /reset, where the browser
+     client picks them up. `next` defaults to "/", which routes by role or to
+     the login page — so a bare visit here still ends up somewhere sensible. */
   if (!code) {
-    return NextResponse.redirect(new URL("/login", url.origin));
+    return NextResponse.redirect(new URL(next, url.origin));
   }
 
   const store = cookies();
