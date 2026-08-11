@@ -8,6 +8,37 @@ import Brand from "../../components/Brand.jsx";
 import { DroneBackdrop, HeroDrone, Icon, Loader } from "../../components/DroneArt.jsx";
 
 /**
+ * The chrome around every state of this page.
+ *
+ * MODULE SCOPE, NOT INSIDE THE COMPONENT. Declared inside, it is a new
+ * component type on every render, so React discards the whole subtree and
+ * rebuilds it whenever state changes. This screen polls every twenty seconds,
+ * so that was the animated backdrop being torn down and its animation
+ * restarted four times a minute, for nothing.
+ *
+ * The same shape on the password reset screen was worse: it destroyed the
+ * inputs on every keystroke. See scripts/test-components.mjs, which now
+ * refuses it everywhere.
+ */
+function Frame({ onLeave, children }) {
+  return (
+    <>
+      <DroneBackdrop />
+      <div className="shell">
+        <header className="topbar">
+          <Brand />
+          <div className="spacer" />
+          <button className="btn small" onClick={onLeave}>
+            Sign out
+          </button>
+        </header>
+        <main style={{ maxWidth: 760 }}>{children}</main>
+      </div>
+    </>
+  );
+}
+
+/**
  * SUBSCRIPTION ENDED
  * ==================
  * Where a school and its students land once the licence has run out.
@@ -70,32 +101,16 @@ export default function ExpiredPage() {
     router.replace("/login");
   }
 
-  const Frame = ({ children }) => (
-    <>
-      <DroneBackdrop />
-      <div className="shell">
-        <header className="topbar">
-          <Brand />
-          <div className="spacer" />
-          <button className="btn small" onClick={leave}>
-            Sign out
-          </button>
-        </header>
-        <main style={{ maxWidth: 760 }}>{children}</main>
-      </div>
-    </>
-  );
-
   if (error) {
     return (
-      <Frame>
+      <Frame onLeave={leave}>
         <div className="note bad">{error}</div>
       </Frame>
     );
   }
   if (me === undefined) {
     return (
-      <Frame>
+      <Frame onLeave={leave}>
         <Loader label="Checking your school's subscription" />
       </Frame>
     );
@@ -105,7 +120,7 @@ export default function ExpiredPage() {
   const isStaff = me.role === "school" || me.role === "teacher";
 
   return (
-    <Frame>
+    <Frame onLeave={leave}>
       <section className="hero rise">
         <div className="hero-inner">
           <div className="hero-copy">

@@ -52,6 +52,37 @@ import { DroneBackdrop, HeroDrone, Icon, Loader } from "../../components/DroneAr
  * mean a school could not recover the account it needs in order to ask for the
  * renewal that would ungate it.
  */
+/**
+ * The chrome around every state of this page.
+ *
+ * MODULE SCOPE, NOT INSIDE THE COMPONENT. Declared inside, it is a new
+ * component type on every render, so React throws the entire subtree away and
+ * rebuilds it whenever any state changes — and this page's state changes on
+ * every keystroke. The inputs were destroyed and recreated per character:
+ * focus left the field being typed in, and autoFocus dragged the caret back to
+ * the first box. One character per attempt.
+ *
+ * Nothing about the markup gives that away, which is why
+ * scripts/test-components.mjs now refuses the whole shape.
+ */
+function Frame({ children }) {
+  return (
+    <>
+      <DroneBackdrop />
+      <div className="shell">
+        <header className="topbar">
+          <Brand />
+          <div className="spacer" />
+          <a className="btn small" href="/login">
+            Back to sign in
+          </a>
+        </header>
+        <main style={{ maxWidth: 560 }}>{children}</main>
+      </div>
+    </>
+  );
+}
+
 export default function ResetPage() {
   const router = useRouter();
 
@@ -209,22 +240,6 @@ export default function ResetPage() {
       setBusy(false);
     }
   }
-
-  const Frame = ({ children }) => (
-    <>
-      <DroneBackdrop />
-      <div className="shell">
-        <header className="topbar">
-          <Brand />
-          <div className="spacer" />
-          <a className="btn small" href="/login">
-            Back to sign in
-          </a>
-        </header>
-        <main style={{ maxWidth: 560 }}>{children}</main>
-      </div>
-    </>
-  );
 
   if (phase === "checking") {
     return (
