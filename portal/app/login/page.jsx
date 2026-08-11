@@ -16,8 +16,13 @@ import PasswordField from "../../components/PasswordField.jsx";
  * instance can surface a bare 500. Rendering `err.message` alone once produced
  * a red box containing "{}" — worse than no message, because it says something
  * failed and denies any way to find out what.
+ *
+ * `action` names what was being attempted. Without it every failure on this
+ * page said "Sign-in failed", including the one on the reset form — which told
+ * someone who had not tried to sign in that signing in had failed, and pointed
+ * them at the wrong thing entirely.
  */
-function describeAuthError(err) {
+function describeAuthError(err, action = "Sign-in") {
   const raw =
     (typeof err?.message === "string" && err.message) ||
     err?.error_description ||
@@ -26,6 +31,12 @@ function describeAuthError(err) {
     "";
   const text = typeof raw === "string" && raw.trim() && raw.trim() !== "{}" ? raw.trim() : "";
 
+  if (/recovery email/i.test(text)) {
+    return (
+      "The authentication server could not send the reset email. Its SMTP settings are " +
+      "missing or wrong — an administrator needs to fix them. Nothing is wrong with this account."
+    );
+  }
   if (/confirmation email|sending.*email|smtp/i.test(text)) {
     return (
       "The server could not send the confirmation email, so the account was not created. " +
@@ -45,8 +56,28 @@ function describeAuthError(err) {
     return "Too many attempts in a short time. Wait a minute and try again.";
   }
   if (text) return text;
+
+  /* No message at all. A 500 from GoTrue with an empty or non-JSON body is
+     almost always the mailer: /recover and /signup are the two endpoints that
+     have to hand something to an SMTP server before they can answer, and when
+     that fails the reply carries a status and nothing else. Everything else the
+     auth server refuses — bad password, unknown user, disallowed redirect,
+     rate limit — comes back 4xx with a reason attached.
+
+     So a bare 500 gets named rather than shown as a number. "Error 500" sends
+     whoever reads it looking through the portal, the CORS list and the browser
+     console, none of which is where the fault is. */
   const status = err?.status ?? err?.code;
-  return status ? `Sign-in failed (error ${status}).` : "Sign-in failed, and the server gave no reason.";
+  if (status === 500) {
+    return (
+      `${action} failed: the authentication server could not send the email (error 500). ` +
+      "This is almost always SMTP — the mail settings on the auth server are missing, " +
+      "wrong, or the mail host is refusing the connection. Nothing is wrong with this account."
+    );
+  }
+  return status
+    ? `${action} failed (error ${status}).`
+    : `${action} failed, and the server gave no reason.`;
 }
 
 /* Who is signing in. The choice changes the form, not just a label — a school
@@ -171,7 +202,7 @@ function LoginForm() {
           "It is valid for one hour, and it will only work once."
       );
     } catch (err) {
-      setError(describeAuthError(err));
+      setError(describeAuthError(err, "Sending the reset link"));
     }
     setBusy(false);
   }
