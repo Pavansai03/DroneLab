@@ -140,12 +140,27 @@ export async function signOut() {
 
 /* ----------------------------------------------------------- build sync */
 
-export function useBuildSync({ user, build, earned, applyBuild, applyEarned, fallbackBuild }) {
+export function useBuildSync({ user, build, earned, applyBuild, applyEarned, fallbackBuild, resetKey }) {
   const [status, setStatus] = useState("idle"); // idle | loading | saving | saved | error
   const [error, setError] = useState(null);
   const loadedFor = useRef(null);
   const saveTimer = useRef(null);
   const lastSaved = useRef(null);
+  /* The write the debounce is currently sitting on, so something other than the
+     timer can send it — see the page-hide listener below. */
+  const pending = useRef(null);
+  const seenResetKey = useRef(resetKey);
+  /* Every write goes through here, one after another.
+     A reset produces two writes in quick succession — the flush of whatever was
+     mid-debounce, then the empty set — and fired concurrently there is nothing
+     deciding which reaches Postgres last. Losing that race restores the build
+     the student just stripped. A chain costs one await and removes the question
+     entirely. */
+  const chain = useRef(Promise.resolve());
+  const enqueue = (fn) => {
+    chain.current = chain.current.then(fn, fn);
+    return chain.current;
+  };
 
   /* Load once per signed-in user. */
   useEffect(() => {
@@ -199,58 +214,95 @@ export function useBuildSync({ user, build, earned, applyBuild, applyEarned, fal
     const json = JSON.stringify(payload);
     if (json === lastSaved.current) return;
 
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
+    const row = {
+      user_id: user.id,
+      frame_id: payload.frameId,
+      state: payload,
+      updated_at: new Date().toISOString(),
+    };
+    pending.current = { json, row };
+
+    const send = () => {
+      const held = pending.current;
+      if (!held || held.json === lastSaved.current) return chain.current;
+      lastSaved.current = held.json;
+      pending.current = null;
       setStatus("saving");
-      const { error: err } = await supabase.from("builds").upsert(
-        {
-          user_id: user.id,
-          frame_id: payload.frameId,
-          state: payload,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" }
-      );
-      if (err) {
-        setError(describeError(err));
-        setStatus("error");
-        return;
-      }
-      lastSaved.current = json;
-      setError(null);
-      setStatus("saved");
-    }, 1500);
+      return enqueue(async () => {
+        const { error: err } = await supabase
+          .from("builds")
+          .upsert(held.row, { onConflict: "user_id" });
+        if (err) {
+          /* Let the next change try again rather than pretending this landed. */
+          lastSaved.current = null;
+          setError(describeError(err));
+          setStatus("error");
+          return;
+        }
+        setError(null);
+        setStatus("saved");
+      });
+    };
+
+    clearTimeout(saveTimer.current);
+
+    /* A RESET IS NOT DEBOUNCED.
+       Stripping the build is deliberate, rare, and destructive, and the write
+       it produces is the empty achievement set. Debouncing that meant the one
+       write that most needed to land was the one most likely to be abandoned:
+       "Portal" is a link to a different application, so leaving the page is a
+       real navigation — and React does not run effect cleanups on unload. The
+       flush below never fired on that path, the cloud kept the old set, and it
+       was merged straight back on return with Hover still ticked.
+
+       Nothing is gained by making the student wait 1500 ms for a button they
+       had to confirm in a dialogue. */
+    if (resetKey !== seenResetKey.current) {
+      seenResetKey.current = resetKey;
+      void send();
+      return;
+    }
+
+    saveTimer.current = setTimeout(send, 1500);
 
     return () => {
       clearTimeout(saveTimer.current);
-      /* FLUSH, do not drop.
-         Resetting the build clears the flight achievements and writes an empty
-         set — and a student who resets and immediately clicks through to the
-         portal unmounts this inside the 1500ms debounce. The write was simply
-         cancelled, so the cloud kept the old achievements and merged them back
-         on return: the Hover task came back ticked on a drone that had never
-         left the ground.
-
+      /* FLUSH, do not drop. An in-app teardown — the effect re-running, the
+         component going away — must not discard the last thing that happened.
          The debounce exists so that dragging a part does not hammer the
-         database, not so that the last thing someone did is discarded. */
-      if (json !== lastSaved.current) {
-        lastSaved.current = json;
-        void supabase
-          .from("builds")
-          .upsert(
-            {
-              user_id: user.id,
-              frame_id: payload.frameId,
-              state: payload,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "user_id" }
-          )
-          .then(() => {});
-      }
+         database, not so that work is lost. */
+      void send();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [build, earned, user?.id]);
+  }, [build, earned, user?.id, resetKey]);
+
+  /* LEAVING THE PAGE IS NOT AN UNMOUNT.
+     Clicking "Portal" navigates to a different application, and a browser does
+     not run React's cleanup on the way out — so up to 1500 ms of work sat in a
+     timer that was simply thrown away with the page. `visibilitychange` fires
+     before the navigation commits, while the tab can still make a request, so
+     the pending write goes now. It is also the right moment on mobile, where a
+     backgrounded tab may never be resumed. */
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user) return;
+    const flush = () => {
+      const held = pending.current;
+      if (!held || held.json === lastSaved.current) return;
+      lastSaved.current = held.json;
+      pending.current = null;
+      clearTimeout(saveTimer.current);
+      void enqueue(() => supabase.from("builds").upsert(held.row, { onConflict: "user_id" }));
+    };
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("pagehide", flush);
+    };
+  }, [user?.id]);
 
   return { status, error };
 }

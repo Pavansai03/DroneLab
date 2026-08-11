@@ -43,8 +43,12 @@ loads and there is no error".
 
 1. `supabase/schema.sql` — profiles, roles, module progress, saved builds
 2. `supabase/portal-schema.sql` — schools, the `admin` role, school-scoped RLS
+3. `supabase/activity-log.sql` — `record_activity()`, which is the only thing
+   that ever writes the flight counts. Without it, "Flights flown" and "Day
+   streak" on the student panel, and the flights and crashes columns in the
+   teacher dashboard and every exported report, all read zero for everyone.
 
-Both are idempotent; running them twice is harmless.
+All three are idempotent; running them twice is harmless.
 
 Then confirm RLS is actually on. **Database → Tables**, and check every table
 shows *RLS enabled*: `profiles`, `user_roles`, `module_progress`, `builds`,

@@ -53,12 +53,29 @@ export function saveEarned(userId, set) {
   }
 }
 
+/**
+ * Forget every flight, on this machine.
+ *
+ * BOTH KEYS, always — the signed-in one and "local".
+ *
+ * Clearing only the user's key left the signed-out set behind, and the very
+ * next mount seeds `earned` from exactly that key (loadEarned(null) in App).
+ * So a student who had ever flown before signing in reset their build, walked
+ * to the portal, came back, and found Hover ticked on a drone with no motors
+ * on it. The merge that makes signed-out practice count is the same merge that
+ * resurrected it.
+ *
+ * A reset is not "forget the account's flights" — it is "this build never
+ * happened". Nothing on this machine should survive it.
+ */
 export function clearEarned(userId) {
   const store = storage();
   if (!store) return;
-  try {
-    store.removeItem(keyFor(userId));
-  } catch {
-    /* quota, or storage disabled mid-session */
+  for (const key of new Set([keyFor(userId), keyFor(null)])) {
+    try {
+      store.removeItem(key);
+    } catch {
+      /* quota, or storage disabled mid-session */
+    }
   }
 }

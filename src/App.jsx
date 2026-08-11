@@ -45,6 +45,7 @@ import { hasPortal, goToPortal } from "./lib/portal.js";
 import { useSchoolAccess } from "./lib/useSchoolAccess.js";
 import AccessLock from "./components/AccessLock.jsx";
 import { loadEarned, saveEarned, clearEarned } from "./lib/achievements.js";
+import { useFlightLog } from "./lib/useFlightLog.js";
 import {
   setBuzzerEnabled,
   setBuzzerMuted,
@@ -182,6 +183,12 @@ export default function App() {
     });
   }, []);
 
+  /* Bumped by resetBuild. Declared up here rather than with the other session
+     state because both sync hooks need it: the progress sync to forget its
+     high-water marks, and the build sync to write the empty achievement set
+     immediately instead of leaving it in a debounce the student walks out on. */
+  const [progressResetKey, setProgressResetKey] = useState(0);
+
   const { status: syncStatus, error: syncError } = useBuildSync({
     user: auth.user,
     build: bs,
@@ -189,6 +196,7 @@ export default function App() {
     applyBuild: applyCloudBuild,
     applyEarned: applyCloudEarned,
     fallbackBuild: makeInitialBuild(frameId),
+    resetKey: progressResetKey,
   });
 
   /* Thin wrappers so each slice reads naturally at the call sites.
@@ -230,7 +238,6 @@ export default function App() {
   const [testing, setTesting] = useState(false);
   /* Which destructive action is awaiting confirmation, if any. */
   const [confirm, setConfirm] = useState(null);
-  const [progressResetKey, setProgressResetKey] = useState(0);
   /* Master mute — a listening preference, not part of the build, so it lives
      outside the undo history. It covers the motors as well as the buzzer, which
      is why it is never disabled: rotor noise exists from the first flight,
@@ -438,6 +445,10 @@ export default function App() {
       simRef.current = null;
     };
   }, []);
+
+  /* Count the flying, so the panels that report it have something to report.
+     Called after the simulator exists, so its effects attach to a live sim. */
+  useFlightLog({ user: auth.user, simRef, mode });
 
   /** Capabilities the simulator needs, derived from the build and injected faults. */
   const capabilities = useMemo(

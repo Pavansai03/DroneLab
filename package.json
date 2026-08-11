@@ -14,7 +14,8 @@
     "test:progress": "node scripts/test-progress.mjs",
     "test:access": "node scripts/test-access.mjs",
     "test:navigation": "node scripts/test-navigation.mjs",
-    "verify": "npm --prefix server run check && npm run test:progress && npm run test:access && npm run test:navigation"
+    "test:reset": "node scripts/test-reset.mjs",
+    "verify": "npm --prefix server run check && npm run test:progress && npm run test:access && npm run test:navigation && npm run test:reset"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.9",
