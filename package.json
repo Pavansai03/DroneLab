@@ -12,7 +12,9 @@
     "supabase:check": "node supabase/check-connection.mjs",
     "build:all": "node scripts/build-merged.mjs",
     "test:progress": "node scripts/test-progress.mjs",
-    "test:access": "node scripts/test-access.mjs"
+    "test:access": "node scripts/test-access.mjs",
+    "test:navigation": "node scripts/test-navigation.mjs",
+    "verify": "npm --prefix server run check && npm run test:progress && npm run test:access && npm run test:navigation"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.9",

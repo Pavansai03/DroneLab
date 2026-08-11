@@ -41,6 +41,13 @@ export default function StudentPendingPage() {
         const data = await api.me();
         if (!alive) return;
 
+        /* The school's licence, before this page's own subject.
+           Both of these leave `admitted` false, and without this check a
+           student whose school had simply run out of subscription was told an
+           administrator was reviewing their request — the wrong problem,
+           pointing at the wrong person, and a wait that would never end. */
+        if (data.subscription?.expired) return router.replace("/expired");
+
         // Approved while this was open, or never needed this page at all.
         if (data.admitted) return router.replace("/student");
         // No code entered yet — the join screen is where they belong.
