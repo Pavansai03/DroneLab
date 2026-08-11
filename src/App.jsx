@@ -43,7 +43,7 @@ import { Arrow, ArrowLeft, Reset, Bolt, Warn, Undo, Redo, SpeakerOn, SpeakerOff,
 import { initialTheme, applyTheme } from "./lib/theme.js";
 import { hasPortal, goToPortal } from "./lib/portal.js";
 import { useSchoolAccess } from "./lib/useSchoolAccess.js";
-import SubscriptionLock from "./components/SubscriptionLock.jsx";
+import AccessLock from "./components/AccessLock.jsx";
 import { loadEarned, saveEarned, clearEarned } from "./lib/achievements.js";
 import {
   setBuzzerEnabled,
@@ -1064,8 +1064,10 @@ export default function App() {
 
      Only once the check has finished, so the lock never flashes at a student
      while the query is still in flight. */
-  if (!access.checking && access.locked) {
-    return <SubscriptionLock schoolName={access.schoolName} endsAt={access.endsAt} />;
+  if (!access.checking && access.reason) {
+    return (
+      <AccessLock reason={access.reason} schoolName={access.schoolName} endsAt={access.endsAt} />
+    );
   }
   return (
     <div className="app">
