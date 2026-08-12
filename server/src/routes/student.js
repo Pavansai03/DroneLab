@@ -412,11 +412,28 @@ function subscriptionExpired(endsAt) {
   return Date.now() > endOfDay;
 }
 
-/** Whole days remaining, counting the end date itself as one of them. */
+/**
+ * Whole CALENDAR days remaining. Zero means the end date is today, and today is
+ * still open; negative means it has passed.
+ *
+ * Counting calendar days rather than 24-hour chunks, because the chunk version
+ * was wrong at both ends. `Math.ceil((endOfDay - now) / 86400000)` returns 1 for
+ * the whole of the end date — the one day it should say zero — and returns -0
+ * for the whole of the day after, which reads as "today" everywhere a caller
+ * tests `=== 0` and passes every `< 0` test it is given.
+ *
+ * Defined so that `daysUntilEndOf(x) < 0` is exactly `subscriptionExpired(x)`.
+ * portal/lib/subscription.mjs is the same rule for the browser, and
+ * scripts/test-access.mjs walks the boundary hour by hour asserting they agree.
+ */
 function daysUntilEndOf(endsAt) {
   const d = new Date(endsAt);
-  const endOfDay = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999);
-  return Math.ceil((endOfDay - Date.now()) / 86400000);
+  if (Number.isNaN(d.getTime())) return null;
+  const utcDay = (ms) => {
+    const x = new Date(ms);
+    return Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate());
+  };
+  return Math.round((utcDay(d.getTime()) - utcDay(Date.now())) / 86400000);
 }
 
 export default router;

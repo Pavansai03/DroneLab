@@ -5,6 +5,7 @@ import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
 import { ExportSchool, ExportStudent, ExportStudents } from "../../components/Export.jsx";
 import { HeroDrone, Icon, Loader } from "../../components/DroneArt.jsx";
+import { daysUntilEnd, hasExpired, formatEndDate } from "../../lib/subscription.mjs";
 
 /**
  * THE TEACHER / SCHOOL PANEL
@@ -516,17 +517,17 @@ function Roster({ rows, view, onSelect }) {
  * who was never told it was close — and they are the person who can chase it.
  *
  * The end date counts THROUGH that day: an end date of the 11th is valid until
- * the end of the 11th, matching what the API enforces.
+ * the end of the 11th, matching what the API enforces. The counting itself is
+ * in lib/subscription.mjs, shared with the administration table, so the school
+ * and the administrator can never be reading two different answers.
  */
 function SubscriptionBadge({ endsAt }) {
   if (!endsAt) return null;
 
-  const d = new Date(endsAt);
-  const endOfDay = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999);
-  const days = Math.ceil((endOfDay - Date.now()) / 86400000);
-  const when = d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+  const days = daysUntilEnd(endsAt);
+  const when = formatEndDate(endsAt);
 
-  if (days < 0) {
+  if (hasExpired(endsAt)) {
     return (
       <span className="cell-sub">
         <span className="pill bad">Subscription ended</span> {when}

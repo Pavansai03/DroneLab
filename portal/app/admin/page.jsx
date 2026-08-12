@@ -5,6 +5,7 @@ import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
 import { ExportSchool, ExportSchools, ExportStudent, ExportStudents } from "../../components/Export.jsx";
 import { HeroDrone, Icon, Loader } from "../../components/DroneArt.jsx";
+import { daysUntilEnd, hasExpired, formatEndDate } from "../../lib/subscription.mjs";
 
 /**
  * THE ADMINISTRATION PANEL
@@ -1210,17 +1211,6 @@ function StudentApprovals({ onPending }) {
 
 /* ================================================ subscription end date */
 
-/** Days from now until a date, negative once it has passed. */
-/* Counts THROUGH the end date, matching what the API enforces: an end date of
-   the 11th is valid until the end of the 11th. Showing "expired" on a morning
-   the school has actually paid for is how this was wrong before. */
-function daysUntil(iso) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  const endOfDay = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999);
-  return Math.ceil((endOfDay - Date.now()) / 86400000);
-}
-
 /**
  * The end date, with how long is left.
  *
@@ -1228,13 +1218,25 @@ function daysUntil(iso) {
  * they have — is this school about to lapse? So it says. Under a fortnight is
  * marked, and past is marked differently, because "expired" and "expires soon"
  * call for different actions.
+ *
+ * The counting is in lib/subscription.mjs, shared with the school's own badge
+ * and asserted against the gate by scripts/test-access.mjs. It used to be a
+ * local copy, and the copy was a day out in both directions: "1 day left" on
+ * the day it ended, and "ends today" on the day after, because Math.ceil
+ * returns -0 for a day just past and -0 < 0 is false. An administrator read
+ * "ends today" about a school that had already been locked out.
  */
 function SubscriptionEnd({ school }) {
-  const d = daysUntil(school.subscription_ends_at);
   if (!school.subscription_ends_at) return <span className="cell-sub">no end date</span>;
 
-  const when = new Date(school.subscription_ends_at).toLocaleDateString();
-  if (d < 0) {
+  const d = daysUntilEnd(school.subscription_ends_at);
+  const when = formatEndDate(school.subscription_ends_at, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  if (hasExpired(school.subscription_ends_at)) {
     return (
       <>
         <span className="pill bad">expired</span>
@@ -1245,7 +1247,9 @@ function SubscriptionEnd({ school }) {
   return (
     <>
       <span className={d <= 14 ? "pill warn" : "cell-sub"}>{when}</span>
-      <div className="cell-sub">{d === 0 ? "ends today" : `${d} day${d === 1 ? "" : "s"} left`}</div>
+      <div className="cell-sub">
+        {d === 0 ? "ends today" : `${d} day${d === 1 ? "" : "s"} left`}
+      </div>
     </>
   );
 }

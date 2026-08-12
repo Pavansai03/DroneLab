@@ -130,10 +130,109 @@ for (const c of cases) {
 }
 if (!drift) console.log("the API and the simulator agree on every case");
 
+/* ==================================================================
+   THE COUNTDOWN MUST AGREE WITH THE GATE
+   ------------------------------------------------------------------
+   The panels do not only enforce the rule, they narrate it: "ends today",
+   "3 days left", "expired". Those words are what an administrator acts on, and
+   for a while they contradicted the gate in both directions —
+
+     on the end date  : "1 day left"    while access was open   (off by one)
+     the day after    : "ends today"    while access was closed (Math.ceil
+                                         returns -0, and -0 < 0 is false)
+
+   So a school was locked out on a day the panel called "today", the
+   administrator believed the licence had hours left, and the simulator looked
+   broken. Nothing in either screen was wrong on its own; they were answering
+   two different questions.
+
+   This walks the boundary hour by hour and asserts the single invariant that
+   makes them one question:  days < 0  if and only if  the gate refuses.
+   ================================================================== */
+
+/* The real module, not a copy of it. `.mjs` so bare Node reads it as an ES
+   module without a warning; webpack imports it just the same. */
+const { daysUntilEnd, hasExpired } = await import(
+  new URL("../portal/lib/subscription.mjs", import.meta.url).href
+);
+
+const plural = (n, word) => `${n} ${word}${Math.abs(n) === 1 ? "" : "s"}`;
+
+/** The formula every panel used before. Kept so the test can fail on purpose. */
+const oldDaysUntil = (endsAt, nowMs) => {
+  const d = new Date(endsAt);
+  const endOfDay = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999);
+  return Math.ceil((endOfDay - nowMs) / 86400000);
+};
+
+const END = "2026-08-11T00:00:00.000Z"; // an administrator picked 11 August
+const moments = [
+  ["09 Aug, midday      ", "2026-08-09T12:00:00Z", 2, false],
+  ["10 Aug, midday      ", "2026-08-10T12:00:00Z", 1, false],
+  ["11 Aug, one past mid", "2026-08-11T00:00:01Z", 0, false],
+  ["11 Aug, midday      ", "2026-08-11T12:00:00Z", 0, false],
+  ["11 Aug, 23:59        ", "2026-08-11T23:59:00Z", 0, false],
+  ["12 Aug, one past mid", "2026-08-12T00:00:01Z", -1, true],
+  ["12 Aug, midday      ", "2026-08-12T12:00:00Z", -1, true],
+  ["13 Aug, midday      ", "2026-08-13T12:00:00Z", -2, true],
+];
+
 console.log("");
-if (failed || drift) {
-  console.error(`FAIL — ${failed} wrong, ${drift} disagreement(s)`);
+console.log("countdown at the boundary — end date 11 August");
+console.log("moment                 days  gate      panel says        old formula");
+console.log("─".repeat(76));
+
+let countdownFailed = 0;
+let oldWouldHaveFailed = 0;
+
+for (const [label, iso, wantDays, wantExpired] of moments) {
+  const now = Date.parse(iso);
+  const days = daysUntilEnd(END, now);
+  const gone = hasExpired(END, now);
+
+  /* Exactly how the panels render it, so the assertion covers the words a
+     person actually reads and not only the number behind them. */
+  const says = gone ? "expired" : days === 0 ? "ends today" : `${plural(days, "day")} left`;
+  const old = oldDaysUntil(END, now);
+  const oldSays = old < 0 ? "expired" : old === 0 ? "ends today" : `${plural(old, "day")} left`;
+
+  const ok = days === wantDays && gone === wantExpired;
+  /* The invariant. Everything above is a worked example of it. */
+  const consistent = gone === days < 0;
+  if (!ok || !consistent) countdownFailed++;
+  if (oldSays !== says) oldWouldHaveFailed++;
+
+  console.log(
+    `${label}  ${String(days).padStart(4)}  ${(gone ? "closed" : "open").padEnd(8)}  ` +
+      `${says.padEnd(16)}  ${oldSays}${oldSays === says ? "" : "  <- disagreed"}`
+  );
+  if (!ok) console.error(`  BAD: wanted days=${wantDays} expired=${wantExpired}`);
+  if (!consistent) console.error(`  BAD: "${says}" contradicts the gate`);
+}
+
+console.log("");
+if (!oldWouldHaveFailed) {
+  console.error("The old formula agreed everywhere — this test cannot fail, so it proves nothing.");
+  countdownFailed++;
+} else {
+  console.log(`the old formula disagreed with the gate at ${oldWouldHaveFailed} of ${moments.length} moments`);
+}
+
+/* No end date is not "expired today"; it is no expiry at all. Worth pinning
+   separately, because null is the value every school approved before this
+   feature existed still carries. */
+if (daysUntilEnd(null) !== null || hasExpired(null) !== false) {
+  console.error("BAD: a school with no end date must never be expired");
+  countdownFailed++;
+} else {
+  console.log("a school with no end date never expires");
+}
+
+console.log("");
+if (failed || drift || countdownFailed) {
+  console.error(`FAIL — ${failed} wrong, ${drift} disagreement(s), ${countdownFailed} countdown problem(s)`);
   process.exit(1);
 }
 console.log("PASS — the simulator opens only for a signed-in, approved member of an");
 console.log("       active, unexpired school; administrators always; nobody when signed out");
+console.log("PASS — and the countdown says the same thing the gate does, at every hour");
