@@ -32,7 +32,13 @@
 
 import { AIRFRAMES } from "../data/airframes.js";
 import { getMixer, mix } from "./mixer.js";
-import { ObstacleField, collisionUrgency, predictImpact, WARN_SECONDS } from "./obstacles.js";
+import {
+  ObstacleField,
+  collisionUrgency,
+  predictImpact,
+  maxTopAlongPath,
+  WARN_SECONDS,
+} from "./obstacles.js";
 import {
   g,
   airDensity,
@@ -67,6 +73,41 @@ const DISARM_SAFE_ALT = 0.6;
 export const ALTITUDE_LIMIT = 120;
 /** Where the "approaching the limit" warning begins. */
 export const ALTITUDE_CAUTION = 100;
+
+/**
+ * RETURN-TO-HOME
+ * ==============
+ * Climb, cruise, descend — the sequence every commercial flight controller
+ * flies, and for the same reason. The old autopilot skipped straight to the
+ * cruise, holding six to nine metres, and the city field has towers past
+ * seventy. It flew students into buildings; scripts/test-rth.mjs reproduced it
+ * from four different starting points before this existed.
+ *
+ * The cruise height is not fixed. It is the tallest thing in the corridor
+ * between the aircraft and the pad, plus a margin — see maxTopAlongPath in
+ * obstacles.js. A fixed height would be either too low for the city or a
+ * pointless two-minute climb in the forest, and the student pressing this
+ * button is usually the one who can least afford to wait.
+ */
+const RTH = {
+  /** Never cruise lower than this, even over bare ground. */
+  MIN_ALT: 10,
+  /** Clearance above the tallest obstacle in the corridor. */
+  CLEARANCE: 8,
+  /** Half-width of the corridor searched, metres. Generous: the aircraft is
+      allowed to drift while it flies, and drifting out of the volume that was
+      checked is exactly how this goes wrong. */
+  CORRIDOR: 12,
+  /** Horizontal cruise speed, m/s. */
+  SPEED: 9,
+  /** Climb and descent rates, m/s. */
+  CLIMB_RATE: 4,
+  DESCENT_RATE: 2,
+  /** Start descending inside this radius of the pad, metres. */
+  ARRIVE: 2.5,
+  /** How often the corridor is re-examined, seconds. */
+  RECHECK: 0.25,
+};
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -193,6 +234,15 @@ export class FlightSim {
     this.achievements = new Set();
     this.gatesPassed = new Set();
     this.rthActive = false;
+    /* "climb" | "cruise" | "descend", or null when RTH is off. Exposed in
+       telemetry so the HUD can say which leg it is on rather than only that
+       something automatic is happening. */
+    this.rthPhase = null;
+    this.rthCruiseAlt = 0;
+    /* Whether the autopilot actually knows where home is. False means a
+       failsafe with no satellites, which can only land where it stands. */
+    this.rthHasFix = false;
+    this.rthCheckTimer = 0;
     this.obstacleDistance = Infinity;
     this.obstacleLabel = null;
     this.obstacleEta = null;
@@ -270,10 +320,67 @@ export class FlightSim {
     }
   }
 
+  /** Is the receiver fitted, working, and locked on to enough satellites? */
+  get gpsUsable() {
+    return Boolean(
+      this.capabilities.gps && !this.capabilities.gpsFaulted && this.satellites >= 8
+    );
+  }
+
+  /**
+   * The height to cruise home at, from wherever the aircraft is now.
+   *
+   * The tallest obstacle between here and the pad, plus clearance — never below
+   * MIN_ALT, and never so high it busts the legal ceiling. Recomputed as the
+   * flight proceeds, but only ever upward within one RTH (see step): an
+   * altitude that sags as obstacles fall behind would have the aircraft
+   * descending into whatever is still ahead of it.
+   */
+  rthAltitudeFor(x, z) {
+    const tallest = this.obstacles
+      ? maxTopAlongPath(this.obstacles, x, z, 0, 0, RTH.CORRIDOR + this.collisionRadius)
+      : 0;
+    const wanted = Math.max(RTH.MIN_ALT, tallest + RTH.CLEARANCE + this.collisionRadius);
+    return Math.min(wanted, ALTITUDE_LIMIT - 5);
+  }
+
+  /**
+   * Engage Return-To-Home.
+   *
+   * Refuses without a satellite lock, and says so. "Return to home" with no GPS
+   * is not a degraded version of itself — nothing on board knows where home is,
+   * so the honest answer is no. Returns true when it engaged, so the caller can
+   * tell the difference without inspecting internal state.
+   */
   triggerRth() {
-    if (!this.armed || this.crashed) return;
-    this.rthActive = true;
+    if (!this.armed || this.crashed) return false;
+    if (this.rthActive) return true;
+    if (!this.gpsUsable) {
+      this.emit("rthDenied", {
+        reason: this.capabilities.gps
+          ? `Only ${this.satellites} satellites — RTH needs 8. Wait for the lock.`
+          : "No GPS receiver fitted. RTH cannot know where home is.",
+      });
+      return false;
+    }
+    this.beginRth(true);
     this.emit("rth");
+    return true;
+  }
+
+  /** Shared by the manual button, the low-battery trigger and the failsafe. */
+  beginRth(hasFix) {
+    this.rthActive = true;
+    this.rthHasFix = hasFix;
+    this.rthCheckTimer = 0;
+    this.rthCruiseAlt = hasFix ? this.rthAltitudeFor(this.pos.x, this.pos.z) : 0;
+    /* Already above the safe height? Then there is nothing to climb over and
+       the shortest way home is to set off now. */
+    this.rthPhase = !hasFix
+      ? "descend"
+      : this.pos.y >= this.rthCruiseAlt - 1
+        ? "cruise"
+        : "climb";
   }
 
   /**
@@ -340,14 +447,17 @@ export class FlightSim {
     /* ---- Failsafe / link ------------------------------------------- */
     const rcOk = this.capabilities.rcLink !== false;
     if (!rcOk && this.armed && !this.rthActive) {
-      this.rthActive = true;
+      /* A failsafe with satellites flies home; without them it lands where it
+         stands, which is what a real controller does and the only honest
+         option — there is nothing on board that knows which way home is. */
+      this.beginRth(gpsUsable);
       this.flightMode = "failsafe";
       this.emit("failsafe");
     }
 
     /* ---- Low battery auto-RTH -------------------------------------- */
     if (this.armed && this.soc < 0.2 && !this.rthActive && gpsUsable) {
-      this.rthActive = true;
+      this.beginRth(true);
       this.emit("lowBatteryRth");
     }
 
@@ -361,20 +471,61 @@ export class FlightSim {
     let yawRateSet = sticks.yaw * 2.2;
     let climbSet = sticks.throttle * 3.0;
 
-    /* Return-To-Home: fly back to the launch point, then descend. */
+    /**
+     * RETURN-TO-HOME: climb clear, cruise home, descend on the pad.
+     *
+     * The three legs exist because the aircraft is usually below the skyline
+     * when the button is pressed, and the straight line home at that height
+     * runs through a building. Climbing first turns the shortest path into a
+     * safe one — the corridor check in rthAltitudeFor() is what decides how
+     * high is high enough, so an empty field costs a ten metre climb and a
+     * street of towers costs what it has to.
+     *
+     * Horizontal motion is a VELOCITY controller in every leg: ask for a speed
+     * towards the pad that tapers as it closes, then lean to chase that
+     * velocity. Leaning towards the target POSITION instead is what used to
+     * make the aircraft overshoot and circle the pad. The nose is turned home
+     * separately, purely so the camera faces where it is going.
+     */
     if (this.rthActive && this.armed) {
       this.flightMode = this.flightMode === "failsafe" ? "failsafe" : "rth";
       const dx = -this.pos.x;
       const dz = -this.pos.z;
       const dist = Math.hypot(dx, dz);
 
-      /* Return-To-Home is a velocity controller, not a "point and go" one.
-         We ask for a speed towards the launch point that tapers off as we close in,
-         then lean to chase that velocity. Leaning towards the TARGET VELOCITY rather
-         than towards the target POSITION is what stops the aircraft overshooting and
-         circling the home point. The nose is turned home separately, purely so the
-         camera faces the right way. */
-      const desiredSpeed = dist > 0.2 ? Math.min(6, dist * 0.55) : 0;
+      /* Re-examine the corridor as the aircraft moves, and take the highest
+         answer this RTH has seen. Monotonic on purpose: obstacles dropping
+         behind must never lower the cruise height, or the aircraft would
+         descend into whatever is still ahead. */
+      if (this.rthHasFix) {
+        this.rthCheckTimer -= dt;
+        if (this.rthCheckTimer <= 0) {
+          this.rthCheckTimer = RTH.RECHECK;
+          if (this.rthPhase !== "descend") {
+            this.rthCruiseAlt = Math.max(
+              this.rthCruiseAlt,
+              this.rthAltitudeFor(this.pos.x, this.pos.z)
+            );
+          }
+        }
+      }
+
+      /* --- leg transitions ------------------------------------------- */
+      if (this.rthPhase === "climb" && this.pos.y >= this.rthCruiseAlt - 1) {
+        this.rthPhase = "cruise";
+      } else if (this.rthPhase === "cruise" && dist <= RTH.ARRIVE) {
+        this.rthPhase = "descend";
+      } else if (this.rthPhase === "descend" && this.rthHasFix && dist > RTH.ARRIVE * 3) {
+        /* Blown off the pad mid-descent — go back and fetch it rather than
+           landing wherever the wind left the aircraft. */
+        this.rthPhase = "cruise";
+      }
+
+      /* --- how fast, and in which direction ---------------------------- */
+      /* Nothing horizontal until the climb has cleared the obstacles: setting
+         off at low level is the entire bug this replaced. */
+      const mayTranslate = this.rthHasFix && this.rthPhase !== "climb";
+      const desiredSpeed = mayTranslate && dist > 0.2 ? Math.min(RTH.SPEED, dist * 0.6) : 0;
       const ux = dist > 0.001 ? dx / dist : 0;
       const uz = dist > 0.001 ? dz / dist : 0;
       const evx = ux * desiredSpeed - this.vel.x;
@@ -389,14 +540,43 @@ export class FlightSim {
       pitchSet = clamp(eFwd * 0.22, -MAX_TILT, MAX_TILT);
       rollSet = clamp(-eRight * 0.22, -MAX_TILT, MAX_TILT);
 
-      if (dist > 3) {
+      /* Point the nose home while there is a journey left to point along. */
+      if (this.rthHasFix && dist > 3) {
         const bearing = Math.atan2(dx, dz);
         yawRateSet = clamp(wrapPi(bearing - this.yaw) * 1.2, -1.6, 1.6);
-        climbSet = this.pos.y < 6 ? 1.5 : this.pos.y > 9 ? -1 : 0;
       } else {
         yawRateSet = 0;
-        climbSet = -1.2; // overhead the pad: controlled descent
+      }
+
+      /* --- vertical ---------------------------------------------------- */
+      if (this.rthPhase === "climb") {
+        climbSet = RTH.CLIMB_RATE;
+      } else if (this.rthPhase === "cruise") {
+        /* Hold the cruise height. Proportional rather than a fixed rate, so it
+           settles instead of porpoising across the city. */
+        climbSet = clamp((this.rthCruiseAlt - this.pos.y) * 0.8, -1.5, RTH.CLIMB_RATE);
+      } else {
+        climbSet = -RTH.DESCENT_RATE;
         if (this.pos.y < 0.4) this.achievements.add("rth");
+      }
+
+      /**
+       * The last line of defence.
+       *
+       * The corridor check answers "what is between me and home", which is the
+       * right question and covers the towers. It cannot cover everything: the
+       * crane jib slews while the aircraft is en route, and a gust can push it
+       * out of the volume that was measured. So the same forward sphere-trace
+       * that drives the proximity alarm also gets a vote here — if the current
+       * course hits something within the warning horizon, stop going forward
+       * and go up instead. Climbing is the correct evasion for a multirotor:
+       * it is the one direction with nothing built in it.
+       */
+      if (this.obstacleEta != null && this.obstacleEta < WARN_SECONDS && this.rthPhase !== "climb") {
+        pitchSet *= 0.15;
+        rollSet *= 0.15;
+        climbSet = RTH.CLIMB_RATE;
+        this.rthCruiseAlt = Math.max(this.rthCruiseAlt, this.pos.y + RTH.CLEARANCE);
       }
     } else if (
       gpsUsable &&
@@ -845,6 +1025,10 @@ export class FlightSim {
       onGround: this.onGround,
       flightMode: this.flightMode,
       rthActive: this.rthActive,
+      rthPhase: this.rthPhase,
+      rthCruiseAlt: this.rthCruiseAlt,
+      rthHasFix: this.rthHasFix,
+      gpsUsable: this.gpsUsable,
       soc: this.soc,
       voltage: this.voltage,
       sag: this.sag,

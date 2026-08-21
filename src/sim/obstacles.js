@@ -227,6 +227,49 @@ export function predictImpact(field, pos, vel, radius, horizonSeconds) {
 }
 
 /**
+ * The highest obstacle top within `halfWidth` of the horizontal line A→B.
+ *
+ * This is what makes Return-To-Home both safe and short. The alternative
+ * approaches are each wrong in their own way: a fixed cruise altitude is either
+ * too low for the city or absurdly high for the forest, and full 3D path
+ * planning is a great deal of machinery to steer around buildings that are, in
+ * this field, simply easier to fly over.
+ *
+ * So the question asked is the narrow one: flying straight home from here, what
+ * is the tallest thing I pass over? Climb above that and the straight line — the
+ * shortest path there is — becomes a safe one.
+ *
+ * Boxes are tested by their bounding circle rather than their true footprint.
+ * That over-estimates the reach of a long thin building turned across the
+ * corridor, which means the answer can only ever be too cautious, never too
+ * low. For a check whose failure mode is flying into a tower block, that is the
+ * correct direction to be wrong in.
+ */
+export function maxTopAlongPath(field, x0, z0, x1, z1, halfWidth) {
+  if (!field) return 0;
+
+  const sx = x1 - x0;
+  const sz = z1 - z0;
+  const len2 = sx * sx + sz * sz;
+  let top = 0;
+
+  const consider = (o) => {
+    /* The closest point on the segment to this obstacle's centre. Clamped to
+       the segment, so an obstacle behind the aircraft or beyond home measures
+       from the endpoint rather than from the infinite line through them. */
+    const t = len2 > 1e-6 ? clamp(((o.x - x0) * sx + (o.z - z0) * sz) / len2, 0, 1) : 0;
+    const px = x0 + sx * t;
+    const pz = z0 + sz * t;
+    const reach = o.kind === "cyl" ? o.r : Math.hypot(o.hw, o.hd);
+    if (Math.hypot(o.x - px, o.z - pz) - reach <= halfWidth && o.y1 > top) top = o.y1;
+  };
+
+  for (let i = 0; i < field.static.length; i++) consider(field.static[i]);
+  for (let i = 0; i < field.dynamic.length; i++) consider(field.dynamic[i]);
+  return top;
+}
+
+/**
  * How alarmed to be: 0 clear, 1 imminent.
  *
  * Two independent reasons to sound, whichever is worse: something is close enough

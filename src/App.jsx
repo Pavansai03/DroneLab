@@ -527,7 +527,20 @@ export default function App() {
       }
       if (type === "takeoff") playBuzzer("takeoff");
       if (type === "landed") playBuzzer("landed");
-      if (type === "rth") playBuzzer("rth");
+      if (type === "rth") {
+        setNotice(
+          "Return-To-Home engaged. The aircraft climbs clear of anything between it " +
+            "and the pad, flies home, then descends. Take the sticks at any time."
+        );
+        playBuzzer("rth");
+      }
+      /* Refused, and the reason matters: a button that does nothing when
+         pressed reads as broken, and this one is pressed by someone who is
+         already in trouble. */
+      if (type === "rthDenied") {
+        setNotice(payload.reason);
+        playBuzzer("warning");
+      }
       if (type === "gate") playBuzzer("gate");
       if (type === "missionComplete") {
         setNotice("Mission complete — all gates passed.");
@@ -1150,10 +1163,22 @@ export default function App() {
             >
               <Bolt /> {telemetry?.armed ? "DISARM" : "ARM"}
             </button>
+            {/* RTH needs satellites — it has no idea where home is without
+                them. Disabled rather than silently refusing, with the reason in
+                the tooltip, so the state is readable before it is pressed. */}
             <button
               className="btn"
               onClick={() => simRef.current?.triggerRth()}
-              disabled={!telemetry?.armed}
+              disabled={!telemetry?.armed || !telemetry?.gpsUsable}
+              title={
+                !telemetry?.armed
+                  ? "Arm the aircraft first"
+                  : !telemetry?.gpsUsable
+                    ? `Return-To-Home needs a GPS lock — ${telemetry?.satellites ?? 0} of 8 satellites so far`
+                    : telemetry?.rthActive
+                      ? "Returning home: climbing clear, then straight back to the pad"
+                      : "Climb clear of obstacles, fly back to the launch pad and land"
+              }
             >
               RTH
             </button>

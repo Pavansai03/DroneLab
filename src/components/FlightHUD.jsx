@@ -26,6 +26,18 @@ export default function FlightHUD({ telemetry, diagnostics, frame, keys }) {
     failsafe: "FAILSAFE",
   }[t.flightMode] || t.flightMode.toUpperCase();
 
+  /* Which leg of the return it is on. Worth naming: the first thing RTH does is
+     climb, and an aircraft going UP when the pilot asked it to come home looks
+     like a malfunction unless something says otherwise. */
+  const rthLeg =
+    t.rthActive && t.rthPhase
+      ? {
+          climb: `CLIMBING TO ${Math.round(t.rthCruiseAlt ?? 0)} M`,
+          cruise: "FLYING HOME",
+          descend: t.rthHasFix ? "LANDING ON THE PAD" : "LANDING — NO GPS FIX",
+        }[t.rthPhase] ?? null
+      : null;
+
   /* The pill mirrors the buzzer exactly — same urgency, same trigger — because a
      build with no buzzer fitted has nothing else to fly by, and two warnings that
      disagreed would be worse than one. Distance is measured to the propeller disc
@@ -55,6 +67,7 @@ export default function FlightHUD({ telemetry, diagnostics, frame, keys }) {
         <span className={`mode-pill ${t.crashed ? "bad" : modeTone}`}>
           {t.crashed ? "CRASHED" : modeLabel}
         </span>
+        {!t.crashed && rthLeg && <span className="mode-pill warn">{rthLeg}</span>}
         {/* The buzzer is the primary proximity warning, but it is silent on a
             build with no buzzer fitted — which is most of Module 1 and 2. This
             pill is what a student without one has to fly by, so it carries the
