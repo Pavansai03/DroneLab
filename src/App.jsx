@@ -215,18 +215,12 @@ export default function App() {
      immediately instead of leaving it in a debounce the student walks out on. */
   const [progressResetKey, setProgressResetKey] = useState(0);
 
-  /* True once the cloud has told us what this account's benches look like, so
-     the legacy restore below knows whether it is filling a gap or trampling a
-     record that already answers the question. */
-  const [cloudWorkspacesLoaded, setCloudWorkspacesLoaded] = useState(false);
-
   const applyCloudWorkspaces = useCallback((payload) => {
     setWorkspaces(payload.workspaces || {});
     if (payload.completedModules) {
       setCompletedModules(new Set(payload.completedModules));
     }
     if (payload.moduleId) setModuleId(payload.moduleId);
-    setCloudWorkspacesLoaded(!payload.legacy);
   }, []);
 
   const { status: syncStatus, error: syncError } = useBuildSync({
@@ -449,27 +443,51 @@ export default function App() {
 
   /* Mirror progress into Supabase, and restore it on sign-in so the module rail
      reflects work done on another machine. Both are no-ops when offline. */
-  useProgressSync({ user: auth.user, moduleId, progress, resetKey: progressResetKey });
+  useProgressSync({
+    user: auth.user,
+    frameId,
+    moduleId,
+    progress,
+    resetKey: progressResetKey,
+  });
 
-  /* Restore module ticks recorded on another machine.
-     ONLY for accounts saved before benches were per airframe. module_progress
-     has no airframe column — it is the teacher's "has this student finished
-     Module 3", pooled across every aircraft they have built. Merging it into
-     whichever airframe happens to be open is exactly the leak this whole change
-     removes: it would tick three modules on a fresh octocopter the moment the
-     student signed in. Once the account has real benches in the cloud, those
-     are the authority and this stays out of the way. */
+  /**
+   * Restore module ticks recorded on another machine — FOR THIS AIRCRAFT ONLY.
+   *
+   * This is the bug a classroom reported. `module_progress` had no airframe
+   * column, so it was one pooled course: a student who finished all three
+   * modules on a quadcopter, switched to a hexacopter (which correctly started
+   * locked at Module 1), stepped out to the portal and came back found Modules
+   * 2 and 3 unlocked and ticked on an aircraft with nothing bolted to it.
+   *
+   * The old guard tried to avoid it by only running for pre-benches accounts,
+   * but that was a race between two independent requests — this one and the
+   * build row that told it to stand down. Whichever answered first won, which
+   * is why it came and went. The airframe is part of the key now, so
+   * there is nothing to race: what comes back belongs to the copter on the
+   * bench and to no other.
+   */
   useEffect(() => {
-    if (!auth.user || cloudWorkspacesLoaded) return;
+    if (!auth.user || !frameId) return;
     let cancelled = false;
-    fetchCompletedModules(auth.user.id).then((set) => {
-      if (cancelled || set.size === 0 || cloudWorkspacesLoaded) return;
-      setCompletedModules((prev) => new Set([...prev, ...set]));
+    fetchCompletedModules(auth.user.id, frameId).then((set) => {
+      if (cancelled || set.size === 0) return;
+      setCompletedModules((prev) => {
+        const merged = new Set(prev);
+        let novel = false;
+        for (const id of set) {
+          if (!merged.has(id)) {
+            merged.add(id);
+            novel = true;
+          }
+        }
+        return novel ? merged : prev;
+      });
     });
     return () => {
       cancelled = true;
     };
-  }, [auth.user?.id, cloudWorkspacesLoaded]);
+  }, [auth.user?.id, frameId]);
 
   /* -------------------------------------------------- the active part */
   const filledSlots = useMemo(() => {
@@ -505,7 +523,7 @@ export default function App() {
 
   /* Count the flying, so the panels that report it have something to report.
      Called after the simulator exists, so its effects attach to a live sim. */
-  useFlightLog({ user: auth.user, simRef, mode });
+  useFlightLog({ user: auth.user, frameId, simRef, mode });
 
   /** Capabilities the simulator needs, derived from the build and injected faults. */
   const capabilities = useMemo(
@@ -852,14 +870,13 @@ export default function App() {
     setEarned(new Set());
     clearEarned(auth.user?.id, frameId);
 
-    /* The remote module_progress table has no airframe column — it is the
-       teacher's view of "has this student finished Module 3", across all their
-       aircraft. So it is only cleared when nothing is left anywhere: while
-       another airframe still holds a completed module, that record is still
-       true and erasing it would tell the teacher a lie. */
-    const anythingLeft = Object.values(remaining).some((w) => w.completedModules?.size);
-    if (auth.user?.id && !anythingLeft) {
-      void clearRemoteProgress(auth.user.id).then((error) => {
+    /* The remote record is cleared for THIS AIRFRAME and no other. It used to
+       be all-or-nothing, guarded by "is anything left anywhere" — a workaround
+       for module_progress having no airframe column. It has one now, so the
+       delete can say what it means: this copter's progress is gone, the
+       hexacopter the student finished last week is not. */
+    if (auth.user?.id) {
+      void clearRemoteProgress(auth.user.id, frameId).then((error) => {
         if (error) {
           console.warn("Failed to clear remote progress:", error);
         }

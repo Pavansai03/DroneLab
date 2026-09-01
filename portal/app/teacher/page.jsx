@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
 import { ExportSchool, ExportStudent, ExportStudents } from "../../components/Export.jsx";
+import CopterSelect from "../../components/CopterSelect.jsx";
+import { FRAMES, frameLabel } from "../../lib/frames.js";
 import { HeroDrone, Icon, Loader } from "../../components/DroneArt.jsx";
 import { daysUntilEnd, hasExpired, formatEndDate } from "../../lib/subscription.mjs";
 
@@ -32,6 +34,9 @@ function Panel({ me }) {
   const [selected, setSelected] = useState(null);
   const [open, setOpen] = useState("all");
   const [help, setHelp] = useState([]);
+  /* Which copter the figures are about. "all" is the whole course — three
+     modules on each of three aircraft, nine in total. */
+  const [frame, setFrame] = useState("all");
 
   const loadHelp = () =>
     api.teacher
@@ -52,6 +57,12 @@ function Panel({ me }) {
   if (!data) return <Loader label="Loading your class" />;
 
   const openAsks = help.filter((r) => r.status === "open");
+  /* Narrowed server-side so the tile and the table underneath it are counting
+     the same thing; falls back to the whole-course roll-up on an API that has
+     not been redeployed. */
+  const summary =
+    (frame !== "all" && data.summaryByFrame?.[frame]) || data.summary;
+  const modulesTotal = summary.modulesTotal ?? (frame === "all" ? 9 : 3);
 
   return (
     <>
@@ -89,34 +100,46 @@ function Panel({ me }) {
         </div>
       </section>
 
+      {/* The copter picker sits immediately above the figures it governs. Every
+          number and every row below it changes with it, and a filter placed
+          anywhere else is one a reader stops connecting to what it filters. */}
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", margin: "4px 0 -6px" }}>
+        <CopterSelect value={frame} onChange={setFrame} />
+        <span className="cell-sub">
+          {frame === "all"
+            ? "Three modules on each of three copters — nine in all."
+            : `${frameLabel(frame)} only — three modules.`}
+        </span>
+      </div>
+
       {/* Every figure opens the list behind it, exactly as the administration
           overview does. A count with no way to ask "which ones?" is trivia —
           and a teacher's first question is always which ones. */}
       <div className="grid cols-4">
         <StatTile k="all" open={open} setOpen={setOpen} icon={<Icon.Users />}
-                  value={data.summary.students} label="Students" />
+                  value={summary.students} label="Students" />
         <StatTile k="active" open={open} setOpen={setOpen} icon={<Icon.Bolt />}
-                  value={data.summary.activeThisWeek} label="Active this week" />
+                  value={summary.activeThisWeek} label="Active this week" />
         <StatTile k="progress" open={open} setOpen={setOpen} icon={<Icon.Chart />}
-                  value={data.summary.averageModules} label="Avg modules done" />
+                  value={summary.averageModules} label={`Avg of ${modulesTotal} modules`} />
         <StatTile k="help" open={open} setOpen={setOpen} icon={<Icon.Shield />}
-                  value={data.summary.needHelp} label="May need help"
+                  value={summary.needHelp} label="May need help"
                   note={openAsks.length ? `${openAsks.length} asked directly` : null}
-                  tone={data.summary.needHelp ? "warn" : null} />
+                  tone={summary.needHelp ? "warn" : null} />
       </div>
 
       {/* What students actually said comes before what the system inferred.
           An unanswered question is the most actionable thing on this page. */}
       {open === "help" && <HelpQueue requests={help} onChange={loadHelp} />}
 
-      <Roster rows={data.roster} view={open} onSelect={setSelected} />
+      <Roster rows={data.roster} view={open} frame={frame} onSelect={setSelected} />
 
-      {selected && <StudentDetail id={selected} onClose={() => setSelected(null)} />}
+      {selected && <StudentDetail id={selected} frame={frame} onClose={() => setSelected(null)} />}
     </>
   );
 }
 
-function StudentDetail({ id, onClose }) {
+function StudentDetail({ id, frame, onClose }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
 
@@ -124,6 +147,23 @@ function StudentDetail({ id, onClose }) {
     setD(null);
     api.teacher.student(id).then(setD).catch((e) => setErr(e.message));
   }, [id]);
+
+  /* One table per copter, or one for the copter chosen above. The old single
+     table could not say which aircraft a tick belonged to, which is precisely
+     the question a teacher opens this for: not "have they finished Module 2"
+     but "have they finished Module 2 on the hexacopter". */
+  const sections = useMemo(() => {
+    if (!d) return [];
+    if (!d.byFrame) return [{ label: null, modules: d.modules ?? [] }];
+    const wanted = frame === "all" ? FRAMES : FRAMES.filter((f) => f.id === frame);
+    return wanted
+      .filter((f) => d.byFrame[f.id])
+      .map((f) => ({
+        label: f.label,
+        modules: d.byFrame[f.id].modules,
+        summary: d.byFrame[f.id].summary,
+      }));
+  }, [d, frame]);
 
   return (
     <>
@@ -139,7 +179,10 @@ function StudentDetail({ id, onClose }) {
                 <div className="sub" style={{ margin: "4px 0 0" }}>
                   {d.student.class_code ? `Class ${d.student.class_code} · ` : ""}
                   {d.student.total_flights ?? 0} flights, {d.student.total_crashes ?? 0} crashes
-                  {d.build?.frame_id ? ` · building a ${d.build.frame_id}` : ""}
+                  {d.overall
+                    ? ` · ${d.overall.modulesCompleted}/${d.overall.modulesTotal} modules across ${d.overall.coptersTotal} copters`
+                    : ""}
+                  {d.build?.frame_id ? ` · last on the ${frameLabel(d.build.frame_id).toLowerCase()}` : ""}
                 </div>
               </div>
               <button className="btn small" onClick={onClose}>
@@ -147,36 +190,54 @@ function StudentDetail({ id, onClose }) {
               </button>
             </div>
 
-            <table>
-              <thead>
-                <tr>
-                  <th>Module</th>
-                  <th>Status</th>
-                  <th>Tasks</th>
-                  <th>Last worked on</th>
-                </tr>
-              </thead>
-              <tbody>
-                {d.modules.map((m) => (
-                  <tr key={m.id}>
-                    <td>
-                      {m.number}. {m.title}
-                    </td>
-                    <td>
-                      <span className={`pill ${m.completed ? "ok" : m.tasksDone ? "warn" : "muted"}`}>
-                        {m.completed ? "complete" : m.tasksDone ? "in progress" : "not started"}
-                      </span>
-                    </td>
-                    <td className="mono">
-                      {m.tasksDone}/{m.tasksTotal || "—"}
-                    </td>
-                    <td className="mono" style={{ color: "var(--dim)" }}>
-                      {m.updatedAt ? new Date(m.updatedAt).toLocaleDateString() : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {sections.map((s, i) => (
+              <div key={s.label ?? i}>
+                {s.label && (
+                  <div className="frame-heading">
+                    <h3>{s.label}</h3>
+                    <span className="cell-sub">
+                      {s.summary?.modulesCompleted ?? 0}/{s.summary?.modulesTotal ?? 3} modules
+                      {s.summary?.flights
+                        ? ` · ${s.summary.flights} flight${s.summary.flights === 1 ? "" : "s"}`
+                        : ""}
+                      {s.summary?.crashes
+                        ? `, ${s.summary.crashes} crash${s.summary.crashes === 1 ? "" : "es"}`
+                        : ""}
+                    </span>
+                  </div>
+                )}
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Module</th>
+                      <th>Status</th>
+                      <th>Tasks</th>
+                      <th>Last worked on</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {s.modules.map((m) => (
+                      <tr key={m.id}>
+                        <td>
+                          {m.number}. {m.title}
+                        </td>
+                        <td>
+                          <span className={`pill ${m.completed ? "ok" : m.tasksDone ? "warn" : "muted"}`}>
+                            {m.completed ? "complete" : m.tasksDone ? "in progress" : "not started"}
+                          </span>
+                        </td>
+                        <td className="mono">
+                          {m.tasksDone}/{m.tasksTotal || "—"}
+                        </td>
+                        <td className="mono" style={{ color: "var(--dim)" }}>
+                          {m.updatedAt ? new Date(m.updatedAt).toLocaleDateString() : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
           </>
         )}
       </div>
@@ -327,7 +388,7 @@ function HelpItem({ r, onChange }) {
  * works at different speeds by design, and a list that flags the slowest third
  * every week trains its reader to ignore it.
  */
-function Roster({ rows, view, onSelect }) {
+function Roster({ rows, view, frame, onSelect }) {
   const [q, setQ] = useState("");
   const [cls, setCls] = useState("");
   const [sort, setSort] = useState("name");
@@ -338,35 +399,51 @@ function Roster({ rows, view, onSelect }) {
     [rows]
   );
 
+  /* One copter, or the whole course. Every figure in the table reads through
+     these, so the dropdown above changes what the rows say rather than only
+     what the tiles say. A row without `per_frame` predates the migration —
+     fall back to the pooled figure rather than reporting a confident zero. */
+  const scoped = useMemo(() => {
+    const all = frame === "all";
+    const modulesTotal = all ? 3 * FRAMES.length : 3;
+    return {
+      modulesTotal,
+      modules: (r) => (all ? (r.modules_completed ?? 0) : (r.per_frame?.[frame]?.modules ?? 0)),
+      active: (r) => (all ? r.last_active : (r.per_frame?.[frame]?.last_active ?? null)),
+      stuck: (r) => (all ? r.stuck_on : (r.per_frame?.[frame]?.stuck_on ?? null)),
+    };
+  }, [frame]);
+
   const list = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return rows
       .filter((r) => {
-        if (view === "active") return r.last_active && Date.parse(r.last_active) > week;
+        const seen = scoped.active(r);
+        if (view === "active") return seen && Date.parse(seen) > week;
         if (view === "help")
           return (
             (r.help_open ?? 0) > 0 ||
-            (r.stuck_on && (!r.last_active || Date.parse(r.last_active) < week))
+            (scoped.stuck(r) && (!seen || Date.parse(seen) < week))
           );
-        if (view === "progress") return (r.modules_completed ?? 0) > 0;
+        if (view === "progress") return scoped.modules(r) > 0;
         return true;
       })
       .filter((r) => (cls ? r.class_code === cls : true))
       .filter((r) =>
         !needle
           ? true
-          : [r.full_name, r.class_code, r.stuck_on, r.help_note]
+          : [r.full_name, r.class_code, scoped.stuck(r), r.help_note]
               .filter(Boolean)
               .some((v) => v.toLowerCase().includes(needle))
       )
       .sort((a, b) =>
         sort === "progress"
-          ? (b.modules_completed ?? 0) - (a.modules_completed ?? 0)
+          ? scoped.modules(b) - scoped.modules(a)
           : sort === "active"
-            ? Date.parse(b.last_active ?? 0) - Date.parse(a.last_active ?? 0)
+            ? Date.parse(scoped.active(b) ?? 0) - Date.parse(scoped.active(a) ?? 0)
             : (a.full_name ?? "").localeCompare(b.full_name ?? "")
       );
-  }, [rows, q, cls, sort, view, week]);
+  }, [rows, q, cls, sort, view, week, scoped]);
 
   if (!view) {
     return (
@@ -376,12 +453,14 @@ function Roster({ rows, view, onSelect }) {
     );
   }
 
-  const title = {
-    all: "Class roster",
-    active: "Active this week",
-    progress: "Students who have completed a module",
-    help: "May need help — asked, or gone quiet",
-  }[view];
+  const scope = frame === "all" ? "" : ` — ${frameLabel(frame).toLowerCase()}`;
+  const title =
+    {
+      all: "Class roster",
+      active: "Active this week",
+      progress: "Students who have completed a module",
+      help: "May need help — asked, or gone quiet",
+    }[view] + scope;
 
   return (
     <div className="drill rise">
@@ -442,8 +521,10 @@ function Roster({ rows, view, onSelect }) {
             </thead>
             <tbody>
               {list.map((r) => {
-                const pct = Math.round(((r.modules_completed ?? 0) / 3) * 100);
-                const stale = !r.last_active || Date.parse(r.last_active) < week;
+                const done = scoped.modules(r);
+                const pct = Math.round((done / scoped.modulesTotal) * 100);
+                const seen = scoped.active(r);
+                const stale = !seen || Date.parse(seen) < week;
                 return (
                   <tr key={r.user_id}>
                     <td>
@@ -455,11 +536,20 @@ function Roster({ rows, view, onSelect }) {
                         <i style={{ width: `${pct}%` }} />
                       </div>
                       <div className="cell-sub">
-                        {r.modules_completed ?? 0}/3 modules · {pct}%
+                        {done}/{scoped.modulesTotal} modules · {pct}%
                       </div>
+                      {/* The split behind the total, so a teacher can see at a
+                          glance which aircraft a student has and has not got
+                          through without changing the dropdown and losing
+                          their place in the list. */}
+                      {frame === "all" && r.per_frame && (
+                        <div className="cell-sub mono">
+                          {FRAMES.map((f) => `${f.short ?? f.label} ${r.per_frame?.[f.id]?.modules ?? 0}`).join(" · ")}
+                        </div>
+                      )}
                     </td>
                     <td className="mono cell-sub" style={{ color: stale ? "var(--warn)" : undefined }}>
-                      {r.last_active ? new Date(r.last_active).toLocaleDateString() : "never"}
+                      {seen ? new Date(seen).toLocaleDateString() : "never"}
                     </td>
                     {/* A school cannot decide this, but it very much needs to
                         see it: "why can't Priya open the simulator" is answered
@@ -488,7 +578,7 @@ function Roster({ rows, view, onSelect }) {
                           asked for help
                         </span>
                       )}
-                      <div>{r.help_note || r.stuck_on || "—"}</div>
+                      <div>{r.help_note || scoped.stuck(r) || "—"}</div>
                     </td>
                     <td>
                       <div className="row" style={{ flexWrap: "nowrap", gap: 6 }}>

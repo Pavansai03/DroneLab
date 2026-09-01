@@ -368,7 +368,7 @@ export function useBuildSync({
 
 /* -------------------------------------------------------- progress sync */
 
-export function useProgressSync({ user, moduleId, progress, resetKey }) {
+export function useProgressSync({ user, frameId, moduleId, progress, resetKey }) {
   const lastKey = useRef(null);
   /* The most recent snapshot, kept in a ref so the cleanup can flush it without
      re-subscribing the effect on every keystroke of progress. */
@@ -401,11 +401,11 @@ export function useProgressSync({ user, moduleId, progress, resetKey }) {
     (async () => {
       const { data } = await supabase
         .from("module_progress")
-        .select("module_id, tasks_done, completed")
+        .select("frame_id, module_id, tasks_done, completed")
         .eq("user_id", user.id);
       if (cancelled) return;
       for (const r of data ?? []) {
-        best.current.set(r.module_id, {
+        best.current.set(markKey(r.frame_id, r.module_id), {
           done: r.tasks_done ?? 0,
           complete: Boolean(r.completed),
         });
@@ -427,24 +427,33 @@ export function useProgressSync({ user, moduleId, progress, resetKey }) {
        count. Writing that would tell the school a student had un-learnt
        something, which is not a thing that happens. Record the high-water mark
        and let the checklist be the live view. */
-    const prior = best.current.get(row.module_id);
+    const key = markKey(row.frame_id, row.module_id);
+    const prior = best.current.get(key);
     if (prior && (row.tasks_done < prior.done || (prior.complete && !row.completed))) {
       return;
     }
-    best.current.set(row.module_id, { done: row.tasks_done, complete: row.completed });
+    best.current.set(key, { done: row.tasks_done, complete: row.completed });
 
-    await supabase.from("module_progress").upsert(row, { onConflict: "user_id,module_id" });
+    await supabase
+      .from("module_progress")
+      .upsert(row, { onConflict: "user_id,frame_id,module_id" });
   }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !user || !progress) return;
 
-    const key = `${moduleId}:${progress.doneCount}:${progress.complete}`;
+    const key = `${frameId}:${moduleId}:${progress.doneCount}:${progress.complete}`;
     if (key === lastKey.current) return;
     lastKey.current = key;
 
     const row = {
       user_id: user.id,
+      /* WHICH AIRCRAFT THIS IS PROGRESS ON.
+         Without it there was one course pooled across all three copters, so
+         finishing a quadcopter unlocked Modules 2 and 3 on a hexacopter that
+         had not been started — the simulator kept the benches apart and the
+         database handed the ticks straight back on the next sign-in. */
+      frame_id: frameId,
       module_id: moduleId,
       completed: progress.complete,
       tasks_done: progress.doneCount,
@@ -474,23 +483,47 @@ export function useProgressSync({ user, moduleId, progress, resetKey }) {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, moduleId, progress?.doneCount, progress?.complete, progress?.total]);
+  }, [user?.id, frameId, moduleId, progress?.doneCount, progress?.complete, progress?.total]);
 }
 
-/** Which modules this student has already finished, to restore the rail state. */
-export async function fetchCompletedModules(userId) {
-  if (!isSupabaseConfigured || !userId) return new Set();
+/** The high-water mark is per aircraft, so two copters cannot hold each other back. */
+function markKey(frameId, moduleId) {
+  return `${frameId ?? "quad"}:${moduleId}`;
+}
+
+/**
+ * Which modules this student has already finished ON THIS AIRCRAFT, to restore
+ * the rail state on another machine.
+ *
+ * The airframe filter is the whole point. Unfiltered, this returned every
+ * module the student had ever completed on anything and the caller merged it
+ * into whichever copter happened to be open — which is how a fresh octocopter
+ * arrived with Modules 1 to 3 ticked.
+ */
+export async function fetchCompletedModules(userId, frameId) {
+  if (!isSupabaseConfigured || !userId || !frameId) return new Set();
   const { data } = await supabase
     .from("module_progress")
     .select("module_id")
     .eq("user_id", userId)
+    .eq("frame_id", frameId)
     .eq("completed", true);
   return new Set((data ?? []).map((r) => r.module_id));
 }
 
-export async function clearRemoteProgress(userId) {
+/**
+ * Forget one aircraft's recorded progress.
+ *
+ * Scoped to the airframe, because "strip the build" strips one aircraft. A
+ * student scrapping a half-built octocopter has not scrapped the hexacopter
+ * they finished last week, and deleting the teacher's record of it would be a
+ * lie told on their behalf.
+ */
+export async function clearRemoteProgress(userId, frameId) {
   if (!isSupabaseConfigured || !userId) return null;
-  const { error } = await supabase.from("module_progress").delete().eq("user_id", userId);
+  let q = supabase.from("module_progress").delete().eq("user_id", userId);
+  if (frameId) q = q.eq("frame_id", frameId);
+  const { error } = await q;
   return error ? describeError(error) : null;
 }
 

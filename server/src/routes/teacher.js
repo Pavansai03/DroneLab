@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { route, requireRole } from "../auth.js";
-import { MODULES } from "./student.js";
+import { MODULES, shapeProgress } from "./student.js";
+import { FRAMES, DEFAULT_FRAME } from "../frames.js";
 
 /**
  * TEACHER / SCHOOL ROUTES
@@ -49,6 +50,13 @@ router.get(
     res.json({
       roster: students,
       summary: summarise(students),
+      /* The same figures narrowed to one copter, so the panel's airframe
+         dropdown changes the headline numbers as well as the table. Computed
+         here rather than in the browser so the tile and the roster underneath
+         it are counting the same thing. */
+      summaryByFrame: Object.fromEntries(
+        FRAMES.map((f) => [f.id, summarise(students, f.id)])
+      ),
     });
   })
 );
@@ -75,28 +83,27 @@ router.get(
       db.from("module_progress").select("*").eq("user_id", id),
       db
         .from("activity_log")
-        .select("day, flights, crashes, seconds")
+        .select("day, frame_id, flights, crashes, seconds")
         .eq("user_id", id)
         .order("day", { ascending: false })
-        .limit(30),
+        /* One row per airframe per day, so the window grows with them. */
+        .limit(120),
       db.from("builds").select("frame_id, updated_at").eq("user_id", id).maybeSingle(),
     ]);
 
-    const byId = new Map((progress ?? []).map((r) => [r.module_id, r]));
+    /* Shaped by the same function the student's own panel uses. A teacher and a
+       student looking at the same three copters must not be reading two
+       different roll-ups of the same rows. */
+    const shaped = shapeProgress(progress, activity);
+
     res.json({
       student: profile,
-      modules: MODULES.map((m) => {
-        const r = byId.get(m.id);
-        return {
-          ...m,
-          completed: Boolean(r?.completed),
-          tasksDone: r?.tasks_done ?? 0,
-          tasksTotal: r?.tasks_total ?? 0,
-          currentTask: r?.current_task ?? null,
-          updatedAt: r?.updated_at ?? null,
-        };
-      }),
-      activity: activity ?? [],
+      ...shaped,
+      /* The quadcopter's modules at the top level, as before. Every copter is
+         in `byFrame`; this keeps an older panel bundle rendering a real table
+         rather than an empty one. */
+      modules: shaped.byFrame[DEFAULT_FRAME].modules,
+      summary: shaped.overall,
       build: build ?? null,
     });
   })
@@ -186,14 +193,41 @@ router.post(
   })
 );
 
-function summarise(rows) {
+/**
+ * Roll a roster up.
+ *
+ * `frameId` narrows every figure to one copter; omitted, it is the whole
+ * course — all three aircraft, so nine modules rather than three. The
+ * per-airframe numbers come out of `per_frame`, the jsonb the class_roster view
+ * carries; a row without it (an instance where the migration has not been run)
+ * falls back to the pooled figure rather than reporting zero, because "no data"
+ * and "no progress" look identical on a dashboard and mean opposite things.
+ */
+function summarise(rows, frameId) {
   const n = rows.length;
-  if (!n) return { students: 0, averageModules: 0, activeThisWeek: 0, needHelp: 0, asked: 0 };
+  if (!n) {
+    return {
+      students: 0, averageModules: 0, activeThisWeek: 0, needHelp: 0, asked: 0,
+      frameId: frameId ?? null,
+    };
+  }
   const weekAgo = Date.now() - 7 * 864e5;
+  const modulesOf = (r) =>
+    frameId
+      ? (r.per_frame?.[frameId]?.modules ?? 0)
+      : (r.modules_completed ?? 0);
+  const activeOf = (r) =>
+    frameId ? (r.per_frame?.[frameId]?.last_active ?? null) : (r.last_active ?? null);
+
   return {
+    frameId: frameId ?? null,
+    modulesTotal: frameId ? MODULES.length : MODULES.length * FRAMES.length,
     students: n,
-    averageModules: +(rows.reduce((a, r) => a + (r.modules_completed ?? 0), 0) / n).toFixed(1),
-    activeThisWeek: rows.filter((r) => r.last_active && Date.parse(r.last_active) > weekAgo).length,
+    averageModules: +(rows.reduce((a, r) => a + modulesOf(r), 0) / n).toFixed(1),
+    activeThisWeek: rows.filter((r) => {
+      const t = activeOf(r);
+      return t && Date.parse(t) > weekAgo;
+    }).length,
     /* Two ways onto this list, and the first outranks the second.
        ASKED: the student raised a request from their own panel and said what is
        wrong. That is not an inference, it is a request.
@@ -202,11 +236,12 @@ function summarise(rows) {
        request — that is precisely what giving up looks like. Being merely slow
        does not qualify: a class works at different speeds by design. */
     asked: rows.filter((r) => (r.help_open ?? 0) > 0).length,
-    needHelp: rows.filter(
-      (r) =>
-        (r.help_open ?? 0) > 0 ||
-        (r.stuck_on && (!r.last_active || Date.parse(r.last_active) < weekAgo))
-    ).length,
+    needHelp: rows.filter((r) => {
+      if ((r.help_open ?? 0) > 0) return true;
+      const stuck = frameId ? r.per_frame?.[frameId]?.stuck_on : r.stuck_on;
+      const seen = activeOf(r);
+      return Boolean(stuck) && (!seen || Date.parse(seen) < weekAgo);
+    }).length,
   };
 }
 

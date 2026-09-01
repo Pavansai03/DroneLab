@@ -20,7 +20,8 @@
     "test:airframes": "node scripts/test-airframes.mjs",
     "test:workspaces": "node scripts/test-workspaces.mjs",
     "test:api-retry": "node scripts/test-api-retry.mjs",
-    "verify": "npm --prefix server run check && npm run test:progress && npm run test:access && npm run test:navigation && npm run test:reset && npm run test:components && npm run test:rth && npm run test:airframes && npm run test:workspaces && npm run test:api-retry"
+    "test:frame-progress": "node scripts/test-frame-progress.mjs",
+    "verify": "npm --prefix server run check && npm run test:progress && npm run test:access && npm run test:navigation && npm run test:reset && npm run test:components && npm run test:rth && npm run test:airframes && npm run test:workspaces && npm run test:api-retry && npm run test:frame-progress"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.9",

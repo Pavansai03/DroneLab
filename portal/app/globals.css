@@ -1725,3 +1725,52 @@ label {
   color: var(--accent-2);
   font-weight: 700;
 }
+
+/* ------------------------------------------------------------ copter select */
+/* The course runs three modules on each of three aircraft, so every panel that
+   reports progress has to say which one it is reporting on. Sized and placed
+   like a filter rather than a heading: it changes what the numbers beside it
+   mean, and it should sit next to them saying so. */
+.copter-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  white-space: nowrap;
+}
+.copter-select > span {
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  font-weight: 700;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+.copter-select select {
+  padding: 8px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.copter-select select:hover {
+  border-color: var(--accent);
+}
+
+/* A copter's name above the block of figures that belongs to it, when all
+   three are shown at once — in a report preview, or a student detail. */
+.frame-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 22px 0 10px;
+}
+.frame-heading h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.frame-heading .cell-sub {
+  font-size: 12.5px;
+}

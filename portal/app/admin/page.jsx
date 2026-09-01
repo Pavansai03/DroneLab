@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Shell from "../../components/Shell.jsx";
 import { api } from "../../lib/api.js";
 import { ExportSchool, ExportSchools, ExportStudent, ExportStudents } from "../../components/Export.jsx";
+import CopterSelect from "../../components/CopterSelect.jsx";
+import { FRAMES, frameLabel } from "../../lib/frames.js";
 import { HeroDrone, Icon, Loader } from "../../components/DroneArt.jsx";
 import { daysUntilEnd, hasExpired, formatEndDate } from "../../lib/subscription.mjs";
 
@@ -333,6 +335,9 @@ function StudentList({ onlyActive }) {
   const [school, setSchool] = useState("");
   const [sort, setSort] = useState("recent");
   const [approval, setApproval] = useState("");
+  /* Which copter the progress column reports on. Three modules on each of
+     three aircraft, so "all" is nine. */
+  const [frame, setFrame] = useState("all");
   const [err, setErr] = useState(null);
 
   const reload = () =>
@@ -350,6 +355,17 @@ function StudentList({ onlyActive }) {
   }, []);
 
   const week = Date.now() - 7 * 864e5;
+  /* One copter, or the whole course. A row without `per_frame` predates the
+     migration; fall back to the pooled figure rather than a confident zero. */
+  const scoped = useMemo(() => {
+    const all = frame === "all";
+    return {
+      total: all ? 3 * FRAMES.length : 3,
+      modules: (u) => (all ? (u.modules_completed ?? 0) : (u.per_frame?.[frame]?.modules ?? 0)),
+      active: (u) => (all ? u.last_active : (u.per_frame?.[frame]?.last_active ?? null)),
+    };
+  }, [frame]);
+
   const view = useMemo(() => {
     if (!rows) return [];
     const needle = q.trim().toLowerCase();
@@ -366,12 +382,12 @@ function StudentList({ onlyActive }) {
       )
       .sort((a, b) =>
         sort === "progress"
-          ? (b.modules_completed ?? 0) - (a.modules_completed ?? 0)
+          ? scoped.modules(b) - scoped.modules(a)
           : sort === "name"
             ? (a.full_name ?? "").localeCompare(b.full_name ?? "")
             : Date.parse(b.last_active ?? 0) - Date.parse(a.last_active ?? 0)
       );
-  }, [rows, q, school, sort, onlyActive, approval, week]);
+  }, [rows, q, school, sort, onlyActive, approval, week, scoped]);
 
   if (err) return <div className="note bad">{err}</div>;
   if (!rows) return <Loader label="Loading students" size={64} />;
@@ -404,6 +420,7 @@ function StudentList({ onlyActive }) {
               <option value="progress">Sort: most progress</option>
               <option value="name">Sort: name</option>
             </select>
+            <CopterSelect value={frame} onChange={setFrame} label="" id="admin-copter" />
           </>
         }
       />
@@ -427,7 +444,9 @@ function StudentList({ onlyActive }) {
                 <th>School</th>
                 <th>Join code</th>
                 <th>Class</th>
-                <th style={{ minWidth: 150 }}>Progress</th>
+                <th style={{ minWidth: 150 }}>
+                  Progress{frame === "all" ? "" : ` — ${frameLabel(frame).toLowerCase()}`}
+                </th>
                 <th>Last active</th>
                 <th>Approval</th>
                 <th />
@@ -435,7 +454,8 @@ function StudentList({ onlyActive }) {
             </thead>
             <tbody>
               {view.map((u) => {
-                const pct = Math.round(((u.modules_completed ?? 0) / 3) * 100);
+                const done = scoped.modules(u);
+                const pct = Math.round((done / scoped.total) * 100);
                 const stale = !u.last_active || Date.parse(u.last_active) < week;
                 return (
                   <tr key={u.user_id}>
@@ -461,8 +481,13 @@ function StudentList({ onlyActive }) {
                         <i style={{ width: `${pct}%` }} />
                       </div>
                       <div className="cell-sub">
-                        {u.modules_completed ?? 0}/3 modules · {pct}%
+                        {done}/{scoped.total} modules · {pct}%
                       </div>
+                      {frame === "all" && u.per_frame && (
+                        <div className="cell-sub mono">
+                          {FRAMES.map((f) => `${f.short} ${u.per_frame?.[f.id]?.modules ?? 0}`).join(" · ")}
+                        </div>
+                      )}
                     </td>
                     <td className="mono cell-sub" style={{ color: stale ? "var(--warn)" : undefined }}>
                       {u.last_active ? new Date(u.last_active).toLocaleDateString() : "never"}
@@ -913,7 +938,14 @@ function People() {
                       <option value="admin">admin</option>
                     </select>
                   </td>
-                  <td className="mono">{u.modules_completed ?? 0}</td>
+                  <td className="mono">
+                    {u.modules_completed ?? 0}
+                    {u.per_frame && (
+                      <div className="cell-sub mono">
+                        {FRAMES.map((f) => `${f.short} ${u.per_frame?.[f.id]?.modules ?? 0}`).join(" · ")}
+                      </div>
+                    )}
+                  </td>
                   <td className="mono cell-sub">
                     {u.last_active ? new Date(u.last_active).toLocaleDateString() : "never"}
                   </td>

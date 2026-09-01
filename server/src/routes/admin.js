@@ -1,6 +1,11 @@
 import { Router } from "express";
 import { route, requireRole } from "../auth.js";
 import { adminClient } from "../supabase.js";
+import { FRAMES } from "../frames.js";
+import { MODULES } from "./student.js";
+
+/** Three modules on each of three copters. */
+const MODULES_PER_FRAME = MODULES.length;
 /* NO EMAIL IS SENT TO SCHOOLS.
    Approving and rejecting used to email the school, which meant the whole
    product depended on SMTP being configured and correct — and when it was not,
@@ -171,27 +176,44 @@ router.get(
     const db = adminClient();
     const [{ data: schools }, { data: roster }] = await Promise.all([
       db.from("schools").select("*").order("name"),
-      db.from("class_roster").select("school_id, role, modules_completed, last_active"),
+      db.from("class_roster").select("school_id, role, modules_completed, per_frame, last_active"),
     ]);
 
-    const MODULES_TOTAL = 3;
+    /* Three modules on each of three copters. This was 3 when there was one
+       aircraft, which made every school's progress percentage three times what
+       it should be the moment the hexacopter and octocopter shipped. */
+    const MODULES_TOTAL = MODULES_PER_FRAME * FRAMES.length;
     const week = Date.now() - 7 * 864e5;
     const agg = new Map();
     for (const r of roster ?? []) {
       if (!r.school_id) continue;
-      const a = agg.get(r.school_id) ?? { students: 0, staff: 0, modules: 0, active: 0 };
+      const a =
+        agg.get(r.school_id) ??
+        {
+          students: 0, staff: 0, modules: 0, active: 0,
+          /* Per copter as well as in total. "Which aircraft did this school
+             stall on" is unanswerable from a single average, and it is the
+             question that decides whether a school needs help. */
+          byFrame: Object.fromEntries(FRAMES.map((f) => [f.id, 0])),
+        };
       if (r.role === "teacher" || r.role === "school") a.staff++;
       else {
         a.students++;
         a.modules += r.modules_completed ?? 0;
+        for (const f of FRAMES) a.byFrame[f.id] += r.per_frame?.[f.id]?.modules ?? 0;
         if (r.last_active && Date.parse(r.last_active) > week) a.active++;
       }
       agg.set(r.school_id, a);
     }
 
+    const emptyAgg = () => ({
+      students: 0, staff: 0, modules: 0, active: 0,
+      byFrame: Object.fromEntries(FRAMES.map((f) => [f.id, 0])),
+    });
+
     res.json({
       schools: (schools ?? []).map((x) => {
-        const a = agg.get(x.id) ?? { students: 0, staff: 0, modules: 0, active: 0 };
+        const a = agg.get(x.id) ?? emptyAgg();
         /* Progress as a percentage of what the school COULD have completed.
            A raw module count says nothing without knowing how many students it
            is spread across — five modules is excellent across two students and

@@ -1,5 +1,7 @@
 "use client";
 
+import { FRAMES, frameLabel } from "./frames.js";
+
 /**
  * REPORT EXPORT
  * =============
@@ -74,7 +76,17 @@ export function slug(s) {
  * /api/progress reshaped to match. Both carry modules and activity; the school
  * and administration versions additionally know the student's own row.
  */
-export function studentReportCsv({ student, modules, activity, build, school }) {
+/**
+ * EVERY COPTER, EVERY TIME.
+ *
+ * The panels have an airframe dropdown; this deliberately ignores it. A report
+ * is evidence, and a file that quietly omitted two of the three aircraft
+ * because of a filter someone left set is the worst kind of wrong — it is not
+ * obviously incomplete to the person reading it later. So the summary is broken
+ * out per copter, and the module table carries a Copter column with all nine
+ * rows in it.
+ */
+export function studentReportCsv({ student, modules, activity, build, school, byFrame, overall, unattributed }) {
   const rows = [];
   rows.push(["DroneLab — student report"]);
   rows.push(["Generated", when(new Date())]);
@@ -90,37 +102,91 @@ export function studentReportCsv({ student, modules, activity, build, school }) 
   if (student?.decided_at) rows.push(["Approved", when(student.decided_at)]);
   rows.push([]);
 
-  const done = (modules ?? []).filter((m) => m.completed).length;
-  const total = (modules ?? []).length;
-  rows.push(["Summary"]);
+  /* An API that has not been redeployed sends no per-copter breakdown. Fall
+     back to the single unlabelled course rather than an empty report. */
+  const frames = byFrame ? FRAMES.filter((f) => byFrame[f.id]) : [];
+
+  const totalsOf = (log) =>
+    (log ?? []).reduce(
+      (a, d) => ({
+        flights: a.flights + (d.flights ?? 0),
+        crashes: a.crashes + (d.crashes ?? 0),
+        seconds: a.seconds + (d.seconds ?? 0),
+      }),
+      { flights: 0, crashes: 0, seconds: 0 }
+    );
+
+  const overallTotals = totalsOf(activity);
+  const done = overall?.modulesCompleted ?? (modules ?? []).filter((m) => m.completed).length;
+  const total = overall?.modulesTotal ?? (modules ?? []).length;
+
+  rows.push(["Summary — whole course"]);
   rows.push(["Modules completed", `${done} of ${total}`]);
   rows.push(["Course progress", total ? `${Math.round((done / total) * 100)}%` : "0%"]);
-  const totals = (activity ?? []).reduce(
-    (a, d) => ({
-      flights: a.flights + (d.flights ?? 0),
-      crashes: a.crashes + (d.crashes ?? 0),
-      seconds: a.seconds + (d.seconds ?? 0),
-    }),
-    { flights: 0, crashes: 0, seconds: 0 }
-  );
-  rows.push(["Flights flown", totals.flights]);
-  rows.push(["Crashes", totals.crashes]);
-  rows.push(["Time in the simulator", `${Math.round(totals.seconds / 60)} min`]);
-  if (build?.frame_id) rows.push(["Current build", build.frame_id]);
+  if (overall?.coptersTotal) {
+    rows.push(["Copters finished", `${overall.coptersFinished} of ${overall.coptersTotal}`]);
+  }
+  rows.push(["Flights flown", overallTotals.flights]);
+  rows.push(["Crashes", overallTotals.crashes]);
+  rows.push(["Time in the simulator", `${Math.round(overallTotals.seconds / 60)} min`]);
+  if (build?.frame_id) rows.push(["Current build", frameLabel(build.frame_id)]);
   rows.push([]);
 
+  if (frames.length) {
+    rows.push(["Summary — by copter"]);
+    rows.push(["Copter", "Motors", "Modules completed", "Progress", "Flights", "Crashes", "Minutes", "Last worked on"]);
+    for (const f of frames) {
+      const s = byFrame[f.id].summary ?? {};
+      const t = totalsOf(byFrame[f.id].activity);
+      const last = (byFrame[f.id].modules ?? [])
+        .map((m) => m.updatedAt)
+        .filter(Boolean)
+        .sort()
+        .pop();
+      rows.push([
+        f.label,
+        f.motors,
+        `${s.modulesCompleted ?? 0} of ${s.modulesTotal ?? 3}`,
+        `${s.percent ?? 0}%`,
+        t.flights,
+        t.crashes,
+        Math.round(t.seconds / 60),
+        when(last),
+      ]);
+    }
+    if ((unattributed?.flights ?? 0) > 0 || (unattributed?.crashes ?? 0) > 0) {
+      /* Named, not hidden and not attributed to a copter that may never have
+         flown them. See supabase/per-airframe-progress.sql. */
+      rows.push([
+        "Not recorded", "",
+        "", "",
+        unattributed.flights ?? 0,
+        unattributed.crashes ?? 0,
+        Math.round((unattributed.seconds ?? 0) / 60),
+        "logged before flights were recorded per copter",
+      ]);
+    }
+    rows.push([]);
+  }
+
   rows.push(["Modules"]);
-  rows.push(["#", "Module", "Status", "Tasks done", "Tasks total", "Current task", "Last worked on"]);
-  for (const m of modules ?? []) {
-    rows.push([
-      m.number,
-      m.title,
-      m.completed ? "complete" : (m.tasksDone ?? 0) > 0 ? "in progress" : "not started",
-      m.tasksDone ?? 0,
-      m.tasksTotal ?? 0,
-      m.currentTask ?? "",
-      when(m.updatedAt),
-    ]);
+  rows.push(["Copter", "#", "Module", "Status", "Tasks done", "Tasks total", "Current task", "Last worked on"]);
+  const moduleRow = (label, m) => [
+    label,
+    m.number,
+    m.title,
+    m.completed ? "complete" : (m.tasksDone ?? 0) > 0 ? "in progress" : "not started",
+    m.tasksDone ?? 0,
+    m.tasksTotal ?? 0,
+    m.currentTask ?? "",
+    when(m.updatedAt),
+  ];
+  if (frames.length) {
+    for (const f of frames) {
+      for (const m of byFrame[f.id].modules ?? []) rows.push(moduleRow(f.label, m));
+    }
+  } else {
+    for (const m of modules ?? []) rows.push(moduleRow("", m));
   }
 
   if ((activity ?? []).length) {
@@ -158,16 +224,41 @@ export function schoolReportCsv({ school, roster, summary }) {
     rows.push(["Summary"]);
     rows.push(["Students", summary.students ?? 0]);
     rows.push(["Active this week", summary.activeThisWeek ?? 0]);
-    rows.push(["Average modules completed", summary.averageModules ?? 0]);
+    rows.push([
+      "Average modules completed",
+      `${summary.averageModules ?? 0} of ${summary.modulesTotal ?? 9}`,
+    ]);
     rows.push(["May need help", summary.needHelp ?? 0]);
     if (summary.asked !== undefined) rows.push(["Asked for help directly", summary.asked]);
+    rows.push([]);
+  }
+
+  /* Per copter, for the whole school, when the roster carries the breakdown.
+     A head of department signing off a course wants to know which aircraft the
+     class stalled on, and that question is unanswerable from a single average. */
+  if ((roster ?? []).some((r) => r.per_frame)) {
+    rows.push(["Summary — by copter"]);
+    rows.push(["Copter", "Modules completed (class total)", "Average per student", "Students who finished it", "Flights", "Crashes"]);
+    const n = (roster ?? []).length || 1;
+    for (const f of FRAMES) {
+      const modules = (roster ?? []).reduce((a, r) => a + (r.per_frame?.[f.id]?.modules ?? 0), 0);
+      rows.push([
+        f.label,
+        modules,
+        +(modules / n).toFixed(1),
+        (roster ?? []).filter((r) => (r.per_frame?.[f.id]?.modules ?? 0) >= 3).length,
+        (roster ?? []).reduce((a, r) => a + (r.per_frame?.[f.id]?.flights ?? 0), 0),
+        (roster ?? []).reduce((a, r) => a + (r.per_frame?.[f.id]?.crashes ?? 0), 0),
+      ]);
+    }
     rows.push([]);
   }
 
   rows.push(["Students"]);
   rows.push([
     "Name", "Class", "Approval", "Joined", "Approved on",
-    "Modules completed", "Flights", "Crashes", "Last active", "Working on", "Asked for help",
+    "Modules completed", ...FRAMES.map((f) => `${f.label} modules`),
+    "Flights", "Crashes", "Last active", "Working on", "Asked for help",
   ]);
   for (const r of roster ?? []) {
     rows.push([
@@ -177,6 +268,7 @@ export function schoolReportCsv({ school, roster, summary }) {
       when(r.joined_at),
       when(r.decided_at),
       r.modules_completed ?? 0,
+      ...FRAMES.map((f) => r.per_frame?.[f.id]?.modules ?? 0),
       r.total_flights ?? 0,
       r.total_crashes ?? 0,
       when(r.last_active),
@@ -198,7 +290,9 @@ export function schoolsReportCsv(schools) {
   rows.push([]);
   rows.push([
     "School", "Status", "Join code", "Region", "Contact", "Phone",
-    "Applied", "Decided", "Students", "Modules completed", "Average progress", "Active",
+    "Applied", "Decided", "Students", "Modules completed",
+    ...FRAMES.map((f) => `${f.label} modules`),
+    "Average progress", "Active",
   ]);
   for (const s of schools ?? []) {
     rows.push([
@@ -212,6 +306,7 @@ export function schoolsReportCsv(schools) {
       when(s.decided_at),
       s.stats?.students ?? 0,
       s.stats?.modules ?? 0,
+      ...FRAMES.map((f) => s.stats?.byFrame?.[f.id] ?? 0),
       s.stats?.percent != null ? `${s.stats.percent}%` : "",
       s.active ? "yes" : "no",
     ]);
@@ -229,7 +324,8 @@ export function studentsReportCsv(rows_) {
   rows.push([]);
   rows.push([
     "Name", "School", "Join code", "Class", "Approval", "Joined", "Approved on",
-    "Modules completed", "Flights", "Crashes", "Last active",
+    "Modules completed (of 9)", ...FRAMES.map((f) => `${f.label} modules`),
+    "Flights", "Crashes", "Last active",
   ]);
   for (const r of rows_ ?? []) {
     rows.push([
@@ -241,6 +337,7 @@ export function studentsReportCsv(rows_) {
       when(r.joined_at),
       when(r.decided_at),
       r.modules_completed ?? 0,
+      ...FRAMES.map((f) => r.per_frame?.[f.id]?.modules ?? 0),
       r.total_flights ?? 0,
       r.total_crashes ?? 0,
       when(r.last_active),

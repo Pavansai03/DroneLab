@@ -47,8 +47,16 @@ loads and there is no error".
    that ever writes the flight counts. Without it, "Flights flown" and "Day
    streak" on the student panel, and the flights and crashes columns in the
    teacher dashboard and every exported report, all read zero for everyone.
+4. `supabase/per-airframe-progress.sql` — puts the airframe in the key. The
+   course is three modules on **each** of the quadcopter, hexacopter and
+   octocopter, and until this runs they share one pooled set of three: a
+   student who finishes a quadcopter comes back from the portal to find
+   Modules 2 and 3 already unlocked and ticked on a hexacopter they have not
+   started. It also rebuilds `class_roster` with a per-copter breakdown, and
+   fixes a join in that view which was multiplying every student's module
+   count by the number of days they had practised.
 
-All three are idempotent; running them twice is harmless.
+All four are idempotent; running them twice is harmless.
 
 Then confirm RLS is actually on. **Database → Tables**, and check every table
 shows *RLS enabled*: `profiles`, `user_roles`, `module_progress`, `builds`,

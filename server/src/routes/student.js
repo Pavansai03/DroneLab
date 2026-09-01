@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { route } from "../auth.js";
 import { adminClient } from "../supabase.js";
+import { FRAMES, FRAME_IDS, DEFAULT_FRAME, UNATTRIBUTED } from "../frames.js";
 
 /**
  * STUDENT ROUTES
@@ -22,6 +23,134 @@ export const MODULES = [
 ];
 
 const router = Router();
+
+/* ==================================================================== */
+/* Progress, per airframe                                               */
+/* ==================================================================== */
+/**
+ * THE COURSE IS THREE MODULES PER COPTER, NOT THREE IN TOTAL.
+ *
+ * A student builds a quadcopter, a hexacopter and an octocopter, each from
+ * Module 1. Until `module_progress` gained a `frame_id` these were pooled into
+ * one course, which was wrong in both directions: the simulator handed a fresh
+ * octocopter the quadcopter's ticks, and a teacher reading "3 of 3" could not
+ * tell one aircraft built three times from three aircraft built once.
+ *
+ * Shaped in one place and used by both the student's own panel and the
+ * teacher's view of that student, so the two can never disagree.
+ *
+ * `overall` is a real total across all three copters — nine modules — not a
+ * rename of the old single-course figure. Anything reading `modulesTotal` gets
+ * a number that matches what the panel below it lists.
+ */
+export function shapeProgress(progressRows, activityRows) {
+  const rows = progressRows ?? [];
+  const activity = activityRows ?? [];
+
+  const modulesFor = (frameId) => {
+    const byId = new Map(
+      rows.filter((r) => (r.frame_id ?? "quad") === frameId).map((r) => [r.module_id, r])
+    );
+    /* Every module appears, whether or not the student has touched it.
+       Returning only started modules would make an untouched course look like
+       an empty account rather than a course not yet begun. */
+    return MODULES.map((m) => {
+      const r = byId.get(m.id);
+      return {
+        ...m,
+        completed: Boolean(r?.completed),
+        tasksDone: r?.tasks_done ?? 0,
+        tasksTotal: r?.tasks_total ?? 0,
+        currentTask: r?.current_task ?? null,
+        updatedAt: r?.updated_at ?? null,
+      };
+    });
+  };
+
+  const totalsOf = (days) =>
+    days.reduce(
+      (a, d) => ({
+        flights: a.flights + (d.flights ?? 0),
+        crashes: a.crashes + (d.crashes ?? 0),
+        seconds: a.seconds + (d.seconds ?? 0),
+      }),
+      { flights: 0, crashes: 0, seconds: 0 }
+    );
+
+  const byFrame = {};
+  for (const f of FRAMES) {
+    const modules = modulesFor(f.id);
+    const days = mergeDays(activity.filter((a) => (a.frame_id ?? UNATTRIBUTED) === f.id));
+    const done = modules.filter((m) => m.completed).length;
+    byFrame[f.id] = {
+      frame: f,
+      modules,
+      activity: days,
+      summary: {
+        frameId: f.id,
+        frameLabel: f.label,
+        modulesCompleted: done,
+        modulesTotal: MODULES.length,
+        percent: Math.round((done / MODULES.length) * 100),
+        ...totalsOf(days),
+        streak: streakFrom(days),
+      },
+    };
+  }
+
+  /* Flights logged before the airframe was recorded. Real practice, and they
+     belong in a student's total — they are simply not claimed by any one
+     copter. Reported separately rather than quietly attributed to the
+     quadcopter, which would be a number invented to look tidy. */
+  const unattributed = mergeDays(
+    activity.filter((a) => !FRAME_IDS.includes(a.frame_id ?? UNATTRIBUTED))
+  );
+
+  const allDays = mergeDays(activity);
+  const completedAll = rows.filter((r) => r.completed).length;
+  const totalAll = MODULES.length * FRAMES.length;
+
+  return {
+    frames: FRAMES,
+    byFrame,
+    unattributed: {
+      activity: unattributed,
+      ...totalsOf(unattributed),
+    },
+    overall: {
+      modulesCompleted: completedAll,
+      modulesTotal: totalAll,
+      percent: totalAll ? Math.round((completedAll / totalAll) * 100) : 0,
+      coptersFinished: FRAMES.filter(
+        (f) => byFrame[f.id].summary.modulesCompleted === MODULES.length
+      ).length,
+      coptersTotal: FRAMES.length,
+      ...totalsOf(allDays),
+      streak: streakFrom(allDays),
+    },
+    activity: allDays,
+  };
+}
+
+/**
+ * Collapse a day's rows into one.
+ *
+ * A day now has up to four rows — one per airframe, plus the unattributed
+ * historical one — so a chart or a streak that reads the raw table would see
+ * the same date several times. Days come back newest first, as they did before
+ * the airframe existed.
+ */
+function mergeDays(rows) {
+  const byDay = new Map();
+  for (const r of rows) {
+    const cur = byDay.get(r.day) ?? { day: r.day, flights: 0, crashes: 0, seconds: 0 };
+    cur.flights += r.flights ?? 0;
+    cur.crashes += r.crashes ?? 0;
+    cur.seconds += r.seconds ?? 0;
+    byDay.set(r.day, cur);
+  }
+  return [...byDay.values()].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
+}
 
 /** Who am I, what am I, and where do I belong. */
 router.get(
@@ -227,48 +356,25 @@ router.get(
       db.from("module_progress").select("*").eq("user_id", user.id),
       db
         .from("activity_log")
-        .select("day, flights, crashes, seconds")
+        .select("day, frame_id, flights, crashes, seconds")
         .eq("user_id", user.id)
         .order("day", { ascending: false })
-        .limit(60),
+        /* Four rows per day now — one per airframe plus the unattributed
+           historical one — so the window has to grow with them or sixty days
+           of practice would arrive as fifteen. */
+        .limit(240),
     ]);
 
-    const byId = new Map((rows ?? []).map((r) => [r.module_id, r]));
-    /* Every module appears, whether or not the student has touched it.
-       Returning only started modules would make an untouched course look
-       like an empty account rather than a course not yet begun. */
-    const modules = MODULES.map((m) => {
-      const r = byId.get(m.id);
-      return {
-        ...m,
-        completed: Boolean(r?.completed),
-        tasksDone: r?.tasks_done ?? 0,
-        tasksTotal: r?.tasks_total ?? 0,
-        currentTask: r?.current_task ?? null,
-        updatedAt: r?.updated_at ?? null,
-      };
-    });
-
-    const completed = modules.filter((m) => m.completed).length;
-    const totals = (activity ?? []).reduce(
-      (a, d) => ({
-        flights: a.flights + d.flights,
-        crashes: a.crashes + d.crashes,
-        seconds: a.seconds + d.seconds,
-      }),
-      { flights: 0, crashes: 0, seconds: 0 }
-    );
+    const shaped = shapeProgress(rows, activity);
 
     res.json({
-      modules,
-      summary: {
-        modulesCompleted: completed,
-        modulesTotal: MODULES.length,
-        percent: Math.round((completed / MODULES.length) * 100),
-        ...totals,
-        streak: streakFrom(activity ?? []),
-      },
-      activity: activity ?? [],
+      ...shaped,
+      /* Kept at the top level so a browser still running the previous bundle
+         renders something true rather than nothing. `summary` is now the total
+         across all three copters, which is what that panel was always trying to
+         say — it simply had one copter to say it about. */
+      modules: shaped.byFrame[DEFAULT_FRAME].modules,
+      summary: shaped.overall,
     });
   })
 );

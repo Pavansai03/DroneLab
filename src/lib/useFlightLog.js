@@ -40,7 +40,7 @@ import { supabase, isSupabaseConfigured } from "./supabase.js";
 
 const FLUSH_EVERY_MS = 30000;
 
-export function useFlightLog({ user, simRef, mode }) {
+export function useFlightLog({ user, frameId, simRef, mode }) {
   /* What has happened since the last successful write. */
   const buffer = useRef({ flights: 0, crashes: 0, seconds: 0 });
   const userId = user?.id ?? null;
@@ -49,6 +49,14 @@ export function useFlightLog({ user, simRef, mode }) {
      signed-in user resolves a moment after mount. */
   const userIdRef = useRef(userId);
   userIdRef.current = userId;
+
+  /* WHICH AIRCRAFT FLEW.
+     A flight belongs to a copter, and the panels now report per copter. Held in
+     a ref for the same reason as the user: the listeners below must not be
+     re-attached every time a student switches airframe, and a switch is only
+     possible on the ground — so anything still in the buffer was flown by the
+     airframe that is about to be replaced. Hence the flush on change. */
+  const frameRef = useRef(frameId);
 
   const flush = useRef(() => {});
   flush.current = () => {
@@ -64,6 +72,7 @@ export function useFlightLog({ user, simRef, mode }) {
         p_flights: b.flights,
         p_crashes: b.crashes,
         p_seconds: Math.round(b.seconds),
+        p_frame_id: frameRef.current ?? "quad",
       })
       .then(({ error }) => {
         /* Most likely cause by far: supabase/activity-log.sql has not been run
@@ -132,4 +141,12 @@ export function useFlightLog({ user, simRef, mode }) {
   useEffect(() => {
     if (userId) flush.current();
   }, [userId]);
+
+  /* Switching airframe: send what the OLD one flew before the ref moves on, or
+     a hexacopter's flights are filed against the octocopter that replaced it. */
+  useEffect(() => {
+    if (frameRef.current === frameId) return;
+    flush.current();
+    frameRef.current = frameId;
+  }, [frameId]);
 }
