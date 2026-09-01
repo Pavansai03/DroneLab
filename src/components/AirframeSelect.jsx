@@ -12,9 +12,10 @@ import { AIRFRAME_LIST } from "../data/airframes.js";
  * task ticks instead of four, six ESC harnesses, a different hover trim — so the
  * dropdown is not navigation, it is the control for what the panel is about.
  *
- * `onPick` is expected to confirm before it acts. Changing airframe strips the
- * build, and a dropdown that silently threw away twenty minutes of work because
- * someone brushed the scroll wheel would be indefensible.
+ * Switching parks the current aircraft and brings out the other one exactly as
+ * it was left; see sim/workspaces.js. `onPick` still confirms first, because
+ * the whole workspace changing under someone who brushed the scroll wheel is
+ * disorienting even when nothing is lost.
  */
 export default function AirframeSelect({ frameId, onPick, disabled, label = "Airframe" }) {
   return (
@@ -29,7 +30,7 @@ export default function AirframeSelect({ frameId, onPick, disabled, label = "Air
         title={
           disabled
             ? "Land first — the airframe cannot be changed in flight"
-            : "Switch airframe. This strips the build and starts a fresh one."
+            : "Switch airframe. Your current build is parked and waiting when you come back."
         }
       >
         {AIRFRAME_LIST.map((f) => (

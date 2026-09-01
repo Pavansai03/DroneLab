@@ -14,6 +14,13 @@ import { FlightSim } from "./sim/flightSim.js";
 import { runDiagnostics, buildCrashReport } from "./sim/diagnostics.js";
 import { buildProgressApi, evaluateModule } from "./sim/progress.js";
 import { useBuildHistory, makeInitialBuild } from "./sim/useBuildHistory.js";
+import {
+  emptyWorkspace,
+  recall,
+  stash,
+  clearWorkspace,
+  migrateLegacySave,
+} from "./sim/workspaces.js";
 import { DEFAULT_FIELD, FLIGHT_FIELDS } from "./three/environments.js";
 import {
   useAuthSession,
@@ -76,6 +83,12 @@ const BUILD_ORDER = [
 ];
 
 const DEFAULT_ENV = { wind: 0, payload: 0, temperature: 25, altitude: 0 };
+
+/** "an octocopter", "a hexacopter". Small, but it is the first line of a dialog. */
+function article(label) {
+  const lower = label.toLowerCase();
+  return `${/^[aeiou]/.test(lower) ? "an" : "a"} ${lower}`;
+}
 
 /* ------------------------------------------------------------------ */
 /* Fault state derivation                                              */
@@ -168,7 +181,19 @@ export default function App() {
      the assembly bay, so a set read straight off it loses everything the moment
      a student stops flying — see flightAchieved() in progress.js. Seeded from
      this machine, merged with whatever the account already had. */
-  const [earned, setEarned] = useState(() => loadEarned(null));
+  const [earned, setEarned] = useState(() => loadEarned(null, "quad"));
+
+  /* THE OTHER AIRFRAMES.
+     Everything above this line describes the aircraft currently on the bench.
+     This holds the ones that are not: their build, their completed modules,
+     their flights, and the module they were left on. Switching airframe parks
+     the live state here and picks the other one up — see sim/workspaces.js.
+
+     Before this existed there was one shared record, so opening an octocopter
+     after finishing a hexacopter showed three modules ticked on an aircraft
+     with nothing bolted to it, and the finished hexacopter was overwritten to
+     make room. Reported from a classroom; reproduced in test-workspaces.mjs. */
+  const [workspaces, setWorkspaces] = useState(() => ({}));
 
   const applyCloudEarned = useCallback((list) => {
     setEarned((prev) => {
@@ -190,12 +215,30 @@ export default function App() {
      immediately instead of leaving it in a debounce the student walks out on. */
   const [progressResetKey, setProgressResetKey] = useState(0);
 
+  /* True once the cloud has told us what this account's benches look like, so
+     the legacy restore below knows whether it is filling a gap or trampling a
+     record that already answers the question. */
+  const [cloudWorkspacesLoaded, setCloudWorkspacesLoaded] = useState(false);
+
+  const applyCloudWorkspaces = useCallback((payload) => {
+    setWorkspaces(payload.workspaces || {});
+    if (payload.completedModules) {
+      setCompletedModules(new Set(payload.completedModules));
+    }
+    if (payload.moduleId) setModuleId(payload.moduleId);
+    setCloudWorkspacesLoaded(!payload.legacy);
+  }, []);
+
   const { status: syncStatus, error: syncError } = useBuildSync({
     user: auth.user,
     build: bs,
     earned,
+    workspaces,
+    completedModules,
+    moduleId,
     applyBuild: applyCloudBuild,
     applyEarned: applyCloudEarned,
+    applyWorkspaces: applyCloudWorkspaces,
     fallbackBuild: makeInitialBuild(frameId),
     resetKey: progressResetKey,
   });
@@ -356,16 +399,16 @@ export default function App() {
       if (!novel) return prev;
       const next = new Set(prev);
       for (const k of live) next.add(k);
-      saveEarned(auth.user?.id, next);
+      saveEarned(auth.user?.id, frameId, next);
       return next;
     });
-  }, [telemetry, auth.user?.id]);
+  }, [telemetry, auth.user?.id, frameId]);
 
   /* Signing in adopts this machine's signed-out work and adds whatever the
      account already had, so a student who practised before logging in does not
      lose the flight — and one who logs in on a fresh machine keeps their ticks. */
   useEffect(() => {
-    const stored = loadEarned(auth.user?.id);
+    const stored = loadEarned(auth.user?.id, frameId);
     setEarned((prev) => {
       const next = new Set(prev);
       let novel = false;
@@ -375,10 +418,10 @@ export default function App() {
           novel = true;
         }
       }
-      if (next.size > stored.size || novel) saveEarned(auth.user?.id, next);
+      if (next.size > stored.size || novel) saveEarned(auth.user?.id, frameId, next);
       return novel ? next : prev;
     });
-  }, [auth.user?.id]);
+  }, [auth.user?.id, frameId]);
 
   const progressApi = useMemo(
     () =>
@@ -408,17 +451,25 @@ export default function App() {
      reflects work done on another machine. Both are no-ops when offline. */
   useProgressSync({ user: auth.user, moduleId, progress, resetKey: progressResetKey });
 
+  /* Restore module ticks recorded on another machine.
+     ONLY for accounts saved before benches were per airframe. module_progress
+     has no airframe column — it is the teacher's "has this student finished
+     Module 3", pooled across every aircraft they have built. Merging it into
+     whichever airframe happens to be open is exactly the leak this whole change
+     removes: it would tick three modules on a fresh octocopter the moment the
+     student signed in. Once the account has real benches in the cloud, those
+     are the authority and this stays out of the way. */
   useEffect(() => {
-    if (!auth.user) return;
+    if (!auth.user || cloudWorkspacesLoaded) return;
     let cancelled = false;
     fetchCompletedModules(auth.user.id).then((set) => {
-      if (cancelled || set.size === 0) return;
+      if (cancelled || set.size === 0 || cloudWorkspacesLoaded) return;
       setCompletedModules((prev) => new Set([...prev, ...set]));
     });
     return () => {
       cancelled = true;
     };
-  }, [auth.user?.id]);
+  }, [auth.user?.id, cloudWorkspacesLoaded]);
 
   /* -------------------------------------------------- the active part */
   const filledSlots = useMemo(() => {
@@ -788,13 +839,26 @@ export default function App() {
    *
    * The undo history goes too — steps leading back into a build that no longer
    * exists are worse than no history at all.
+   *
+   * It strips THIS AIRFRAME. The others keep their benches, because a student
+   * scrapping a half-built octocopter has not scrapped the hexacopter they
+   * finished last week, and nothing about the octocopter says they have.
    */
   const resetBuild = useCallback(() => {
+    const remaining = clearWorkspace(workspaces, frameId);
+    setWorkspaces(remaining);
     resetHistory(makeInitialBuild(frameId));
     setCompletedModules(new Set());
     setEarned(new Set());
-    clearEarned(auth.user?.id);
-    if (auth.user?.id) {
+    clearEarned(auth.user?.id, frameId);
+
+    /* The remote module_progress table has no airframe column — it is the
+       teacher's view of "has this student finished Module 3", across all their
+       aircraft. So it is only cleared when nothing is left anywhere: while
+       another airframe still holds a completed module, that record is still
+       true and erasing it would tell the teacher a lie. */
+    const anythingLeft = Object.values(remaining).some((w) => w.completedModules?.size);
+    if (auth.user?.id && !anythingLeft) {
       void clearRemoteProgress(auth.user.id).then((error) => {
         if (error) {
           console.warn("Failed to clear remote progress:", error);
@@ -808,8 +872,10 @@ export default function App() {
     setMode("assembly");
     setSidebarTab("tasks");
     simRef.current?.reset();
-    setNotice("Build stripped and module progress cleared. Start again at Module 1.");
-  }, [resetHistory, frameId, auth.user?.id]);
+    setNotice(
+      `${frame.label} stripped and its module progress cleared. Start again at Module 1.`
+    );
+  }, [resetHistory, frameId, frame.label, workspaces, auth.user?.id]);
 
   /** The motor test from the task chain: spin each motor and verify direction. */
   const runMotorTest = useCallback(() => {
@@ -1069,6 +1135,52 @@ export default function App() {
      student mid-hover is not a thing to make possible. */
   const [pendingFrame, setPendingFrame] = useState(null);
 
+  /* What the confirmation dialog tells the student they are walking into:
+     the bench they left, or a clean one. Both facts are reassuring; the
+     question is which is true. */
+  const pendingFrameSummary = useMemo(() => {
+    if (!pendingFrame) return "";
+    const w = workspaces[pendingFrame];
+    const fitted = w
+      ? Object.values(w.build.placed || {}).reduce((n, arr) => n + (arr?.length || 0), 0)
+      : 0;
+    const done = w?.completedModules?.size ?? 0;
+
+    const keep =
+      totalPlaced || links.size
+        ? `Your ${frame.label.toLowerCase()} stays exactly as it is — ${totalPlaced} part${
+            totalPlaced === 1 ? "" : "s"
+          }, ${links.size} wire${links.size === 1 ? "" : "s"} — and is here when you come back.`
+        : `Your ${frame.label.toLowerCase()} bench is kept.`;
+
+    if (!fitted && !done) {
+      return `${keep} The ${AIRFRAMES[pendingFrame].label.toLowerCase()} has not been started, so it begins at Module 1 with nothing fitted.`;
+    }
+    return (
+      `Picking up where you left off: ${fitted} part${fitted === 1 ? "" : "s"} fitted and ` +
+      `${done} module${done === 1 ? "" : "s"} complete on the ` +
+      `${AIRFRAMES[pendingFrame].label.toLowerCase()}. ${keep}`
+    );
+  }, [pendingFrame, workspaces, totalPlaced, links.size, frame.label]);
+
+  /* Named in the strip dialog so nobody has to guess whether the button reaches
+     the other airframes. It does not. */
+  const otherBenchSummary = useMemo(() => {
+    const others = Object.entries(workspaces).filter(
+      ([id, w]) =>
+        id !== frameId &&
+        (w.completedModules?.size ||
+          Object.values(w.build?.placed || {}).some((a) => a?.length))
+    );
+    if (!others.length) return "";
+    const names = others.map(([id]) => AIRFRAMES[id].label.toLowerCase());
+    const list =
+      names.length === 1
+        ? names[0]
+        : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+    return `Your ${list} ${names.length === 1 ? "is" : "are"} not touched.`;
+  }, [workspaces, frameId]);
+
   const requestFrame = useCallback(
     (id) => {
       if (id === frameId) return;
@@ -1081,16 +1193,55 @@ export default function App() {
     [frameId, airborne]
   );
 
+  /**
+   * Park the aircraft on the bench and bring out another.
+   *
+   * The order matters: the live state is stashed BEFORE anything is replaced,
+   * or the hexacopter a student just finished is gone the moment they look at
+   * an octocopter. Undo history is deliberately not carried across — a step
+   * that would edit a different aircraft is worse than no step at all.
+   */
   const applyFrame = useCallback(
     (id) => {
-      const fresh = makeInitialBuild(id);
-      resetHistory({ ...fresh, flags: { ...fresh.flags, frameChosen: true } });
+      /* Computed outside the state updater on purpose. React may invoke an
+         updater twice, and everything below it is a side effect — running the
+         park twice would stash the new airframe's blank bench over the old
+         airframe's finished one. */
+      const parked = stash(workspaces, frameId, {
+        build: bs,
+        completedModules,
+        earned,
+        moduleId,
+      });
+      const next = recall(parked, id);
+
+      setWorkspaces(parked);
+      resetHistory({
+        ...next.build,
+        flags: { ...next.build.flags, frameChosen: true },
+      });
+      setCompletedModules(new Set(next.completedModules));
+      setEarned(new Set(next.earned));
+      setModuleId(next.moduleId);
       setTelemetry(null);
+      setCrashReport(null);
       setMode("assembly");
       simRef.current?.reset();
-      setNotice(`Airframe changed to ${AIRFRAMES[id].label}. Start the build again.`);
+
+      const fitted = Object.values(next.build.placed || {}).reduce(
+        (n, arr) => n + (arr?.length || 0),
+        0
+      );
+      const done = next.completedModules.size;
+      setNotice(
+        fitted || done
+          ? `Back on the ${AIRFRAMES[id].label.toLowerCase()} — ${fitted} part${
+              fitted === 1 ? "" : "s"
+            } fitted, ${done} module${done === 1 ? "" : "s"} complete.`
+          : `New ${AIRFRAMES[id].label.toLowerCase()}. Nothing fitted yet — start at Module 1.`
+      );
     },
-    [resetHistory]
+    [resetHistory, workspaces, frameId, bs, completedModules, earned, moduleId]
   );
 
   const sidebarTabs = useMemo(() => {
@@ -1345,7 +1496,7 @@ export default function App() {
         <button
           className="btn icon"
           onClick={() => setConfirm("resetBuild")}
-          title="Strip the build and start again"
+          title={`Strip the ${frame.label.toLowerCase()} and start it again`}
           aria-label="Strip the build"
         >
           <Reset />
@@ -1568,8 +1719,8 @@ export default function App() {
 
         {confirm === "resetBuild" && (
           <ConfirmDialog
-            title="Strip the whole build?"
-            message="Every part you have fitted and every wire you have made will be removed, along with the undo history and your module progress."
+            title={`Strip the ${frame.label.toLowerCase()}?`}
+            message={`Every part fitted to this ${frame.label.toLowerCase()} and every wire made on it will be removed, along with the undo history and its module progress.`}
             detail={
               `You currently have ${totalPlaced} part${totalPlaced === 1 ? "" : "s"} fitted ` +
               `and ${links.size} wire${links.size === 1 ? "" : "s"} connected` +
@@ -1580,9 +1731,13 @@ export default function App() {
                 : ".") +
               ` You will start again at Module 1${
                 allUnlocked ? " (teacher mode stays on, so all modules remain reachable)." : ", and Modules 2 and 3 will re-lock."
-              }`
+              }` +
+              /* Each airframe has its own bench, so this only strips the one on
+                 it — saying otherwise would make the button read as far more
+                 destructive than it is. */
+              (otherBenchSummary ? ` ${otherBenchSummary}` : "")
             }
-            confirmLabel="Yes, strip it"
+            confirmLabel={`Yes, strip the ${frame.short.toLowerCase()}`}
             cancelLabel="Keep my build"
             onConfirm={() => {
               setConfirm(null);
@@ -1596,20 +1751,23 @@ export default function App() {
           <ConfirmDialog
             title={`Switch to the ${AIRFRAMES[pendingFrame].label.toLowerCase()}?`}
             message={
-              `A ${AIRFRAMES[pendingFrame].label.toLowerCase()} is a different aircraft, not a modification: ` +
-              `${AIRFRAMES[pendingFrame].motorCount} arms instead of ${frame.motorCount}, a different ` +
-              `${AIRFRAMES[pendingFrame].recommendedPack.cells}S pack and ` +
-              `${AIRFRAMES[pendingFrame].recommendedKv} KV motors. The current build is stripped.`
+              `${article(AIRFRAMES[pendingFrame].label)} is a different aircraft, not a ` +
+              `modification: ${AIRFRAMES[pendingFrame].motorCount} arms instead of ${frame.motorCount}, ` +
+              `a ${AIRFRAMES[pendingFrame].recommendedPack.cells}S pack and ` +
+              `${AIRFRAMES[pendingFrame].recommendedKv} KV motors. It gets its own bench and its own ` +
+              `module progress.`
             }
-            detail={
-              totalPlaced || links.size
-                ? `You will lose ${totalPlaced} fitted part${totalPlaced === 1 ? "" : "s"} and ` +
-                  `${links.size} connected wire${links.size === 1 ? "" : "s"}. Your module progress is kept.`
-                : "Nothing is fitted yet, so there is nothing to lose."
+            /* Nothing is destroyed by a switch, so this says what is kept.
+               It used to warn that the build would be stripped, which was both
+               alarming and, once each airframe got its own bench, untrue. */
+            detail={pendingFrameSummary}
+            confirmLabel={
+              pendingFrameSummary.startsWith("Picking up")
+                ? "Go to it"
+                : `Build the ${AIRFRAMES[pendingFrame].short.toLowerCase()}`
             }
-            confirmLabel={`Build the ${AIRFRAMES[pendingFrame].short.toLowerCase()}`}
             cancelLabel="Stay on this one"
-            tone={totalPlaced || links.size ? "danger" : "primary"}
+            tone="primary"
             onConfirm={() => {
               const id = pendingFrame;
               setPendingFrame(null);

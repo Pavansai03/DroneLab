@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured, describeError } from "./supabase.js";
 import { normalizeVariants } from "../data/parts.js";
 import { AIRFRAMES } from "../data/airframes.js";
+import {
+  serialiseWorkspaces,
+  deserialiseWorkspaces,
+  migrateLegacySave,
+} from "../sim/workspaces.js";
 
 /**
  * CLOUD SYNC
@@ -16,7 +21,7 @@ import { AIRFRAMES } from "../data/airframes.js";
 
 /* ------------------------------------------------------- serialisation */
 
-export function serialiseBuild(build, earned) {
+export function serialiseBuild(build, earned, extra = {}) {
   return {
     frameId: build.frameId,
     placed: build.placed,
@@ -32,6 +37,15 @@ export function serialiseBuild(build, earned) {
        the move to a new origin, which is what took a completed module back to
        ten of eleven for someone who had certainly flown it. */
     earned: earned ? [...earned] : [],
+    /* The OTHER airframes' benches: their builds, their completed modules,
+       their flights. Progress is per aircraft (see sim/workspaces.js), and a
+       separation that only lasted until the next reload would not be one —
+       the student would come back to find the octocopter wearing the
+       hexacopter's ticks again. Carried in this jsonb column rather than a new
+       table so no schema migration is needed to keep it. */
+    workspaces: extra.workspaces ? serialiseWorkspaces(extra.workspaces) : undefined,
+    completedModules: extra.completedModules ? [...extra.completedModules] : undefined,
+    moduleId: extra.moduleId,
   };
 }
 
@@ -146,7 +160,19 @@ export async function signOut() {
 
 /* ----------------------------------------------------------- build sync */
 
-export function useBuildSync({ user, build, earned, applyBuild, applyEarned, fallbackBuild, resetKey }) {
+export function useBuildSync({
+  user,
+  build,
+  earned,
+  workspaces,
+  completedModules,
+  moduleId,
+  applyBuild,
+  applyEarned,
+  applyWorkspaces,
+  fallbackBuild,
+  resetKey,
+}) {
   const [status, setStatus] = useState("idle"); // idle | loading | saving | saved | error
   const [error, setError] = useState(null);
   const loadedFor = useRef(null);
@@ -194,11 +220,38 @@ export function useBuildSync({ user, build, earned, applyBuild, applyEarned, fal
         return;
       }
       if (data) {
-        applyBuild(deserialiseBuild(data, fallbackBuild));
+        const loadedBuild = deserialiseBuild(data, fallbackBuild);
+        applyBuild(loadedBuild);
         /* Merged, never replaced: a student may have flown on this machine
            while signed out, and that work counts too. */
         if (Array.isArray(data.state?.earned) && data.state.earned.length) {
           applyEarned?.(data.state.earned);
+        }
+
+        /* The other airframes' benches. An account saved before these existed
+           has none, and its single record of progress belongs to whatever
+           aircraft its build names — filing it anywhere else would hand a
+           student ticks on an airframe they have never touched. The completed
+           modules for the legacy case come from module_progress, which the
+           caller fetches; here we can only recover what the blob holds. */
+        if (data.state?.workspaces) {
+          applyWorkspaces?.({
+            workspaces: deserialiseWorkspaces(data.state.workspaces),
+            completedModules: data.state.completedModules ?? null,
+            moduleId: data.state.moduleId ?? null,
+            legacy: false,
+          });
+        } else {
+          applyWorkspaces?.({
+            workspaces: migrateLegacySave({
+              build: loadedBuild,
+              completedModules: [],
+              earned: data.state?.earned ?? [],
+            }),
+            completedModules: null,
+            moduleId: null,
+            legacy: true,
+          });
         }
         lastSaved.current = JSON.stringify(data.state);
       }
@@ -216,7 +269,7 @@ export function useBuildSync({ user, build, earned, applyBuild, applyEarned, fal
   useEffect(() => {
     if (!isSupabaseConfigured || !user || status === "loading") return;
 
-    const payload = serialiseBuild(build, earned);
+    const payload = serialiseBuild(build, earned, { workspaces, completedModules, moduleId });
     const json = JSON.stringify(payload);
     if (json === lastSaved.current) return;
 
@@ -280,7 +333,7 @@ export function useBuildSync({ user, build, earned, applyBuild, applyEarned, fal
       void send();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [build, earned, user?.id, resetKey]);
+  }, [build, earned, workspaces, completedModules, moduleId, user?.id, resetKey]);
 
   /* LEAVING THE PAGE IS NOT AN UNMOUNT.
      Clicking "Portal" navigates to a different application, and a browser does

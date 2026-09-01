@@ -72,20 +72,26 @@ console.log("\nlocal storage — the real module\n");
  * One run of the app, as App.jsx sequences it.
  *  - mount seeds from the "local" key, whoever is signed in
  *  - signing in merges the account's own key over the top
+ *
+ * Flights are recorded per AIRFRAME as well as per user: a flight is something
+ * a particular aircraft did, and a fresh octocopter must not inherit the
+ * hexacopter's hover. `frameId` defaults to the quad the course opens on, so
+ * every check below reads as it did before unless it is specifically about
+ * keeping two airframes apart.
  */
-function mountApp(userId) {
-  let earned = loadEarned(null);
-  const stored = loadEarned(userId);
+function mountApp(userId, frameId = "quad") {
+  let earned = loadEarned(null, frameId);
+  const stored = loadEarned(userId, frameId);
   for (const k of stored) earned.add(k);
   return {
     earned,
     fly(key) {
       earned.add(key);
-      saveEarned(userId, earned);
+      saveEarned(userId, frameId, earned);
     },
     reset() {
       earned = new Set();
-      clearEarned(userId);
+      clearEarned(userId, frameId);
     },
     get ticks() {
       return earned;
@@ -132,6 +138,48 @@ check("one student's reset does not clear another account's flights", () => {
      this machine's scratch space. A's OWN key must survive it. */
   assert.ok(mountApp("student-1").ticks.has("hover"), "student-1 kept their flight");
   assert.deepEqual([...mountApp("student-2").ticks], []);
+});
+
+check("a hexacopter's flight is not credited to a fresh octocopter", () => {
+  store.clear();
+  const hexa = mountApp("student-1", "hexa");
+  hexa.fly("hover");
+  hexa.fly("landing");
+  const octo = mountApp("student-1", "octo");
+  assert.deepEqual(
+    [...octo.ticks],
+    [],
+    "an octocopter that has never left the ground must show no flights"
+  );
+  assert.ok(mountApp("student-1", "hexa").ticks.has("hover"), "the hexacopter keeps its own");
+});
+
+check("stripping one airframe leaves the other's flights alone", () => {
+  store.clear();
+  mountApp("student-1", "hexa").fly("hover");
+  const octo = mountApp("student-1", "octo");
+  octo.fly("takeoff");
+  octo.reset();
+  assert.deepEqual([...mountApp("student-1", "octo").ticks], []);
+  assert.ok(
+    mountApp("student-1", "hexa").ticks.has("hover"),
+    "stripping the octocopter must not un-fly the hexacopter"
+  );
+});
+
+check("flights recorded before airframes were separated are adopted once", () => {
+  store.clear();
+  /* The pre-upgrade key: no airframe in it, because there was only one. */
+  store.set("dronelab.earned.student-1", JSON.stringify(["hover", "landing"]));
+  const first = mountApp("student-1", "hexa");
+  assert.ok(first.ticks.has("hover"), "the old record should survive the upgrade");
+  /* ...onto the airframe that was open, and no other. Adopting it a second
+     time would hand the same flights to every aircraft in turn. */
+  assert.deepEqual(
+    [...mountApp("student-1", "octo").ticks],
+    [],
+    "the old record must not be adopted again by a second airframe"
+  );
 });
 
 /* =========================================================== route 2 */
