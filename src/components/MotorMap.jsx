@@ -61,7 +61,11 @@ export default function MotorMap({ frame, deadMotors = [], motorOut = [], size =
           const y = cy + Math.sin(a) * R;
           const isDead = dead.has(m.index);
           const isCw = m.spin === 1;
-          const col = isDead ? "var(--red)" : isCw ? "var(--info)" : "var(--amber)";
+          /* Green for clockwise, blue for counter-clockwise — the colours used on
+             the printed wiring sheets. They used to be blue for CW, which put the
+             screen and the diagram in direct contradiction on the one detail a
+             student is most likely to check between them. */
+          const col = isDead ? "var(--red)" : isCw ? "var(--green)" : "var(--info)";
           const out = motorOut[m.index] ?? 0;
           const rMotor = size * 0.072;
 
@@ -124,11 +128,11 @@ export default function MotorMap({ frame, deadMotors = [], motorOut = [], size =
 
       <div className="motor-legend">
         <span>
-          <i style={{ background: "var(--info)" }} />
+          <i style={{ background: "var(--green)" }} />
           CW
         </span>
         <span>
-          <i style={{ background: "var(--amber)" }} />
+          <i style={{ background: "var(--info)" }} />
           CCW
         </span>
         {deadMotors.length > 0 && (

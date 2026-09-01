@@ -17,7 +17,8 @@
     "test:reset": "node scripts/test-reset.mjs",
     "test:components": "node scripts/test-components.mjs",
     "test:rth": "node scripts/test-rth.mjs",
-    "verify": "npm --prefix server run check && npm run test:progress && npm run test:access && npm run test:navigation && npm run test:reset && npm run test:components && npm run test:rth"
+    "test:airframes": "node scripts/test-airframes.mjs",
+    "verify": "npm --prefix server run check && npm run test:progress && npm run test:access && npm run test:navigation && npm run test:reset && npm run test:components && npm run test:rth && npm run test:airframes"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.9",

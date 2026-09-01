@@ -45,14 +45,16 @@ export const PARTS = {
     label: "Battery",
     category: "power",
     qty: 1,
-    spec: "3S 11.1V LI-PO",
+    spec: "LI-PO PACK",
     icon: "battery",
-    why: "The LiPo pack is the only energy source on board. A 3S pack has three cells in series: 3 x 3.7 V = 11.1 V nominal, 12.6 V fully charged, 10.5 V empty.",
+    why: "The LiPo pack is the only energy source on board. Cells in series set the voltage — 3 x 3.7 V = 11.1 V nominal on a 3S, 6 x 3.7 V = 22.2 V on a 6S — while capacity in mAh sets how long it lasts.",
     teaches:
-      "Never fly a LiPo below 3.5 V per cell (10.5 V on a 3S) — it permanently damages the pack. Voltage also SAGS under load, so a pack reading 11.4 V at rest can dip below cutoff the moment you punch the throttle.",
+      "Never fly a LiPo below 3.5 V per cell — it permanently damages the pack. Voltage also SAGS under load, and sag is current x internal resistance. That is why more motors need more CELLS, not just more capacity: doubling the voltage halves the current for the same power, so the same pack sags half as far.",
     variants: [
-      { id: "4200", label: "4200 mAh", detail: "3S · 11.1V · 320 g" },
-      { id: "5200", label: "5200 mAh", detail: "3S · 11.1V · 395 g" },
+      { id: "3s4200", label: "3S 4200 mAh", detail: "11.1 V · 320 g", cells: 3, capacityMah: 4200 },
+      { id: "3s5200", label: "3S 5200 mAh", detail: "11.1 V · 395 g", cells: 3, capacityMah: 5200 },
+      { id: "6s5200", label: "6S 5200 mAh", detail: "22.2 V · 785 g", cells: 6, capacityMah: 5200 },
+      { id: "6s8000", label: "6S 8000 mAh", detail: "22.2 V · 1205 g", cells: 6, capacityMah: 8000 },
     ],
   },
 
@@ -97,11 +99,13 @@ export const PARTS = {
     icon: "motor",
     why: "Brushless motors spin the propellers. The flight controller steers purely by making some motors spin faster than others.",
     teaches:
-      "KV is RPM per volt with no propeller fitted. A 1000 KV motor on 11.1 V tries to reach 11,100 RPM — more thrust, more current, less flight time than the 920 KV. Direction matters: each slot needs the CW or CCW motor the mixer expects.",
+      "KV is RPM per volt with no propeller fitted. A 1000 KV motor on 11.1 V tries to reach 11,100 RPM — more thrust, more current, less flight time than the 920 KV. KV must SUIT THE PACK: put a 920 KV motor on a 6S pack and it tries for 20,000 RPM, which no 10-inch propeller survives. Direction matters too: each slot needs the CW or CCW motor the mixer expects.",
     directional: true, // must match the slot's CW/CCW requirement
     variants: [
-      { id: "920", label: "920 KV", detail: "Efficient · long flight" },
-      { id: "1000", label: "1000 KV", detail: "Punchy · higher current" },
+      { id: "920", label: "920 KV", detail: "3S · efficient · long flight", kv: 920, cells: 3 },
+      { id: "1000", label: "1000 KV", detail: "3S · punchy · higher current", kv: 1000, cells: 3 },
+      { id: "460", label: "460 KV", detail: "6S · same prop RPM at half the current", kv: 460, cells: 6 },
+      { id: "500", label: "500 KV", detail: "6S · punchy · higher current", kv: 500, cells: 6 },
     ],
   },
 
@@ -251,8 +255,83 @@ export function requiredQty(part, frame) {
   return part.qty === "motors" ? frame.motorCount : part.qty;
 }
 
+/**
+ * Which variants of `part` make sense on this airframe.
+ *
+ * Only the pack and the motors are filtered, and only by cell count. A student
+ * choosing between a 4200 and a 5200 mAh pack is making a real trade — weight
+ * against endurance — and should see both. A student offered a 3S pack for an
+ * octocopter is being invited to build something that browns out on take-off,
+ * and a 920 KV motor beside a 6S pack is an invitation to over-rev a propeller
+ * until it comes apart. Those are not trades; they are traps.
+ */
+export function variantsFor(part, frame) {
+  const cells = frame?.recommendedPack?.cells;
+  if (!cells) return part.variants;
+  if (part.id !== "battery" && part.id !== "motor") return part.variants;
+  const suited = part.variants.filter((v) => v.cells === cells);
+  return suited.length ? suited : part.variants;
+}
+
 /** Default variant chosen when a student drops a part without picking one. */
 export function defaultVariant(part, frame) {
   if (part.id === "frame") return frame.id;
-  return part.variants[0].id;
+  const options = variantsFor(part, frame);
+
+  if (part.id === "battery" && frame?.recommendedPack) {
+    const { cells, capacityMah } = frame.recommendedPack;
+    const exact = options.find((v) => v.cells === cells && v.capacityMah === capacityMah);
+    if (exact) return exact.id;
+  }
+  if (part.id === "motor" && frame?.recommendedKv) {
+    const exact = options.find((v) => v.kv === frame.recommendedKv);
+    if (exact) return exact.id;
+  }
+  return options[0].id;
+}
+
+/**
+ * Battery variant ids used before packs carried a cell count.
+ *
+ * They were bare capacities, because there was only ever one cell count. Any
+ * build saved to the cloud before the hexa and octo existed still names them,
+ * and an unrecognised id would leave the parts library showing no pack selected
+ * on a build that plainly has one fitted — so they are translated, not dropped.
+ */
+const LEGACY_BATTERY_IDS = { 4200: "3s4200", 5200: "3s5200" };
+
+/**
+ * Bring a saved build's variant choices up to date.
+ * Also drops any pack or motor that does not suit the airframe — which only
+ * happens if a build was saved mid-edit or hand-tampered, but a 3S pack quietly
+ * left on an octocopter is a brown-out on the next take-off.
+ */
+export function normalizeVariants(variants, frame) {
+  const out = { ...(variants || {}) };
+
+  if (out.battery && LEGACY_BATTERY_IDS[out.battery]) {
+    out.battery = LEGACY_BATTERY_IDS[out.battery];
+  }
+  for (const partId of ["battery", "motor"]) {
+    const part = PARTS[partId];
+    if (!out[partId] || !part) continue;
+    const allowed = variantsFor(part, frame);
+    if (!allowed.some((v) => v.id === out[partId])) {
+      out[partId] = defaultVariant(part, frame);
+    }
+  }
+  return out;
+}
+
+/** The pack a build is actually carrying, resolved from the chosen variant. */
+export function packOf(variantId, frame) {
+  const v = PARTS.battery.variants.find((x) => x.id === variantId);
+  if (v) return { cells: v.cells, capacityMah: v.capacityMah };
+  return frame?.recommendedPack ?? { cells: 3, capacityMah: 4200 };
+}
+
+/** The KV a build is actually turning, resolved from the chosen variant. */
+export function kvOf(variantId, frame) {
+  const v = PARTS.motor.variants.find((x) => x.id === variantId);
+  return v?.kv ?? frame?.recommendedKv ?? 920;
 }

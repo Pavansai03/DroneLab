@@ -14,7 +14,7 @@ import { LOGIC_TREES, evaluateTree } from "../data/logicTrees.js";
 import { AIRFRAMES, classifyMotorFailure } from "../data/airframes.js";
 import { PARTS, requiredQty } from "../data/parts.js";
 import { wiringStatus } from "../data/wiring.js";
-import { BATTERY_SPEC, ESC_LIMIT_C } from "./physics.js";
+import { BATTERY_SPEC, ESC_LIMIT_C, packSpec } from "./physics.js";
 import { analyseAuthority } from "./mixer.js";
 
 const TONE_RANK = { ok: 0, info: 1, warn: 2, bad: 3 };
@@ -61,13 +61,21 @@ export function runDiagnostics(build, runtime) {
   const batteryConnected =
     has("battery") && wiring.batteryToPower && fault.batteryConnected !== false;
   const soc = fault.socOverride ?? runtime.soc ?? 1;
-  const voltage = fault.overVoltage ? 16.8 : (runtime.voltage ?? BATTERY_SPEC.vNominal);
+  /* The pack fitted to THIS build, not a fixed 3S. Every voltage judgement below
+     is relative to it — see the battery tree in logicTrees.js. */
+  const pack = packSpec(build.cells || frame.recommendedPack?.cells || 3);
+  // "Wrong cell count" injects a pack one step too big for whatever is fitted,
+  // which is the mistake it is modelling: a 4S on a 3S build, an 8S on a 6S one.
+  const voltage = fault.overVoltage
+    ? packSpec(pack.cells + 1).vFull
+    : (runtime.voltage ?? pack.vNominal);
 
   const ctxBattery = {
     connected: batteryConnected,
     voltage: batteryConnected ? voltage : 0,
     soc,
     sag: runtime.sag ?? 0,
+    pack,
   };
 
   /* -------------------------------------------------------------- PDB */

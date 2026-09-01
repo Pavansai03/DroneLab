@@ -9,12 +9,13 @@ export default function FlightHUD({ telemetry, diagnostics, frame, keys }) {
 
   const socPct = t.soc * 100;
   const socTone = socPct > 40 ? "ok" : socPct > 20 ? "warn" : "bad";
+  /* Thresholds come from the pack actually fitted. A hexa or octo flies a 6S,
+     where 11.1 V is a dead pack rather than the healthy cruise it is on the
+     quad's 3S — reading these off a fixed constant showed a 6S build in the
+     green all the way into an under-voltage crash. */
+  const pack = t.pack || BATTERY_SPEC;
   const vTone =
-    t.voltage >= BATTERY_SPEC.vNominal
-      ? "ok"
-      : t.voltage >= BATTERY_SPEC.vCutoff
-        ? "warn"
-        : "bad";
+    t.voltage >= pack.vNominal ? "ok" : t.voltage >= pack.vCutoff ? "warn" : "bad";
   const tempTone = t.maxEscTemp > ESC_LIMIT_C ? "bad" : t.maxEscTemp > 70 ? "warn" : "ok";
 
   const modeLabel = {
@@ -165,13 +166,15 @@ export default function FlightHUD({ telemetry, diagnostics, frame, keys }) {
                   <i
                     style={{
                       width: `${Math.min(100, Math.abs(out) * 100)}%`,
+                      /* Same CW/CCW colours as the motor map and the printed
+                         wiring sheets: green clockwise, blue counter-clockwise. */
                       background: isDead
                         ? "var(--faint)"
                         : negative
                           ? "var(--red)"
                           : m.spin === 1
-                            ? "var(--info)"
-                            : "var(--amber)",
+                            ? "var(--green)"
+                            : "var(--info)",
                     }}
                   />
                 </div>

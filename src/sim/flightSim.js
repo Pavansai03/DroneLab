@@ -52,6 +52,8 @@ import {
   ESC_LIMIT_C,
   dragForceN,
   BATTERY_SPEC,
+  packSpec,
+  packMass,
 } from "./physics.js";
 
 const KAPPA = 0.016; // prop reaction-torque arm, metres (torque = KAPPA * thrust)
@@ -155,8 +157,10 @@ export class FlightSim {
     this.escTempBoost = fault.escTempBoost || {};
 
     this.kv = build.motorKv || this.frame.recommendedKv;
-    this.capacityMah = build.capacityMah || 4200;
-    this.batteryMassKg = this.capacityMah === 5200 ? 0.395 : 0.32;
+    this.capacityMah = build.capacityMah || this.frame.recommendedPack?.capacityMah || 4200;
+    this.cells = build.cells || this.frame.recommendedPack?.cells || 3;
+    this.pack = packSpec(this.cells);
+    this.batteryMassKg = packMass(this.capacityMah, this.cells);
     this.payloadKg = env?.payload || 0;
     this.massKg = this.frame.dryMassKg + this.batteryMassKg + this.payloadKg;
 
@@ -199,7 +203,7 @@ export class FlightSim {
       this.soc = 1;
       this.mahUsed = 0;
     }
-    this.voltage = BATTERY_SPEC.vFull;
+    this.voltage = (this.pack || BATTERY_SPEC).vFull;
     this.sag = 0;
     this.currentA = 0;
 
@@ -440,7 +444,7 @@ export class FlightSim {
     const gpsUsable = this.satellites >= 8;
 
     /* ---- Battery terminal voltage ----------------------------------- */
-    const bat = batteryVoltage(this.soc, this.currentA, this.capacityMah, ambientC);
+    const bat = batteryVoltage(this.soc, this.currentA, this.capacityMah, ambientC, this.cells);
     this.voltage = this.capabilities.overVoltage ? 16.8 : bat.voltage;
     this.sag = bat.sag;
 
@@ -915,7 +919,7 @@ export class FlightSim {
         this.crash("Uncontrollable yaw spin — no yaw authority");
       } else if (this.soc <= 0.001) {
         this.crash("Battery exhausted in flight");
-      } else if (this.voltage < BATTERY_SPEC.vCritical && this.pos.y > 0.5) {
+      } else if (this.voltage < (this.pack || BATTERY_SPEC).vCritical && this.pos.y > 0.5) {
         this.crash("Under-voltage — power lost mid-flight");
       }
     }
@@ -1033,6 +1037,11 @@ export class FlightSim {
       voltage: this.voltage,
       sag: this.sag,
       currentA: this.currentA,
+      /* The pack travels with the telemetry rather than being imported as a
+         constant, because "is 11.2 volts healthy?" has no answer until you know
+         how many cells are behind it. On a 3S that is a comfortable cruise; on a
+         6S it is a pack about to be destroyed. */
+      pack: this.pack,
       escTemps: [...this.escTemps],
       motorThrust: [...this.motorThrust],
       motorRpm: [...this.motorRpmArr],

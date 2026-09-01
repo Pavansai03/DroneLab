@@ -17,13 +17,22 @@
  * A motor spinning CW pushes REACTION TORQUE the other way (yaws the airframe CCW),
  * which is exactly why the mixer's yaw factor is `-spin` (see sim/mixer.js).
  *
- * Motor numbering for the quad follows the wiring diagram in the course notes:
- *   M1 FRONT RIGHT (CW) · M2 REAR RIGHT (CCW) · M3 REAR LEFT (CW) · M4 FRONT LEFT (CCW)
- * Note the diagonal pairs share a direction (M1+M3 CW, M2+M4 CCW) — that is what
- * cancels the yaw torque in the hover.
+ * Motor numbering follows the printed wiring diagram for each airframe, and the
+ * numbering always runs CLOCKWISE FROM THE NOSE with the directions ALTERNATING
+ * around the ring — that alternation is what guarantees equal numbers of CW and
+ * CCW motors, and therefore zero net yaw torque in the hover.
  *
- * Hexa and Octo simply continue the same rule: directions ALTERNATE around the ring,
- * which guarantees an equal number of CW and CCW motors and therefore zero net torque.
+ *   QUAD  M1 FRONT RIGHT (CW)  M2 REAR RIGHT (CCW) M3 REAR LEFT (CW)  M4 FRONT LEFT (CCW)
+ *   HEXA  M1 (CCW) M2 (CW) M3 (CCW) M4 (CW) M5 (CCW) M6 (CW)
+ *   OCTO  M1 (CCW) M2 (CW) M3 (CCW) M4 (CW) M5 (CCW) M6 (CW) M7 (CCW) M8 (CW)
+ *
+ * The quad sheet starts on a CW motor and the hexa and octo sheets start on a
+ * CCW one. That is a genuine inconsistency between the three printed diagrams,
+ * not a mistake here: each airframe matches the sheet the students have in front
+ * of them, because a student checking their wiring against the diagram must find
+ * the simulator agreeing with it. Physically the choice is free — reversing every
+ * motor on an airframe together changes nothing, since the torques still cancel
+ * and the mixer derives its yaw column from whatever the table says.
  */
 
 const CW = 1;
@@ -42,19 +51,25 @@ function positionLabel(angle) {
   return "FRONT LEFT";
 }
 
-/** Build the motor table for a frame: N arms evenly spread, directions alternating. */
-function buildMotors(angles) {
-  return angles.map((angle, i) => ({
-    index: i,
-    id: `M${i + 1}`,
-    angle,
-    spin: i % 2 === 0 ? CW : CCW,
-    spinLabel: i % 2 === 0 ? "CW" : "CCW",
-    position: positionLabel(angle),
-    // Propeller colour convention: CW props black, CCW props orange, so students
-    // can see at a glance whether they fitted the correct prop to the correct motor.
-    propColor: i % 2 === 0 ? 0x14161b : 0xff7a33,
-  }));
+/**
+ * Build the motor table for a frame: N arms evenly spread, directions alternating.
+ * `firstSpin` is the direction of M1 on that airframe's printed wiring sheet.
+ */
+function buildMotors(angles, firstSpin) {
+  return angles.map((angle, i) => {
+    const spin = i % 2 === 0 ? firstSpin : -firstSpin;
+    return {
+      index: i,
+      id: `M${i + 1}`,
+      angle,
+      spin,
+      spinLabel: spin === CW ? "CW" : "CCW",
+      position: positionLabel(angle),
+      // Propeller colour convention: CW props black, CCW props orange, so students
+      // can see at a glance whether they fitted the correct prop to the correct motor.
+      propColor: spin === CW ? 0x14161b : 0xff7a33,
+    };
+  });
 }
 
 export const AIRFRAMES = {
@@ -64,13 +79,14 @@ export const AIRFRAMES = {
     short: "QUAD",
     motorCount: 4,
     armAngles: [45, 135, 225, 315],
-    motors: buildMotors([45, 135, 225, 315]),
+    motors: buildMotors([45, 135, 225, 315], CW),
     // Physical build data (roughly a 450-class airframe, matching the 3S/10-inch BOM)
     armLength: 0.225, // metres, hub centre to motor shaft
     tipRadius: 1.55, // scene units, hub centre to motor mount (visual scale)
     dryMassKg: 0.68, // frame + electronics, WITHOUT battery and payload
     propDiameterIn: 10,
     recommendedKv: 920,
+    recommendedPack: { cells: 3, capacityMah: 4200 },
     recommendedEscA: 30,
     maxPayloadKg: 0.5,
     dragArea: 0.055, // m^2 equivalent flat-plate area for wind loading
@@ -85,12 +101,17 @@ export const AIRFRAMES = {
     short: "HEXA",
     motorCount: 6,
     armAngles: [30, 90, 150, 210, 270, 330],
-    motors: buildMotors([30, 90, 150, 210, 270, 330]),
+    motors: buildMotors([30, 90, 150, 210, 270, 330], CCW),
     armLength: 0.275,
     tipRadius: 1.78,
     dryMassKg: 1.05,
     propDiameterIn: 10,
-    recommendedKv: 920,
+    // Six motors on a 3S pack sag the voltage to within a tenth of the brown-out
+    // threshold on a full-throttle climb. The course diagram specifies a 6S pack,
+    // and a 6S pack needs a motor wound for it — 460 KV reaches the same propeller
+    // RPM on 22.2 V that 920 KV reaches on 11.1 V.
+    recommendedKv: 460,
+    recommendedPack: { cells: 6, capacityMah: 5200 },
     recommendedEscA: 30,
     maxPayloadKg: 1.2,
     dragArea: 0.078,
@@ -104,12 +125,16 @@ export const AIRFRAMES = {
     short: "OCTO",
     motorCount: 8,
     armAngles: [22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5],
-    motors: buildMotors([22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5]),
+    motors: buildMotors([22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5], CCW),
     armLength: 0.32,
     tipRadius: 2.0,
     dryMassKg: 1.65,
     propDiameterIn: 10,
-    recommendedKv: 920,
+    // Eight motors pull over 100 A at full throttle. On a 3S pack that is a
+    // brown-out every time — the simulator crashed it on take-off before this
+    // aircraft was given the 6S pack its wiring diagram calls for.
+    recommendedKv: 460,
+    recommendedPack: { cells: 6, capacityMah: 5200 },
     recommendedEscA: 35,
     maxPayloadKg: 2.5,
     dragArea: 0.105,

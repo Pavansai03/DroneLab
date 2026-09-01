@@ -22,7 +22,7 @@ export const LOGIC_TREES = {
   battery: {
     id: "battery",
     title: "Battery Logic",
-    subtitle: "3S Li-Po · 11.1 V nominal · 12.6 V full · 10.5 V cutoff",
+    subtitle: "Li-Po · 4.2 V/cell full · 3.7 V/cell nominal · 3.5 V/cell cutoff",
     root: "connected",
     nodes: {
       connected: {
@@ -37,15 +37,19 @@ export const LOGIC_TREES = {
 
       voltageOk: {
         type: "decision",
-        text: "Voltage In Range? (10.5 - 12.6 V)",
-        test: (c) => c.voltage >= 10.5 && c.voltage <= 12.7,
+        /* Stated per cell, and tested against the pack actually fitted. The
+           thresholds used to be the 3S numbers written out literally, which
+           declared a healthy 6S pack over-voltage the instant one was allowed
+           on the hexa and octo. Per cell is also how the rule is taught. */
+        text: "Voltage In Range? (3.5 - 4.2 V per cell)",
+        test: (c) => c.voltage >= c.pack.vCutoff && c.voltage <= c.pack.vFull + 0.1,
         no: "voltageFault",
         yes: "capacityOk",
       },
       voltageFault: {
         type: "decision",
         text: "Over-Voltage?",
-        test: (c) => c.voltage > 12.7,
+        test: (c) => c.voltage > c.pack.vFull + 0.1,
         yes: "overVoltage",
         no: "underVoltage",
       },
@@ -87,8 +91,9 @@ export const LOGIC_TREES = {
 
       sagOk: {
         type: "decision",
-        text: "Voltage Sag Under Load OK?",
-        test: (c) => c.sag < 1.2,
+        /* 0.4 V per cell — the same fraction of pack voltage on any pack. */
+        text: "Voltage Sag Under Load OK? (< 0.4 V per cell)",
+        test: (c) => c.sag < c.pack.cells * 0.4,
         no: "brownout",
         yes: "normalPower",
       },

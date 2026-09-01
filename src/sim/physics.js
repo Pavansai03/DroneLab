@@ -105,25 +105,45 @@ export function hoverThrottle(cfg) {
 /* Battery — 3S Li-Po                                                  */
 /* ------------------------------------------------------------------ */
 
-export const BATTERY_SPEC = {
-  cells: 3,
-  vFullPerCell: 4.2,
-  vNominalPerCell: 3.7,
-  vCutoffPerCell: 3.5,
-  vCriticalPerCell: 3.3,
-  get vFull() {
-    return this.cells * this.vFullPerCell; // 12.6 V
-  },
-  get vNominal() {
-    return this.cells * this.vNominalPerCell; // 11.1 V
-  },
-  get vCutoff() {
-    return this.cells * this.vCutoffPerCell; // 10.5 V
-  },
-  get vCritical() {
-    return this.cells * this.vCriticalPerCell; // 9.9 V
-  },
+const CELL = {
+  vFull: 4.2,
+  vNominal: 3.7,
+  vCutoff: 3.5,
+  vCritical: 3.3,
 };
+
+/**
+ * Thresholds for a pack of `cells` cells in series.
+ *
+ * Everything is per-cell and multiplied up, because that is how the chemistry
+ * actually works and how a pilot is taught to think: "never below 3.5 volts a
+ * cell" is one rule whether the pack is a 3S or a 6S.
+ *
+ * The reason this is a function rather than the single 3S constant it used to
+ * be: eight motors cannot be fed from a 3S pack. At full throttle the octo
+ * pulls over 100 A, and 100 A through a 3S pack's internal resistance drops it
+ * straight through the cutoff and into a brown-out — the simulator crashed it
+ * every single time before the pack was allowed to change. Six cells halve the
+ * current for the same power, which is exactly why the course's octo diagram
+ * specifies a 6S pack and the quad diagram a 3S one.
+ */
+export function packSpec(cells = 3) {
+  return {
+    cells,
+    label: `${cells}S`,
+    vFullPerCell: CELL.vFull,
+    vNominalPerCell: CELL.vNominal,
+    vCutoffPerCell: CELL.vCutoff,
+    vCriticalPerCell: CELL.vCritical,
+    vFull: cells * CELL.vFull,
+    vNominal: cells * CELL.vNominal,
+    vCutoff: cells * CELL.vCutoff,
+    vCritical: cells * CELL.vCritical,
+  };
+}
+
+/** The 3S pack the quadcopter course is written around. */
+export const BATTERY_SPEC = packSpec(3);
 
 /**
  * Open-circuit voltage from state of charge.
@@ -157,11 +177,29 @@ export function ocvFromSoc(soc, cells = BATTERY_SPEC.cells) {
  * Internal resistance rises sharply in the cold — this is why a pack that flies
  * for 12 minutes in summer manages 7 in winter.
  */
-export function internalResistance(capacityMah, tempC) {
-  const base = 0.036 * (4200 / Math.max(1000, capacityMah)); // ohms, whole pack
+export function internalResistance(capacityMah, tempC, cells = 3) {
+  // Per-cell, then multiplied by the number in series — resistance adds along a
+  // series string, which is why a 6S pack has twice the resistance of a 3S. It
+  // still sags far less in practice, because twice the voltage means half the
+  // current for the same power and sag goes as I x R.
+  const perCell = 0.012 * (4200 / Math.max(1000, capacityMah)); // ohms
+  const base = perCell * cells;
   const coldFactor = tempC < 20 ? 1 + (20 - tempC) * 0.035 : 1;
   const hotFactor = tempC > 40 ? 1 + (tempC - 40) * 0.008 : 1;
   return base * coldFactor * hotFactor;
+}
+
+/**
+ * Mass of a Li-Po pack, from its two defining numbers.
+ * Energy is capacity x cells, and pack mass tracks energy almost linearly. The
+ * 25 g per amp-hour per cell below is not a guess: it is the exact slope through
+ * the two packs this course already used (3S 4200 at 320 g, 3S 5200 at 395 g),
+ * so those two are unchanged to the gram and everything larger extrapolates from
+ * real numbers. A 6S 5200 lands at 785 g — which is why picking a bigger battery
+ * is never a free upgrade.
+ */
+export function packMass(capacityMah, cells = 3) {
+  return Number(((capacityMah / 1000) * cells * 0.025 + 0.005).toFixed(3));
 }
 
 /** Usable capacity shrinks in the cold. */
@@ -171,9 +209,9 @@ export function capacityFactor(tempC) {
 }
 
 /** Loaded terminal voltage and how far it sagged. */
-export function batteryVoltage(soc, currentA, capacityMah, tempC) {
-  const ocv = ocvFromSoc(soc);
-  const r = internalResistance(capacityMah, tempC);
+export function batteryVoltage(soc, currentA, capacityMah, tempC, cells = 3) {
+  const ocv = ocvFromSoc(soc, cells);
+  const r = internalResistance(capacityMah, tempC, cells);
   const sag = currentA * r;
   return { voltage: Math.max(0, ocv - sag), ocv, sag, resistance: r };
 }
@@ -238,16 +276,25 @@ export function verticalThrustFraction(tiltRad) {
  *   frame, kv, capacityMah, payloadKg, soc, env {wind, temperature, altitude}
  */
 export function performanceSummary(p) {
-  const { frame, kv = 920, capacityMah = 4200, payloadKg = 0, soc = 1, env } = p;
+  const {
+    frame,
+    kv = frame.recommendedKv ?? 920,
+    capacityMah = frame.recommendedPack?.capacityMah ?? 4200,
+    cells = frame.recommendedPack?.cells ?? 3,
+    packMassKg,
+    payloadKg = 0,
+    soc = 1,
+    env,
+  } = p;
   const tempC = env?.temperature ?? 25;
   const altM = env?.altitude ?? 0;
   const wind = env?.wind ?? 0;
 
   const rho = airDensity(altM, tempC);
-  const batteryMassKg = capacityMah === 5200 ? 0.395 : 0.32;
+  const batteryMassKg = packMassKg ?? packMass(capacityMah, cells);
   const massKg = frame.dryMassKg + batteryMassKg + payloadKg;
 
-  const { voltage } = batteryVoltage(soc, 0, capacityMah, tempC);
+  const { voltage } = batteryVoltage(soc, 0, capacityMah, tempC, cells);
 
   const cfg = {
     voltage,

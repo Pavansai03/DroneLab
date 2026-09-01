@@ -295,7 +295,6 @@ export const MODULES = [
     number: 1,
     title: "Basic Drone Build",
     objective: "Build your first drone and make it hover.",
-    frameLocked: "quad",
     components: ["frame", "battery", "fc", "esc", "motor", "propeller"],
     unlocks: { wiring: true, flight: true, environment: false, missions: false },
     tasks: [
@@ -382,7 +381,6 @@ export const MODULES = [
     number: 2,
     title: "Controlled Flight",
     objective: "Control the drone using a transmitter.",
-    frameLocked: "quad",
     components: [
       "frame",
       "battery",
@@ -484,7 +482,6 @@ export const MODULES = [
     number: 3,
     title: "Complete Electronics",
     objective: "Build and configure a complete drone.",
-    frameLocked: null,
     components: [
       "frame",
       "battery",

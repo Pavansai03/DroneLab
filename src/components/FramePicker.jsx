@@ -1,56 +1,60 @@
 import React from "react";
-import { AIRFRAMES } from "../data/airframes.js";
+import { AIRFRAME_LIST } from "../data/airframes.js";
 
 /**
  * Airframe selection.
  *
- * The course builds a quadcopter, so that is the single option and it is selected
- * by default. The mixer, failure model and physics are all written for N rotors, so
- * re-introducing larger airframes later is a data change rather than a code change.
+ * The mixer, failure model, physics, wiring loom and 3D geometry are all written
+ * for N rotors, so all three airframes are genuinely simulated rather than being
+ * a quadcopter with extra arms drawn on: a hexacopter really does survive a motor
+ * failure the quad cannot, because the mixer really does re-solve the hover trim.
+ *
+ * Changing airframe strips the build. That is not a limitation, it is the truth —
+ * the arms, the pack and the motors are all different parts, and pretending a
+ * half-built quad can become a half-built octo would teach the wrong thing. The
+ * caller confirms before it happens.
  */
 export default function FramePicker({ frameId, onPick }) {
-  const f = AIRFRAMES.quad;
-
   return (
     <div>
       <div className="sect-note">
-        This build is a quadcopter: four motors in an X, with the diagonal pairs
-        spinning the same way so their torques cancel.
+        Pick the airframe you are building. More motors means more lift and more
+        redundancy, but also more mass, more current and a bigger battery — which
+        is the trade every real drone designer starts from.
       </div>
 
       <div className="frame-picker">
-        <button
-          className={`frame-card ${frameId === f.id ? "on" : ""}`}
-          onClick={() => onPick(f.id)}
-        >
-          <div className="t">
-            <b>{f.label}</b>
-            <span>{f.motorCount} MOTORS</span>
-          </div>
-          <p>{f.blurb}</p>
-          <span className="redundancy">NO REDUNDANCY</span>
-          <div
-            className="mono"
-            style={{ fontSize: 9.5, color: "var(--faint)", marginTop: 7 }}
-          >
-            {f.armLength * 1000} mm arms &middot; {f.dryMassKg} kg dry &middot;{" "}
-            {f.recommendedKv} KV &middot; {f.recommendedEscA} A ESC &middot; max{" "}
-            {f.maxPayloadKg} kg payload
-          </div>
-        </button>
-      </div>
-
-      <div className="teach" style={{ marginTop: 0 }}>
-        <h4>MOTOR ORDER &amp; DIRECTION</h4>
-        <p>
-          M1 front right (CW), M2 rear right (CCW), M3 rear left (CW), M4 front left
-          (CCW) — exactly as the wiring diagram specifies.
-        </p>
-        <p className="why">
-          The diagonal pairs share a direction. That is what cancels the yaw torque in
-          a hover, and it is also how the flight controller steers in yaw: it simply
-          lets one diagonal pair win.
-        </p>
+        {AIRFRAME_LIST.map((f) => {
+          const pack = f.recommendedPack;
+          return (
+            <button
+              key={f.id}
+              className={`frame-card ${frameId === f.id ? "on" : ""}`}
+              onClick={() => onPick(f.id)}
+              aria-pressed={frameId === f.id}
+            >
+              <div className="t">
+                <b>{f.label}</b>
+                <span>{f.motorCount} MOTORS</span>
+              </div>
+              <p>{f.blurb}</p>
+              <span className="redundancy">
+                {f.redundantMotors === 0
+                  ? "NO REDUNDANCY"
+                  : `SURVIVES ${f.redundantMotors} MOTOR FAILURE${f.redundantMotors > 1 ? "S" : ""}`}
+              </span>
+              <div
+                className="mono"
+                style={{ fontSize: 9.5, color: "var(--faint)", marginTop: 7 }}
+              >
+                {f.armLength * 1000} mm arms &middot; {f.dryMassKg} kg dry &middot;{" "}
+                {f.recommendedKv} KV &middot; {f.recommendedEscA} A ESC &middot;{" "}
+                {pack.cells}S {pack.capacityMah} mAh &middot; max {f.maxPayloadKg} kg
+                payload
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { PARTS, CATEGORIES, requiredQty } from "../data/parts.js";
+import { PARTS, CATEGORIES, requiredQty, variantsFor } from "../data/parts.js";
 import { PART_ICONS, Check, Lock } from "./Icons.jsx";
 
 /**
@@ -103,16 +103,20 @@ export default function PartsLibrary({
 
           {/* Variant chooser for whichever tile is expanded */}
           {cat.parts
-            .filter((id) => id === expanded && PARTS[id].variants.length > 1)
+            .filter((id) => id === expanded && variantsFor(PARTS[id], frame).length > 1)
             .map((id) => {
               const def = PARTS[id];
+              /* Only the packs and motors that suit this airframe. A 3S pack on
+                 an octocopter browns out on take-off and a 920 KV motor on a 6S
+                 pack over-revs the propeller — neither is a trade worth offering. */
+              const options = variantsFor(def, frame);
               return (
                 <div key={`${id}-var`}>
                   <div className="sect-note">
                     Choose the {def.label.toLowerCase()} variant before you fit it.
                   </div>
                   <div className="variant-row">
-                    {def.variants.map((v) => (
+                    {options.map((v) => (
                       <button
                         key={v.id}
                         className={`variant-chip ${variants[id] === v.id ? "on" : ""}`}

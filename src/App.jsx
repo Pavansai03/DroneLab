@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { AIRFRAMES } from "./data/airframes.js";
-import { PARTS, requiredQty, defaultVariant } from "./data/parts.js";
+import { PARTS, requiredQty, defaultVariant, packOf, kvOf } from "./data/parts.js";
 import { allWireIds, wiringStatus, buildHarnesses } from "./data/wiring.js";
 import {
   MODULES,
@@ -33,6 +33,7 @@ import WiringDialog from "./components/WiringDialog.jsx";
 import FaultPanel from "./components/FaultPanel.jsx";
 import SystemFlow from "./components/SystemFlow.jsx";
 import FramePicker from "./components/FramePicker.jsx";
+import AirframeSelect from "./components/AirframeSelect.jsx";
 import FieldPicker from "./components/FieldPicker.jsx";
 import FlightHUD from "./components/FlightHUD.jsx";
 import CrashReport from "./components/CrashReport.jsx";
@@ -275,10 +276,15 @@ export default function App() {
       faultState,
       componentSet,
       requiresPdb: componentSet.includes("pdb"),
-      motorKv: variants.motor === "1000" ? 1000 : 920,
-      capacityMah: variants.battery === "5200" ? 5200 : 4200,
+      /* Resolved from the parts data rather than matched against literals here.
+         The old ternaries silently fell through to the 3S quad pack for any
+         variant id they did not recognise, which is precisely what a hexa or
+         octo build is. */
+      motorKv: kvOf(variants.motor, frame),
+      capacityMah: packOf(variants.battery, frame).capacityMah,
+      cells: packOf(variants.battery, frame).cells,
     }),
-    [frameId, placed, links, flags, faultState, componentSet, variants]
+    [frameId, placed, links, flags, faultState, componentSet, variants, frame]
   );
 
   /* ---------------------------------------------- GPS acquisition (bay) */
@@ -1054,6 +1060,39 @@ export default function App() {
      shutdown. Matches DISARM_SAFE_ALT in the simulator. */
   const airborne = Boolean(telemetry?.armed) && (telemetry?.altitude ?? 0) > 0.6;
 
+  /* Switching airframe.
+     A hexacopter is not a quadcopter with two more arms bolted on: different
+     frame, different arm count, different pack, different motors. Nothing that
+     is already fitted carries over, so this strips the build — which is exactly
+     why it asks first, and why the pending choice is parked in state until the
+     student says yes. Refused outright in flight; changing the aircraft under a
+     student mid-hover is not a thing to make possible. */
+  const [pendingFrame, setPendingFrame] = useState(null);
+
+  const requestFrame = useCallback(
+    (id) => {
+      if (id === frameId) return;
+      if (airborne) {
+        setNotice("Land first — the airframe cannot be changed in flight.");
+        return;
+      }
+      setPendingFrame(id);
+    },
+    [frameId, airborne]
+  );
+
+  const applyFrame = useCallback(
+    (id) => {
+      const fresh = makeInitialBuild(id);
+      resetHistory({ ...fresh, flags: { ...fresh.flags, frameChosen: true } });
+      setTelemetry(null);
+      setMode("assembly");
+      simRef.current?.reset();
+      setNotice(`Airframe changed to ${AIRFRAMES[id].label}. Start the build again.`);
+    },
+    [resetHistory]
+  );
+
   const sidebarTabs = useMemo(() => {
     const t = [{ id: "tasks", label: "Tasks" }];
     if (module.components?.length) t.push({ id: "parts", label: "Parts" });
@@ -1379,6 +1418,13 @@ export default function App() {
           ))}
         </div>
 
+        {/* The airframe governs what most of these panels are showing — how many
+            tasks, how many parts, how many harnesses — so the control for it sits
+            with them rather than only on its own tab. */}
+        {["tasks", "parts", "wiring", "airframe"].includes(sidebarTab) && (
+          <AirframeSelect frameId={frameId} onPick={requestFrame} disabled={airborne} />
+        )}
+
         <div className="panel-body">
           {sidebarTab === "tasks" && (
             <TaskChecklist module={module} progress={progress} actions={benchActions} />
@@ -1430,16 +1476,7 @@ export default function App() {
           )}
           {sidebarTab === "class" && <TeacherDashboard auth={auth} />}
           {sidebarTab === "airframe" && (
-            <FramePicker
-              frameId={frameId}
-              onPick={(id) => {
-                if (id === frameId) return;
-                resetHistory({ ...makeInitialBuild(id), flags: { ...makeInitialBuild(id).flags, frameChosen: true } });
-                setTelemetry(null);
-                setMode("assembly");
-                simRef.current?.reset();
-              }}
-            />
+            <FramePicker frameId={frameId} onPick={requestFrame} />
           )}
         </div>
       </aside>
@@ -1555,6 +1592,33 @@ export default function App() {
           />
         )}
 
+        {pendingFrame && (
+          <ConfirmDialog
+            title={`Switch to the ${AIRFRAMES[pendingFrame].label.toLowerCase()}?`}
+            message={
+              `A ${AIRFRAMES[pendingFrame].label.toLowerCase()} is a different aircraft, not a modification: ` +
+              `${AIRFRAMES[pendingFrame].motorCount} arms instead of ${frame.motorCount}, a different ` +
+              `${AIRFRAMES[pendingFrame].recommendedPack.cells}S pack and ` +
+              `${AIRFRAMES[pendingFrame].recommendedKv} KV motors. The current build is stripped.`
+            }
+            detail={
+              totalPlaced || links.size
+                ? `You will lose ${totalPlaced} fitted part${totalPlaced === 1 ? "" : "s"} and ` +
+                  `${links.size} connected wire${links.size === 1 ? "" : "s"}. Your module progress is kept.`
+                : "Nothing is fitted yet, so there is nothing to lose."
+            }
+            confirmLabel={`Build the ${AIRFRAMES[pendingFrame].short.toLowerCase()}`}
+            cancelLabel="Stay on this one"
+            tone={totalPlaced || links.size ? "danger" : "primary"}
+            onConfirm={() => {
+              const id = pendingFrame;
+              setPendingFrame(null);
+              applyFrame(id);
+            }}
+            onCancel={() => setPendingFrame(null)}
+          />
+        )}
+
         {confirm === "resetFlight" && (
           <ConfirmDialog
             title="Reset the flight?"
@@ -1591,6 +1655,16 @@ export default function App() {
             </button>
           ))}
         </div>
+
+        {/* Health, logic trees and the failure table are all per-airframe: a
+            hexacopter survives the motor failure that kills a quad, and the
+            panel should be able to show you that without a detour. */}
+        <AirframeSelect
+          frameId={frameId}
+          onPick={requestFrame}
+          disabled={airborne}
+          label="Copter"
+        />
 
         <div className="panel-body">
           {inspectorTab === "diagnostics" && (

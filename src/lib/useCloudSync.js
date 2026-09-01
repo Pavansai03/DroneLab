@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured, describeError } from "./supabase.js";
+import { normalizeVariants } from "../data/parts.js";
+import { AIRFRAMES } from "../data/airframes.js";
 
 /**
  * CLOUD SYNC
@@ -36,11 +38,15 @@ export function serialiseBuild(build, earned) {
 export function deserialiseBuild(row, fallback) {
   if (!row?.state) return fallback;
   const s = row.state;
+  const frameId = s.frameId ?? fallback.frameId;
   return {
-    frameId: s.frameId ?? fallback.frameId,
+    frameId,
     placed: s.placed ?? {},
     links: new Set(Array.isArray(s.links) ? s.links : []),
-    variants: s.variants ?? {},
+    /* Builds saved before the hexa and octo existed name their battery by bare
+       capacity ("4200"), an id that no longer exists. Translate rather than let
+       the parts library show no pack fitted on a finished aircraft. */
+    variants: normalizeVariants(s.variants ?? {}, AIRFRAMES[frameId] ?? AIRFRAMES.quad),
     faults: Array.isArray(s.faults) ? s.faults : [],
     // Merge over the defaults so a schema addition never leaves a flag undefined
     flags: { ...fallback.flags, ...(s.flags ?? {}) },

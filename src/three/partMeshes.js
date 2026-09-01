@@ -30,12 +30,19 @@ export function buildHubPlate(mats, frame) {
   bottom.castShadow = bottom.receiveShadow = true;
   g.add(bottom);
 
+  /* Arm-mount nubs, one under each arm.
+     Angles are measured clockwise from the nose, and the whole project places a
+     part at angle `a` on (-sin a, cos a) — see buildSlots() in droneScene.js.
+     These used to use (cos a, sin a), which is that convention rotated by 90
+     degrees. On a quad and an octo the ring is symmetric under 90 degrees so the
+     nubs still landed on the arms and nothing looked wrong; on a hexacopter it
+     put every mount squarely in the gap between two arms. */
   frame.armAngles.forEach((a) => {
     const nub = new THREE.Mesh(
       new THREE.CylinderGeometry(0.05, 0.05, 0.03, 10),
       mats.gunmetal
     );
-    nub.position.set(Math.cos(deg(a)) * R * 0.85, 0.04, Math.sin(deg(a)) * R * 0.85);
+    nub.position.set(-Math.sin(deg(a)) * R * 0.85, 0.04, Math.cos(deg(a)) * R * 0.85);
     g.add(nub);
   });
 

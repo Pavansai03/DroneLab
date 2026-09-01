@@ -2185,6 +2185,49 @@ input[type="range"]::-moz-range-thumb {
   border-bottom: 1px solid var(--border-soft);
 }
 
+/* Airframe chooser, shown at the top of every panel whose contents change with
+   the number of motors. See components/AirframeSelect.jsx. */
+.airframe-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--panel2, var(--panel));
+}
+.airframe-select > span {
+  font-size: 9.5px;
+  letter-spacing: 0.11em;
+  font-weight: 700;
+  color: var(--dim);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.airframe-select select {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--panel3);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.airframe-select select:hover:not(:disabled) {
+  border-color: var(--cyan);
+}
+.airframe-select select:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 1px;
+}
+.airframe-select select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 1500px) {
   :root {
     --side: 300px;
