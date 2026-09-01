@@ -104,10 +104,26 @@ const ROLES = [
   },
 ];
 
+/**
+ * Where to go after signing in.
+ *
+ * Only ever a path on this site. `next` arrives in the query string, so without
+ * this an "//evil.example" or "https://evil.example" would be handed straight
+ * to router.replace and to Supabase's redirectTo — a phishing link that shows a
+ * genuine DroneLab login and then lands somewhere else. Anything that is not a
+ * plain same-origin path falls back to the home page.
+ */
+function safeNext(raw) {
+  if (!raw || typeof raw !== "string") return "/";
+  // Must start with a single slash: "//host" and "/\host" are protocol-relative.
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return "/";
+  return raw;
+}
+
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/";
+  const next = safeNext(params.get("next"));
 
   const [role, setRole] = useState("student");
   const [mode, setMode] = useState("signin");

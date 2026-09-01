@@ -49,8 +49,8 @@ import AccountPanel from "./components/AccountPanel.jsx";
 import TeacherDashboard from "./components/TeacherDashboard.jsx";
 import { Arrow, ArrowLeft, Reset, Bolt, Warn, Undo, Redo, SpeakerOn, SpeakerOff, Sun, Moon } from "./components/Icons.jsx";
 import { initialTheme, applyTheme } from "./lib/theme.js";
-import { hasPortal, goToPortal } from "./lib/portal.js";
-import { useSchoolAccess } from "./lib/useSchoolAccess.js";
+import { hasPortal, goToPortal, loginUrl } from "./lib/portal.js";
+import { useSchoolAccess, DENIED } from "./lib/useSchoolAccess.js";
 import AccessLock from "./components/AccessLock.jsx";
 import { loadEarned, saveEarned, clearEarned } from "./lib/achievements.js";
 import { useFlightLog } from "./lib/useFlightLog.js";
@@ -169,7 +169,7 @@ export default function App() {
   /* Is this account's school still subscribed?
      Checked here rather than left to the portal, because the portal hiding its
      "Simulator" button stops nobody who knows the URL. */
-  const access = useSchoolAccess(auth.user, auth.role);
+  const access = useSchoolAccess(auth.user, auth.role, auth.ready);
 
   const applyCloudBuild = useCallback(
     (loaded) => resetHistory(loaded),
@@ -1264,6 +1264,27 @@ export default function App() {
 
   const currentTask = progress.current;
 
+  /* SIGNED OUT GOES STRAIGHT TO SIGN IN.
+     Being signed out is not a message, it is a missing step, and a card that
+     exists only to say "you are signed out" in front of a button marked
+     "Sign in" is a page the student has to read and dismiss before they can do
+     the one thing available to them. The other lock reasons stay: an expired
+     subscription or a pending approval genuinely need explaining, and none of
+     them is fixed by visiting the login page.
+
+     Waits for `access.checking` to clear, which now waits for the session — see
+     useSchoolAccess. Without that this would have thrown every signed-in
+     student out to the login page during the moment before Supabase restored
+     their session. */
+  const signedOut = !access.checking && access.reason === DENIED.SIGNED_OUT;
+  const redirectingToLogin = signedOut && hasPortal();
+
+  useEffect(() => {
+    if (!redirectingToLogin) return;
+    const url = loginUrl();
+    if (url) window.location.replace(url);
+  }, [redirectingToLogin]);
+
   /* LOCKED OUT.
      Returned INSTEAD of the workshop, not layered over it: nothing below this
      line is constructed, so there is no live three.js scene sitting behind a
@@ -1278,6 +1299,13 @@ export default function App() {
 
      Only once the check has finished, so the lock never flashes at a student
      while the query is still in flight. */
+  if (redirectingToLogin) {
+    /* The navigation is already scheduled. Rendering nothing rather than the
+       lock card, so the sign-in page is not preceded by a screen that flashes
+       up and disappears. */
+    return <div className="lock-screen" aria-busy="true" />;
+  }
+
   if (!access.checking && access.reason) {
     return (
       <AccessLock reason={access.reason} schoolName={access.schoolName} endsAt={access.endsAt} />

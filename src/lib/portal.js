@@ -23,6 +23,29 @@ export const portalUrl = () => {
 export const hasPortal = () => Boolean(portalUrl());
 
 /**
+ * The portal's sign-in page, told where to come back to.
+ *
+ * `next` is only added when the portal shares this origin, which is the case
+ * for the merged deployment where the simulator is served at /sim. Across
+ * origins the portal's router cannot send anyone back here anyway, and a path
+ * from another site is meaningless to it — so it is left off and the student
+ * lands on the portal home, one click away.
+ */
+export function loginUrl() {
+  const base = portalUrl();
+  if (!base) return "";
+  const login = `${base.replace(/\/$/, "")}/login`;
+  try {
+    const target = new URL(login, window.location.href);
+    if (target.origin !== window.location.origin) return login;
+    const here = window.location.pathname + window.location.search;
+    return `${login}?next=${encodeURIComponent(here)}`;
+  } catch {
+    return login;
+  }
+}
+
+/**
  * Go back to the portal.
  *
  * Prefers history.back() when the previous page really was the portal, because

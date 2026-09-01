@@ -6,8 +6,18 @@ import { DENIED } from "../lib/useSchoolAccess.js";
  * THE LOCK SCREEN
  * ===============
  * Shown instead of the simulator when the person at the keyboard may not use
- * it — because they are signed out, not yet approved, or their school's
- * subscription has ended.
+ * it — because they are not yet approved, or their school's subscription has
+ * ended.
+ *
+ * NOT for being signed out, when a portal is configured. That is not a message,
+ * it is a missing step: App.jsx sends those students straight to the sign-in
+ * page rather than showing them a card whose only purpose is to explain a
+ * button marked "Sign in". The SIGNED_OUT copy below survives for the
+ * standalone build, which has no portal to send anyone to.
+ *
+ * Every other reason stays here, because none of them is fixed by visiting the
+ * login page and redirecting someone whose subscription has lapsed to sign in
+ * again would be a loop with an insult in it.
  *
  * INSTEAD OF, NOT OVER
  * --------------------

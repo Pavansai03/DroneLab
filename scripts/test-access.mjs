@@ -61,8 +61,12 @@ function simulatorReason({
   signedIn = true,
   inSchool = true,
   supabaseConfigured = true,
+  authReady = true,
 }) {
   if (!supabaseConfigured || role === "admin") return null;
+  /* Still restoring the session. Not signed out — unknown. Reported as
+     "checking" so nothing downstream acts on it. */
+  if (!authReady) return "checking";
   if (!signedIn) return "signed-out";
   if (studentStatus === "rejected") return "rejected";
   if (!inSchool) return "no-school";
@@ -97,6 +101,14 @@ const cases = [
   { n: "ends TODAY (midnight stamp)",    role: "student", endsAt: new Date(now).toISOString().slice(0,10) + "T00:00:00.000Z", admitted: true,  reason: null },
   { n: "ended YESTERDAY (midnight)",     role: "student", endsAt: new Date(now - DAY).toISOString().slice(0,10) + "T00:00:00.000Z", admitted: false, reason: "expired" },
   { n: "no Supabase configured",         role: "student", endsAt: null, supabaseConfigured: false, admitted: true,  reason: null, skipDrift: true },
+  /* The session has not come back yet. A signed-in student looks exactly like
+     a signed-out one for the first moments of every page load, and calling
+     that "signed out" used to flash the lock screen at everybody. Harmless
+     while it was a flash; not harmless once being signed out redirects, which
+     would have thrown every signed-in student out to the login page on
+     arrival. Excluded from the drift check because the API has no equivalent
+     state — it either has a token on the request or it does not. */
+  { n: "session still restoring",        role: "student", endsAt: null, authReady: false, signedIn: false, admitted: false, reason: "checking", skipDrift: true },
 ];
 
 let failed = 0;

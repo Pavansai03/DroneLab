@@ -28,6 +28,21 @@ import { supabase, isSupabaseConfigured } from "./supabase.js";
  * hiccuped is worse than one that gives an expired school another lesson.
  */
 
+/**
+ * WAIT FOR THE SESSION BEFORE JUDGING ANYONE
+ * ------------------------------------------
+ * Restoring a Supabase session is asynchronous, so for the first moments of
+ * every page load `user` is null on an account that is perfectly signed in.
+ * Reading that as "signed out" is wrong, and it showed: the lock screen flashed
+ * up on every single load before the session landed and replaced it. Harmless
+ * while it was only a flash — not harmless at all now that being signed out
+ * sends the student straight to the login page, which would have bounced every
+ * signed-in student out of the simulator on arrival.
+ *
+ * So `authReady` gates the whole thing: until the session question has an
+ * answer, the honest state is "still checking", not "denied".
+ */
+
 /** Why someone cannot fly. `null` means they can. */
 export const DENIED = {
   SIGNED_OUT: "signed-out",
@@ -40,7 +55,7 @@ export const DENIED = {
 
 const OPEN = { checking: false, reason: null, schoolName: null, endsAt: null };
 
-export function useSchoolAccess(user, role) {
+export function useSchoolAccess(user, role, authReady = true) {
   const [access, setAccess] = useState({ ...OPEN, checking: true });
 
   useEffect(() => {
@@ -48,6 +63,12 @@ export function useSchoolAccess(user, role) {
        being the only person who can lift any of it. */
     if (!isSupabaseConfigured || role === "admin") {
       setAccess(OPEN);
+      return;
+    }
+
+    /* The session has not resolved yet. Not signed out — unknown. */
+    if (!authReady) {
+      setAccess((a) => ({ ...a, checking: true }));
       return;
     }
 
@@ -103,7 +124,7 @@ export function useSchoolAccess(user, role) {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, role]);
+  }, [user?.id, role, authReady]);
 
   return access;
 }
