@@ -42,6 +42,10 @@ function Panel({ me }) {
   if (!data || !view) return <Loader label="Loading your progress" />;
 
   const { summary, modules } = view;
+  /* The first unfinished module: what the Continue button opens. It had a
+     card of its own below the tiles as well, saying the same thing a second
+     time and a good deal less usefully — the module list a few lines further
+     down shows every module's state, including this one. */
   const next = modules.find((m) => !m.completed);
   /* Flights that belong to no copter. The reason "all copters" is more than
      quad + hexa + octo, and the reason that is not a bug. */
@@ -133,27 +137,6 @@ function Panel({ me }) {
         />
         <Stat icon={<Icon.Shield />} value={summary.streak} label="Day streak" />
       </div>
-
-      {next && (
-        <>
-          <h2>Pick up where you left off</h2>
-          <div className="card">
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <div>
-                <strong>
-                  {next.frameLabel ? `${next.frameLabel} · ` : ""}Module {next.number} — {next.title}
-                </strong>
-                <div className="sub" style={{ margin: "6px 0 0" }}>
-                  {next.currentTask ? `Next task: ${next.currentTask}` : "Not started yet."}
-                </div>
-              </div>
-              <span className="pill info">
-                {next.tasksDone}/{next.tasksTotal || "?"} tasks
-              </span>
-            </div>
-          </div>
-        </>
-      )}
 
       <AskForHelp modules={view.sections[0]?.modules ?? modules} joined={Boolean(me.school)} />
 
