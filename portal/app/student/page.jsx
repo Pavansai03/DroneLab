@@ -43,6 +43,9 @@ function Panel({ me }) {
 
   const { summary, modules } = view;
   const next = modules.find((m) => !m.completed);
+  /* Flights that belong to no copter. The reason "all copters" is more than
+     quad + hexa + octo, and the reason that is not a bug. */
+  const unattributedFlights = data.unattributed?.flights ?? 0;
 
   return (
     <>
@@ -111,7 +114,23 @@ function Panel({ me }) {
       <div className="grid cols-4">
         <Stat icon={<Icon.Rocket />} value={`${summary.modulesCompleted}/${summary.modulesTotal}`} label="Modules complete" />
         <Stat icon={<Icon.Chart />} value={`${summary.percent}%`} label="Course progress" />
-        <Stat icon={<Icon.Bolt />} value={summary.flights} label="Flights flown" />
+        {/* THE TOTAL IS BIGGER THAN THE THREE COPTERS ADDED UP, AND SAYS WHY.
+            Flights logged before the simulator recorded which aircraft flew
+            them belong to no copter, so "all copters" is genuinely more than
+            quad + hexa + octo. There has always been a note explaining it — at
+            the bottom of the page, which is not where somebody notices the
+            arithmetic failing. The explanation belongs against the number. */}
+        <Stat
+          icon={<Icon.Bolt />}
+          value={summary.flights}
+          label="Flights flown"
+          note={
+            frame === "all" && unattributedFlights > 0
+              ? `${unattributedFlights} flown before the simulator recorded which copter — ` +
+                "counted here, not under any one aircraft"
+              : null
+          }
+        />
         <Stat icon={<Icon.Shield />} value={summary.streak} label="Day streak" />
       </div>
 
@@ -217,21 +236,10 @@ function Panel({ me }) {
         </div>
       ))}
 
-      {/* Practice logged before flights were recorded against an aircraft.
-          Shown rather than folded into the quadcopter's total, which would be a
-          number invented to look tidy. */}
-      {frame === "all" && (data.unattributed?.flights ?? 0) > 0 && (
-        <div className="note" style={{ marginTop: 16 }}>
-          {data.unattributed.flights} earlier flight
-          {data.unattributed.flights === 1 ? "" : "s"} were logged before the simulator
-          recorded which copter flew them. They count in your totals but are not shown against
-          any one aircraft.
-        </div>
-      )}
-
-      {/* Modules finished before the record could say on which aircraft. Same
-          principle as the flights above, and the same fix: run
-          supabase/per-airframe-progress.sql. */}
+      {/* Modules finished before the record could say on which aircraft.
+          The flights equivalent is stated on the Flights flown tile, against
+          the number that does not add up; a module is not a tile, so it is
+          said here. The fix for both is supabase/per-airframe-progress.sql. */}
       {frame === "all" && (data.unattributed?.modules ?? 0) > 0 && (
         <div className="note" style={{ marginTop: 16 }}>
           {data.unattributed.modules} finished module
@@ -300,13 +308,16 @@ function viewFor(data, frame) {
  * on a second look. Both matter — a wall of bare numbers takes real effort to
  * scan, and a wall of icons says nothing.
  */
-function Stat({ icon, value, label, tone }) {
+function Stat({ icon, value, label, tone, note }) {
   return (
     <div className="stat">
       <i className="accentbar" />
       <div className="ico">{icon}</div>
       <b style={tone ? { color: `var(--${tone})` } : undefined}>{value}</b>
-      <small>{label}</small>
+      <small>
+        {label}
+        {note ? <span className="footnote">{note}</span> : null}
+      </small>
     </div>
   );
 }

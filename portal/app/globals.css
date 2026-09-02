@@ -491,6 +491,20 @@ h2::after {
   font-weight: 700;
 }
 
+/* A figure that does not add up to the ones beside it needs its own sentence,
+   next to the number and not in a note further down the page. Sentence case
+   and untracked on purpose: the label above it shouts, this explains. */
+.stat .footnote {
+  display: block;
+  color: var(--dim);
+  font-size: 11.5px;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+  margin-top: 6px;
+}
+
 /* --------------------------------------------------------------- pieces */
 .bar {
   height: 8px;
