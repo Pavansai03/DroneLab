@@ -212,15 +212,64 @@ before anyone starts reading the portal's code:
 
 Both mean the **Supabase host is not answering**. The login page now says so
 outright and names the host, rather than leaving the two to be diagnosed
-separately. To confirm from a terminal:
+separately. Walk the whole route in one command:
 
 ```bash
-curl -sS -m 10 -o /dev/null -w '%{http_code}\n' https://YOUR-SUPABASE-DOMAIN/auth/v1/health
+npm run diagnose -- https://your-portal-domain --api=https://your-api-domain
 ```
 
-`000` is not an HTTP status — it means the connection never completed. Then
-check the API the same way, at `/health`. If both are dead they are almost
-certainly on the same machine, and the machine is the thing to look at.
+It reports DNS, TCP, TLS and HTTP for each hop separately, because which one
+fails *is* the diagnosis:
+
+| What you see | What it means |
+|---|---|
+| DNS fails | the record is missing or wrong |
+| TCP **refused** | the machine is alive and nothing is listening — a container or the reverse proxy is down |
+| TCP **timed out** | packets are being dropped. The machine is off or suspended, or a firewall is set to DROP rather than REJECT |
+| TLS fails | the certificate expired, or was issued for a different name |
+| HTTP 502/503/504 | the proxy is up and the thing behind it is not |
+
+That distinction is the whole game. A crashed container **refuses** a
+connection; a machine that is off or firewalled goes **silent**. Chasing a
+container when the answer is silence wastes an afternoon.
+
+### If it is timing out on every port
+
+Including port 22. That is not an application fault, so do not start with
+`docker ps`. In order:
+
+1. **hPanel → VPS.** Is it *Running*? Is there a suspension notice or an unpaid
+   invoice? A suspended VPS is powered off, and it looks exactly like this.
+2. **hPanel → VPS → Firewall.** A rule set attached with no allow rules denies
+   everything, silently. This is the second most common cause and the easiest
+   to cause by accident.
+3. **hPanel → Browser terminal.** It goes in over the hypervisor, not the
+   network, so it still works when the firewall is dropping everything. If it
+   logs in, the machine is alive and the problem is network configuration:
+
+   ```bash
+   ip -4 addr          # is the public address still on the interface?
+   sudo ufw status     # and iptables -S, if ufw is not in use
+   df -h               # a full disk stops Docker without stopping the machine
+   docker ps           # only now is this the right question
+   ```
+4. **Compare the address.** The IP in hPanel against the one DNS returns. If
+   they differ, the VPS was rebuilt or moved, and see below.
+
+### Stop depending on an sslip.io hostname
+
+`dronelab-supabase-<hash>-203-0-113-9.sslip.io` **contains** the server's
+address: sslip.io resolves it to `203.0.113.9` and can never resolve it to
+anything else. So if the VPS ever changes address, that name is dead for good —
+it cannot be re-pointed, only replaced. And because
+`NEXT_PUBLIC_SUPABASE_URL` and `VITE_SUPABASE_URL` are compiled in at build
+time, replacing it means editing the variables **and rebuilding both apps**,
+not restarting them.
+
+Give Supabase a real subdomain instead — `supabase.your-domain`, an `A`
+record you control, added as the domain in Dokploy. Then a future address
+change is one DNS edit and nothing needs rebuilding. Do the same for the API if
+it is not already on one.
 
 **One trap specific to this deployment.** A self-hosted Supabase behind Dokploy
 is often reached at an `sslip.io` hostname, and that hostname *contains* the
