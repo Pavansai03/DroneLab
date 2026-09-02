@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { route, requireRole } from "../auth.js";
-import { MODULES, shapeProgress } from "./student.js";
+import { MODULES, shapeProgress, benchesFromBuild } from "./student.js";
 import { FRAMES, DEFAULT_FRAME } from "../frames.js";
 
 /**
@@ -47,6 +47,8 @@ router.get(
     if (error) return res.status(400).json({ error: error.message });
 
     const students = (data ?? []).filter((r) => r.role === "student");
+    await fillPerFrameFromBuilds(db, students);
+
     res.json({
       roster: students,
       summary: summarise(students),
@@ -60,6 +62,59 @@ router.get(
     });
   })
 );
+
+/**
+ * THE AIRFRAME SPLIT, WHEN THE VIEW CANNOT GIVE IT.
+ *
+ * `class_roster.per_frame` arrives with per-airframe-progress.sql. Until that
+ * has been run the column is simply absent, and the copter dropdown above the
+ * roster moves a set of zeros around — which reads as "none of my class has
+ * done anything" rather than "this database is one file behind".
+ *
+ * The simulator has been keeping a bench per aircraft in `builds` since long
+ * before the column existed, so the split can be recovered from there. Read
+ * only when the view could not answer, and only for the class actually on
+ * screen: a teacher's roster, not the whole table.
+ *
+ * Flights are deliberately left at zero rather than divided up. `activity_log`
+ * records a day's flying, and nothing in the saved build says which aircraft
+ * flew on which day. Guessing that would be inventing a number.
+ */
+async function fillPerFrameFromBuilds(db, students) {
+  if (!students.length) return;
+  /* If any row has it, the migration has run and the view is authoritative. */
+  if (students.some((s) => s.per_frame)) return;
+
+  const ids = students.map((s) => s.user_id).filter(Boolean);
+  if (!ids.length || ids.length > 400) return;
+
+  const { data, error } = await db.from("builds").select("user_id, state").in("user_id", ids);
+  if (error || !data) return;
+
+  const byUser = new Map(data.map((b) => [b.user_id, b.state]));
+  for (const s of students) {
+    const benches = benchesFromBuild(byUser.get(s.user_id));
+    s.per_frame = Object.fromEntries(
+      FRAMES.map((f) => [
+        f.id,
+        {
+          modules: benches[f.id].size,
+          flights: 0,
+          crashes: 0,
+          seconds: 0,
+          last_active: null,
+          stuck_on: null,
+        },
+      ])
+    );
+    /* Kept in step with the split, so the headline and the breakdown beneath
+       it are not counting from two different sources. The pooled count in the
+       view is a row count, which cannot see one module finished on two
+       aircraft. */
+    const summed = FRAMES.reduce((n, f) => n + benches[f.id].size, 0);
+    if (summed > (s.modules_completed ?? 0)) s.modules_completed = summed;
+  }
+}
 
 /** One student in full: profile, per-module progress, recent activity. */
 router.get(
@@ -83,18 +138,24 @@ router.get(
       db.from("module_progress").select("*").eq("user_id", id),
       db
         .from("activity_log")
-        .select("day, frame_id, flights, crashes, seconds")
+        /* select("*"): naming frame_id before the migration adds it makes
+           PostgREST reject the statement, and every flight this student has
+           flown disappears from the teacher's screen. */
+        .select("*")
         .eq("user_id", id)
         .order("day", { ascending: false })
         /* One row per airframe per day, so the window grows with them. */
         .limit(120),
-      db.from("builds").select("frame_id, updated_at").eq("user_id", id).maybeSingle(),
+      /* `state` as well now: it carries the per-aircraft benches, which is how
+         a module gets filed against the right copter on a database whose
+         module_progress rows cannot yet say. */
+      db.from("builds").select("frame_id, updated_at, state").eq("user_id", id).maybeSingle(),
     ]);
 
     /* Shaped by the same function the student's own panel uses. A teacher and a
        student looking at the same three copters must not be reading two
        different roll-ups of the same rows. */
-    const shaped = shapeProgress(progress, activity);
+    const shaped = shapeProgress(progress, activity, build?.state ?? null);
 
     res.json({
       student: profile,
@@ -104,7 +165,7 @@ router.get(
          rather than an empty one. */
       modules: shaped.byFrame[DEFAULT_FRAME].modules,
       summary: shaped.overall,
-      build: build ?? null,
+      build: build ? { frame_id: build.frame_id, updated_at: build.updated_at } : null,
     });
   })
 );

@@ -70,13 +70,30 @@ from public.module_progress where frame_id is null;
 That statement failing with *column "frame_id" does not exist* is the answer:
 step 4 has not run. A `0` means it has.
 
-The simulator survives either way. The module rail reads the per-airframe
-benches in `builds`, never this table, so a hexacopter cannot inherit a
-quadcopter's ticks even on a database that is one migration behind — and a
-write that Postgres rejects is retried without the column rather than dropped,
-with a console error naming the file to run. What you lose until it runs is the
-split itself: finished modules come back unlabelled, and the panels and reports
-show them as **Not recorded** rather than guessing at an aircraft.
+**Everything works without it, and less well.** Nothing is broken while you
+wait, because the airframe split does not actually depend on this column:
+
+- The **simulator's** module rail reads the per-airframe benches in `builds`,
+  never this table, so a hexacopter cannot inherit a quadcopter's ticks on a
+  database that is one migration behind. A write Postgres rejects is retried
+  without the column rather than dropped, and logs once, naming the file.
+- The **panels and reports** read those same benches when a progress row cannot
+  say which aircraft it belongs to. A student who finishes Module 1 on a
+  quadcopter and again on a hexacopter sees 1 of 3 against each, because the
+  simulator recorded which bench did what even though the row could not.
+- A finished module that no bench claims is shown as **Not recorded** — counted
+  in the total, attributed to nothing. It is never given to the quadcopter to
+  make the table look tidy.
+
+What you actually lose until it runs:
+
+- **Flights are not split per copter.** `activity_log` records a day's flying
+  and nothing in the saved build says which aircraft flew on which day, so they
+  are all reported as unattributed. Guessing would be inventing a number.
+- The teacher's roster derives its split from every student's saved build on
+  each request, instead of reading one column.
+- The school's record stays pooled, so two copters on the same module are one
+  row rather than two.
 
 Then confirm RLS is actually on. **Database → Tables**, and check every table
 shows *RLS enabled*: `profiles`, `user_roles`, `module_progress`, `builds`,

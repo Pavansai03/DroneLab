@@ -326,7 +326,7 @@ await check("two copters on the same module are two rows, not one", async () => 
 /* ==================================================================== */
 console.log("\nThe roll-up the panels read\n");
 
-const { shapeProgress, MODULES } = await load("../server/src/routes/student.js");
+const { shapeProgress, benchesFromBuild, MODULES } = await load("../server/src/routes/student.js");
 const { FRAMES } = await load("../server/src/frames.js");
 
 const shaped = shapeProgress(
@@ -689,6 +689,112 @@ console.log("\nBefore the migration has been run\n");
   __resetFrameColumnProbe();
   globalThis.__TEST_TABLE__ = table;
 }
+
+/* ==================================================================== */
+console.log("\nThe panel reads the benches when the rows cannot say\n");
+
+/**
+ * REPORTED FROM THE CLASSROOM, AGAIN.
+ *
+ * "I completed the 1st module in quadcopter and hexacopter but the progress is
+ * not getting displayed in the panel." The simulator showed 11 of 11 and
+ * MODULE COMPLETE on both; the panel showed 0 of 3 on all three copters.
+ *
+ * Both were telling the truth. per-airframe-progress.sql had not been run, so
+ * every module_progress row was written without an airframe, and a panel that
+ * refuses to guess which copter an unlabelled row belongs to — correctly, that
+ * guess is what put ticks on aircraft that were never built — had nothing to
+ * show under any of them.
+ *
+ * The answer was already in the database. `builds.state` carries a workbench
+ * per aircraft: the parked ones under `workspaces`, the one in use at the top
+ * level. That is the same source the migration reads, so the panel reads it
+ * too and stops waiting for a schema change to tell the truth.
+ */
+const AFTER_TWO_MODULE_ONES = {
+  /* Quadcopter finished and parked; hexacopter on the bench, also finished. */
+  frameId: "hexa",
+  completedModules: ["m1"],
+  workspaces: {
+    quad: { completedModules: ["m1"] },
+    octo: { completedModules: [] },
+  },
+};
+/* What an un-migrated module_progress holds: no airframe on any row. */
+const UNLABELLED = [
+  { module_id: "m1", completed: true, tasks_done: 11, tasks_total: 11, updated_at: "2026-09-01T10:00:00Z" },
+];
+
+await check("the bench splits one unlabelled row across the two copters that earned it", () => {
+  const s = shapeProgress(UNLABELLED, [], AFTER_TWO_MODULE_ONES);
+  assert.equal(s.byFrame.quad.summary.modulesCompleted, 1, "the quadcopter's Module 1 is missing");
+  assert.equal(s.byFrame.hexa.summary.modulesCompleted, 1, "the hexacopter's Module 1 is missing");
+  assert.equal(s.byFrame.octo.summary.modulesCompleted, 0, "the octocopter was given work it never did");
+});
+
+await check("and the course total is two of nine, not one", () => {
+  /* A row count cannot see one module finished on two aircraft. */
+  const s = shapeProgress(UNLABELLED, [], AFTER_TWO_MODULE_ONES);
+  assert.equal(s.overall.modulesCompleted, 2);
+  assert.equal(s.overall.modulesTotal, 9);
+  assert.equal(s.unattributed.modules, 0, "a placed module was also counted as unplaced");
+});
+
+await check("the task counts come from the row it was placed with", () => {
+  const s = shapeProgress(UNLABELLED, [], AFTER_TWO_MODULE_ONES);
+  const m1 = s.byFrame.hexa.modules.find((m) => m.id === "m1");
+  assert.equal(m1.tasksDone, 11);
+  assert.equal(m1.tasksTotal, 11);
+  assert.equal(m1.completed, true);
+});
+
+await check("a module the bench never claimed is still not handed to anyone", () => {
+  const s = shapeProgress(
+    [...UNLABELLED, { module_id: "m3", completed: true, tasks_done: 8, tasks_total: 8 }],
+    [],
+    AFTER_TWO_MODULE_ONES
+  );
+  for (const f of ["quad", "hexa", "octo"]) {
+    assert.equal(
+      s.byFrame[f].modules.find((m) => m.id === "m3").completed,
+      false,
+      `${f} was given Module 3, which no bench claims`
+    );
+  }
+  assert.equal(s.unattributed.modules, 1);
+});
+
+await check("a finished bench with no row at all still shows as finished", () => {
+  /* The write never reached the server — rejected, offline, whatever. The
+     student watched the checklist tick, and the panel must not call that
+     NOT STARTED. */
+  const s = shapeProgress([], [], AFTER_TWO_MODULE_ONES);
+  assert.equal(s.byFrame.quad.summary.modulesCompleted, 1);
+  assert.equal(s.byFrame.hexa.summary.modulesCompleted, 1);
+});
+
+await check("once the rows carry an airframe, they are what counts", () => {
+  const s = shapeProgress(
+    [{ frame_id: "octo", module_id: "m2", completed: true, tasks_done: 9, tasks_total: 9 }],
+    [],
+    AFTER_TWO_MODULE_ONES
+  );
+  assert.equal(s.byFrame.octo.summary.modulesCompleted, 1);
+  assert.equal(s.unattributed.modules, 0);
+});
+
+await check("no saved build is not an error, just nothing to add", () => {
+  for (const state of [null, undefined, {}, "nonsense", { workspaces: 7 }]) {
+    const b = benchesFromBuild(state);
+    assert.deepEqual(Object.keys(b).sort(), ["hexa", "octo", "quad"]);
+    for (const f of Object.values(b)) assert.equal(f.size, 0);
+  }
+});
+
+await check("a bench naming an aircraft this build cannot make is ignored", () => {
+  const b = benchesFromBuild({ workspaces: { tricopter: { completedModules: ["m1"] } } });
+  assert.equal(b.quad.size + b.hexa.size + b.octo.size, 0);
+});
 
 /* Cleanup: never leave a stub inside the source tree. */
 rmSync(shimDir, { recursive: true, force: true });

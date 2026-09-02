@@ -43,19 +43,63 @@ const router = Router();
  * rename of the old single-course figure. Anything reading `modulesTotal` gets
  * a number that matches what the panel below it lists.
  */
-export function shapeProgress(progressRows, activityRows) {
+/**
+ * WHICH AIRCRAFT FINISHED WHICH MODULE, ACCORDING TO THE SIMULATOR ITSELF.
+ *
+ * `module_progress` only carries an airframe once per-airframe-progress.sql
+ * has been run. Until then every row is unlabelled, and a panel that refuses to
+ * guess — correctly — shows three copters at 0 of 3 to a student who has just
+ * finished two Module 1s and watched them tick.
+ *
+ * But the answer is already in the database, and has been all along. The
+ * simulator keeps a workbench per aircraft in `builds.state`: the parked ones
+ * under `workspaces`, the one on the bench at the top level, each with its own
+ * completed modules. That is the same source the migration reads to backfill
+ * the column, so reading it here gives the same answer sooner — without a
+ * schema change, and without inventing anything.
+ *
+ * Returns a set per airframe, never a module→airframe map. Module 1 finished on
+ * both a quadcopter and a hexacopter is two facts, and a map keyed by module id
+ * can only hold one of them — which is the shape of the original bug.
+ */
+export function benchesFromBuild(state) {
+  const out = Object.fromEntries(FRAME_IDS.map((id) => [id, new Set()]));
+  if (!state || typeof state !== "object") return out;
+
+  const add = (frameId, list) => {
+    if (!FRAME_IDS.includes(frameId) || !Array.isArray(list)) return;
+    for (const id of list) if (typeof id === "string") out[frameId].add(id);
+  };
+
+  const parked = state.workspaces;
+  if (parked && typeof parked === "object") {
+    for (const [frameId, bench] of Object.entries(parked)) add(frameId, bench?.completedModules);
+  }
+  /* The aircraft currently on the bench is not in `workspaces` — it is the
+     top-level state, and its frame is named beside it. */
+  add(state.frameId, state.completedModules);
+  return out;
+}
+
+export function shapeProgress(progressRows, activityRows, buildState = null) {
   const rows = progressRows ?? [];
   const activity = activityRows ?? [];
+  const benches = benchesFromBuild(buildState);
+
+  /* Rows that name no airframe. Pre-migration that is all of them. */
+  const pooled = new Map(
+    rows.filter((r) => !FRAME_IDS.includes(r.frame_id)).map((r) => [r.module_id, r])
+  );
 
   const modulesFor = (frameId) => {
-    /* A row that names no airframe is not a quadcopter's.
-       It used to be read as one, which is a guess dressed as a fact: before
-       per-airframe-progress.sql runs, module_progress has no frame_id at all,
-       and everything the student has ever done on any of the three copters
-       comes back unlabelled. Filing that under the quadcopter puts ticks in a
-       teacher's report against an aircraft that may never have been built.
-       Counted in the totals below, named as unattributed, attributed to
-       nothing. Exactly how the flights are handled. */
+    /* A row that names no airframe is not a quadcopter's. It used to be read
+       as one, which is a guess dressed as a fact, and it put ticks in a
+       teacher's report against aircraft that were never built.
+
+       So an unlabelled row is used for THIS copter only when the student's own
+       bench says this copter finished that module. Then it is not a guess: the
+       simulator recorded it, and the row is only supplying the task counts. */
+    const bench = benches[frameId] ?? new Set();
     const byId = new Map(
       rows.filter((r) => r.frame_id === frameId).map((r) => [r.module_id, r])
     );
@@ -63,10 +107,15 @@ export function shapeProgress(progressRows, activityRows) {
        Returning only started modules would make an untouched course look like
        an empty account rather than a course not yet begun. */
     return MODULES.map((m) => {
-      const r = byId.get(m.id);
+      const onBench = bench.has(m.id);
+      const r = byId.get(m.id) ?? (onBench ? pooled.get(m.id) : undefined);
       return {
         ...m,
-        completed: Boolean(r?.completed),
+        /* The bench is enough on its own. A module finished on a machine whose
+           progress row never made it to the server is still finished, and
+           showing NOT STARTED under a checklist the student watched tick is the
+           complaint this exists to answer. */
+        completed: Boolean(r?.completed) || onBench,
         tasksDone: r?.tasks_done ?? 0,
         tasksTotal: r?.tasks_total ?? 0,
         currentTask: r?.current_task ?? null,
@@ -114,15 +163,24 @@ export function shapeProgress(progressRows, activityRows) {
     activity.filter((a) => !FRAME_IDS.includes(a.frame_id ?? UNATTRIBUTED))
   );
 
-  /* And the same for modules. On an instance still waiting for the migration
-     this is every row there is, which is the honest shape of the answer: the
-     work happened, and the database cannot yet say on what. */
+  /* And the same for modules — but only the ones no bench claimed. A row that
+     the saved build placed on an aircraft has been counted there already;
+     counting it again here would inflate the course total. What is left is work
+     the database cannot place and the simulator never recorded either. */
   const unattributedModules = rows.filter(
-    (r) => r.completed && !FRAME_IDS.includes(r.frame_id)
+    (r) =>
+      r.completed &&
+      !FRAME_IDS.includes(r.frame_id) &&
+      !FRAME_IDS.some((f) => benches[f].has(r.module_id))
   ).length;
 
   const allDays = mergeDays(activity);
-  const completedAll = rows.filter((r) => r.completed).length;
+  /* Summed from the copters rather than counted off the rows, because one
+     unlabelled row can legitimately belong to two aircraft: Module 1 finished
+     on a quadcopter and again on a hexacopter is two of the nine, and a row
+     count would call it one. */
+  const completedAll =
+    FRAMES.reduce((n, f) => n + byFrame[f.id].summary.modulesCompleted, 0) + unattributedModules;
   const totalAll = MODULES.length * FRAMES.length;
 
   return {
@@ -370,20 +428,28 @@ router.get(
   "/progress",
   route(async (req, res) => {
     const { db, user } = req.auth;
-    const [{ data: rows }, { data: activity }] = await Promise.all([
+    const [{ data: rows }, { data: activity }, { data: build }] = await Promise.all([
       db.from("module_progress").select("*").eq("user_id", user.id),
       db
         .from("activity_log")
-        .select("day, frame_id, flights, crashes, seconds")
+        /* select("*") rather than naming frame_id. Naming a column that the
+           migration has not added yet makes PostgREST reject the whole
+           statement, and the panel then reports zero flights and a zero streak
+           for a student who has been flying all week — a database one file
+           behind, reported as an idle child. */
+        .select("*")
         .eq("user_id", user.id)
         .order("day", { ascending: false })
         /* Four rows per day now — one per airframe plus the unattributed
            historical one — so the window has to grow with them or sixty days
            of practice would arrive as fifteen. */
         .limit(240),
+      /* The saved benches, which know which aircraft finished what even when
+         module_progress cannot yet say. */
+      db.from("builds").select("state").eq("user_id", user.id).maybeSingle(),
     ]);
 
-    const shaped = shapeProgress(rows, activity);
+    const shaped = shapeProgress(rows, activity, build?.state ?? null);
 
     res.json({
       ...shaped,
