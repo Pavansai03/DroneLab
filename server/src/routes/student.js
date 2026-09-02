@@ -109,15 +109,25 @@ export function shapeProgress(progressRows, activityRows, buildState = null) {
     return MODULES.map((m) => {
       const onBench = bench.has(m.id);
       const r = byId.get(m.id) ?? (onBench ? pooled.get(m.id) : undefined);
+      /* The bench is enough on its own. A module finished on a machine whose
+         progress row never made it to the server is still finished, and
+         showing NOT STARTED under a checklist the student watched tick is the
+         complaint this exists to answer. */
+      const completed = Boolean(r?.completed) || onBench;
+      const total = r?.tasks_total ?? 0;
       return {
         ...m,
-        /* The bench is enough on its own. A module finished on a machine whose
-           progress row never made it to the server is still finished, and
-           showing NOT STARTED under a checklist the student watched tick is the
-           complaint this exists to answer. */
-        completed: Boolean(r?.completed) || onBench,
-        tasksDone: r?.tasks_done ?? 0,
-        tasksTotal: r?.tasks_total ?? 0,
+        completed,
+        /* A FINISHED MODULE READS AS FINISHED, OR IT READS AS NOTHING.
+           The panel draws the pill from `completed` and the bar beneath it
+           from these two, so a row left behind by an older client — "complete,
+           1 of 11 tasks" — produced a green COMPLETE above a bar that is
+           almost empty. The two halves of one card disagreeing is worse than
+           either being wrong: a teacher has no way to decide which to trust.
+           Finished means every task, because that is the only way a module can
+           be finished. */
+        tasksDone: completed && total ? total : (r?.tasks_done ?? 0),
+        tasksTotal: total,
         currentTask: r?.current_task ?? null,
         updatedAt: r?.updated_at ?? null,
       };

@@ -72,3 +72,61 @@ export function mergeTicks(prev, incoming) {
 export function benchAfterLoad(payload) {
   return new Set(payload?.completedModules ?? []);
 }
+
+/* ------------------------------------------------ what reaches the record */
+
+/**
+ * A FINISHED MODULE HAS ALL ITS TASKS DONE.
+ *
+ * The panel draws its badge from `completed` and its bar from the two counts,
+ * so a row reading "complete, 1 of 11 tasks" renders a green COMPLETE pill
+ * above a bar that is all but empty, and a teacher has no way to decide which
+ * half to believe. No state of the world produces that row. Rather than trust
+ * whatever composed it, the row is made to agree with itself on the way out.
+ */
+export function coherent(row) {
+  if (!row) return row;
+  if (row.completed && row.tasks_total) return { ...row, tasks_done: row.tasks_total };
+  return row;
+}
+
+/**
+ * MAY ANYTHING BE RECORDED YET?
+ *
+ * The simulator opens on a default quadcopter with an empty bench, because it
+ * has to render something before it knows who is looking at it. Module 1
+ * measured against that empty bench scores one task out of eleven — a truthful
+ * reading of a bench with nothing on it, which is exactly what makes it
+ * dangerous. Written, it overwrites a module the student finished last week.
+ *
+ * So the answer is no until the saved bench has been read AND the marks
+ * already in the database are known. Compared against the user id rather than
+ * held as a flag, so signing in as somebody else cannot inherit either.
+ */
+export function mayRecord({ userId, hydrated, seededUser }) {
+  return Boolean(userId) && Boolean(hydrated) && seededUser === userId;
+}
+
+/**
+ * WHAT THE RECORD OWES THE BENCH.
+ *
+ * `mayRecord` stops the placeholder overwriting anything again; it does nothing
+ * for the rows it already overwrote, and those do not heal on their own —
+ * only the module a student currently has open is ever written, so a damaged
+ * Module 1 stays damaged until they reopen a module they finished weeks ago.
+ *
+ * The bench is the authority on what is finished: kept per airframe by the
+ * simulator, and it is what the student watched tick. Anything it claims that
+ * the record does not already show as finished is owed a write.
+ */
+export function benchRepairs({ completedModules, marks, totals }) {
+  const owed = [];
+  for (const id of completedModules ?? []) {
+    const total = totals?.get(id);
+    if (!total) continue; // a module this build does not have
+    const mark = marks?.get(id);
+    if (mark && mark.complete && mark.done >= total) continue;
+    owed.push({ moduleId: id, total });
+  }
+  return owed;
+}

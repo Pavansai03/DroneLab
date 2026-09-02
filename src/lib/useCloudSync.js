@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured, describeError } from "./supabase.js";
 import { normalizeVariants } from "../data/parts.js";
 import { AIRFRAMES } from "../data/airframes.js";
+import { MODULES } from "../data/curriculum.js";
+import { coherent, mayRecord, benchRepairs } from "../sim/benchTicks.js";
 import {
   serialiseWorkspaces,
   deserialiseWorkspaces,
@@ -244,8 +246,14 @@ export function useBuildSync({
    *
    * So writing does not begin until the row has been read. Set to the user id
    * rather than a boolean so signing in as somebody else cannot inherit it.
+   *
+   * Mirrored into state as well as a ref, because the ref is invisible to
+   * anything outside this hook. The progress table needs the same protection
+   * and could not have it: a ref changing does not re-render, so a caller
+   * cannot wait on one. See `hydrated` in the return value.
    */
   const hydrated = useRef(null);
+  const [hydratedUser, setHydratedUser] = useState(null);
   const seenResetKey = useRef(resetKey);
   /* Every write goes through here, one after another.
      A reset produces two writes in quick succession — the flush of whatever was
@@ -263,6 +271,7 @@ export function useBuildSync({
   useEffect(() => {
     if (!isSupabaseConfigured || !user) {
       loadedFor.current = null;
+      setHydratedUser(null);
       return;
     }
     if (loadedFor.current === user.id) return;
@@ -296,6 +305,7 @@ export function useBuildSync({
            and overwriting it with whatever happens to be on screen is worse
            than not saving. Cleared so a later render can try again. */
         loadedFor.current = null;
+        setHydratedUser(null);
         setError(describeError(err));
         setStatus("error");
         return;
@@ -342,6 +352,7 @@ export function useBuildSync({
          not the student's. Dropped rather than flushed. */
       pending.current = null;
       hydrated.current = user.id;
+      setHydratedUser(user.id);
       setStatus("idle");
     })();
 
@@ -453,12 +464,26 @@ export function useBuildSync({
     };
   }, [user?.id]);
 
-  return { status, error };
+  return { status, error, hydrated: Boolean(user) && hydratedUser === user.id };
 }
 
 /* -------------------------------------------------------- progress sync */
 
-export function useProgressSync({ user, frameId, moduleId, progress, resetKey }) {
+/** How many tasks a module has, from the curriculum rather than from whatever
+    happens to be recorded. A module the bench says is finished has all of them
+    done, by definition — there is no such thing as a finished module with one
+    task ticked. */
+const TASK_TOTAL = new Map(MODULES.map((m) => [m.id, m.tasks.length]));
+
+export function useProgressSync({
+  user,
+  frameId,
+  moduleId,
+  progress,
+  completedModules,
+  hydrated,
+  resetKey,
+}) {
   /* Surfaced rather than swallowed. A write that is being rejected every time
      — the airframe column missing is the case that actually happened — used to
      look identical to a student who had simply stopped working. */
@@ -471,11 +496,15 @@ export function useProgressSync({ user, frameId, moduleId, progress, resetKey })
      Seeded from the database so it survives a reload, not just a tab. */
   const best = useRef(new Map());
   const seededFor = useRef(null);
+  /* State, not a ref: writing waits on this, and an effect cannot wait on
+     something that does not re-render. */
+  const [seededUser, setSeededUser] = useState(null);
 
   useEffect(() => {
     if (resetKey == null) return;
     best.current = new Map();
     seededFor.current = null;
+    setSeededUser(null);
     lastKey.current = null;
     pendingRef.current = null;
   }, [resetKey]);
@@ -485,6 +514,7 @@ export function useProgressSync({ user, frameId, moduleId, progress, resetKey })
   useEffect(() => {
     if (!isSupabaseConfigured || !user) {
       seededFor.current = null;
+      setSeededUser(null);
       best.current = new Map();
       return;
     }
@@ -509,6 +539,7 @@ export function useProgressSync({ user, frameId, moduleId, progress, resetKey })
           complete: Boolean(r.completed),
         });
       }
+      setSeededUser(user.id);
     })();
 
     return () => {
@@ -516,8 +547,9 @@ export function useProgressSync({ user, frameId, moduleId, progress, resetKey })
     };
   }, [user?.id]);
 
-  const write = useCallback(async (row) => {
-    if (!isSupabaseConfigured || !row) return;
+  const write = useCallback(async (input) => {
+    if (!isSupabaseConfigured || !input) return;
+    let row = input;
 
     /* PROGRESS ONLY EVER GOES UP.
        A module's task list is re-evaluated continuously against live state, so
@@ -526,6 +558,9 @@ export function useProgressSync({ user, frameId, moduleId, progress, resetKey })
        count. Writing that would tell the school a student had un-learnt
        something, which is not a thing that happens. Record the high-water mark
        and let the checklist be the live view. */
+    /* Complete means every task, whatever composed this. See sim/benchTicks.js. */
+    row = coherent(row);
+
     const key = markKey(row.frame_id, row.module_id);
     const prior = best.current.get(key);
     if (prior && (row.tasks_done < prior.done || (prior.complete && !row.completed))) {
@@ -563,6 +598,14 @@ export function useProgressSync({ user, frameId, moduleId, progress, resetKey })
 
   useEffect(() => {
     if (!isSupabaseConfigured || !user || !progress) return;
+    /* THE PLACEHOLDER MUST NOT REACH THE SCHOOL'S RECORD.
+       The same fault the build save had, in the other table, and what put
+       "complete · 1 of 11 tasks" under a finished quadcopter: the opening
+       bench is empty, Module 1 measured against it scores 1 of 11, and the
+       cleanup below faithfully flushed that on its way out — every sign-in,
+       over the top of work done last week. Nothing is written until both loads
+       are in. The rule, and why, is in sim/benchTicks.js. */
+    if (!mayRecord({ userId: user.id, hydrated, seededUser })) return;
 
     const key = `${frameId}:${moduleId}:${progress.doneCount}:${progress.complete}`;
     if (key === lastKey.current) return;
@@ -605,7 +648,56 @@ export function useProgressSync({ user, frameId, moduleId, progress, resetKey })
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, frameId, moduleId, progress?.doneCount, progress?.complete, progress?.total]);
+  }, [
+    user?.id,
+    hydrated,
+    seededUser,
+    frameId,
+    moduleId,
+    progress?.doneCount,
+    progress?.complete,
+    progress?.total,
+  ]);
+
+  /* REPAIR WHAT THE PLACEHOLDER ALREADY DAMAGED.
+     The guard above stops it happening again and does nothing for the rows it
+     already wrote. Those cannot heal on their own: only the module a student
+     currently has open is ever written, so a quadcopter's Module 1 stays wrong
+     until they reopen a module they finished weeks ago. See benchRepairs. */
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user) return;
+    if (!mayRecord({ userId: user.id, hydrated, seededUser })) return;
+
+    const marks = new Map();
+    for (const id of completedModules ?? []) {
+      const mark = best.current.get(markKey(frameId, id));
+      if (mark) marks.set(id, mark);
+    }
+    const owed = benchRepairs({ completedModules, marks, totals: TASK_TOTAL });
+    if (!owed.length) return;
+
+    let cancelled = false;
+    (async () => {
+      for (const { moduleId: id, total } of owed) {
+        if (cancelled) return;
+        await write({
+          user_id: user.id,
+          frame_id: frameId,
+          module_id: id,
+          completed: true,
+          tasks_done: total,
+          tasks_total: total,
+          current_task: null,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, hydrated, seededUser, frameId, completedModules]);
 
   return { error };
 }

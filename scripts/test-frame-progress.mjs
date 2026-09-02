@@ -193,6 +193,14 @@ writeFileSync(
   `export * from "../../data/airframes.js";\n`
 );
 writeFileSync(
+  resolve(shimDir, "benchTicks.js"),
+  `export * from "../../sim/benchTicks.js";` + String.fromCharCode(10)
+);
+writeFileSync(
+  resolve(shimDir, "curriculum.js"),
+  `export * from "../../data/curriculum.js";` + String.fromCharCode(10)
+);
+writeFileSync(
   resolve(shimDir, "workspaces.js"),
   `export * from "../../sim/workspaces.js";\n`
 );
@@ -200,14 +208,17 @@ writeFileSync(
 const src = readFileSync(resolve(HERE, "../src/lib/useCloudSync.js"), "utf8")
   .replace('from "../data/parts.js"', 'from "./parts.js"')
   .replace('from "../data/airframes.js"', 'from "./airframes.js"')
-  .replace('from "../sim/workspaces.js"', 'from "./workspaces.js"');
+  .replace('from "../sim/workspaces.js"', 'from "./workspaces.js"')
+  .replace('from "../data/curriculum.js"', 'from "./curriculum.js"')
+  .replace('from "../sim/benchTicks.js"', 'from "./benchTicks.js"');
 writeFileSync(resolve(shimDir, "useCloudSync.js"), src);
 
 /* React is imported by the module but no hook is called here. */
 const { fetchCompletedModules, fetchProgressByFrame, clearRemoteProgress, __resetFrameColumnProbe } =
   await load("../src/lib/.frame-progress-test/useCloudSync.js");
 
-const { ticksFor, mergeTicks, benchAfterLoad } = await load("../src/sim/benchTicks.js");
+const { ticksFor, mergeTicks, benchAfterLoad, coherent, mayRecord, benchRepairs } =
+  await load("../src/sim/benchTicks.js");
 
 const { unlockedModules } = await load("../src/sim/progress.js");
 
@@ -794,6 +805,131 @@ await check("no saved build is not an error, just nothing to add", () => {
 await check("a bench naming an aircraft this build cannot make is ignored", () => {
   const b = benchesFromBuild({ workspaces: { tricopter: { completedModules: ["m1"] } } });
   assert.equal(b.quad.size + b.hexa.size + b.octo.size, 0);
+});
+
+/* ==================================================================== */
+console.log("\nThe opening bench is a placeholder, not the student’s work\n");
+/* The fault this section exists for, in one line: a signed-in student reloads
+   the simulator, and before the saved bench arrives Module 1 is measured
+   against an empty one and written. The quadcopter's finished Module 1 came
+   back as "complete · 1 of 11 tasks" — a green badge over an empty bar. */
+
+await check("nothing is recorded before the saved bench has arrived", () => {
+  assert.equal(mayRecord({ userId: U, hydrated: false, seededUser: U }), false);
+});
+
+await check("nor before the marks already in the database are known", () => {
+  assert.equal(mayRecord({ userId: U, hydrated: true, seededUser: null }), false);
+});
+
+await check("nor under the marks belonging to whoever was signed in before", () => {
+  assert.equal(mayRecord({ userId: U, hydrated: true, seededUser: "student-2" }), false);
+});
+
+await check("once both loads are in, recording starts", () => {
+  assert.equal(mayRecord({ userId: U, hydrated: true, seededUser: U }), true);
+});
+
+await check("a finished module is never written part-done", () => {
+  /* The row that reached the panel: complete, and one task out of eleven. */
+  const r = coherent({ completed: true, tasks_done: 1, tasks_total: 11 });
+  assert.equal(r.tasks_done, 11, "the badge and the bar still disagree");
+  assert.equal(r.completed, true);
+});
+
+await check("an unfinished module is left exactly as it is", () => {
+  const r = coherent({ completed: false, tasks_done: 4, tasks_total: 11 });
+  assert.equal(r.tasks_done, 4, "progress was inflated to look finished");
+});
+
+await check("a module with no task list recorded is not invented", () => {
+  const r = coherent({ completed: true, tasks_done: 0, tasks_total: 0 });
+  assert.equal(r.tasks_done, 0);
+});
+
+const TOTALS = new Map([["m1", 11], ["m2", 12], ["m3", 11]]);
+
+await check("the bench pulls a damaged row back up to finished", () => {
+  const owed = benchRepairs({
+    completedModules: new Set(["m1", "m2"]),
+    marks: new Map([
+      ["m1", { done: 1, complete: false }], // what the placeholder left
+      ["m2", { done: 12, complete: true }],
+    ]),
+    totals: TOTALS,
+  });
+  assert.deepEqual(owed, [{ moduleId: "m1", total: 11 }]);
+});
+
+await check("a module the record already agrees on is not rewritten", () => {
+  const owed = benchRepairs({
+    completedModules: new Set(["m1", "m2", "m3"]),
+    marks: new Map([
+      ["m1", { done: 11, complete: true }],
+      ["m2", { done: 12, complete: true }],
+      ["m3", { done: 11, complete: true }],
+    ]),
+    totals: TOTALS,
+  });
+  assert.equal(owed.length, 0, "every sign-in would write three rows for nothing");
+});
+
+await check("a finished module with no row at all is written from scratch", () => {
+  const owed = benchRepairs({
+    completedModules: new Set(["m3"]),
+    marks: new Map(),
+    totals: TOTALS,
+  });
+  assert.deepEqual(owed, [{ moduleId: "m3", total: 11 }]);
+});
+
+await check("an empty bench asks for nothing", () => {
+  assert.equal(benchRepairs({ completedModules: new Set(), marks: new Map(), totals: TOTALS }).length, 0);
+  assert.equal(benchRepairs({ completedModules: null, marks: new Map(), totals: TOTALS }).length, 0);
+});
+
+await check("a module this build does not have is not conjured into the record", () => {
+  const owed = benchRepairs({
+    completedModules: new Set(["m1", "m9"]),
+    marks: new Map(),
+    totals: TOTALS,
+  });
+  assert.deepEqual(owed, [{ moduleId: "m1", total: 11 }]);
+});
+
+/* ==================================================================== */
+console.log("\nThe card cannot contradict itself\n");
+await check("a complete badge is never shown over a part-filled bar", () => {
+  /* The exact row the classroom saw, straight from the database. */
+  const s = shapeProgress(
+    [{ frame_id: "quad", module_id: "m1", completed: true, tasks_done: 1, tasks_total: 11 }],
+    []
+  );
+  const m1 = s.byFrame.quad.modules.find((m) => m.id === "m1");
+  assert.equal(m1.completed, true);
+  assert.equal(m1.tasksDone, 11, `the card reads "complete · ${m1.tasksDone} of 11 tasks"`);
+});
+
+await check("the bench finishing a module finishes its bar too", () => {
+  /* The row says 1 of 11 and not complete; the student's own bench says done. */
+  const s = shapeProgress(
+    [{ frame_id: "quad", module_id: "m1", completed: false, tasks_done: 1, tasks_total: 11 }],
+    [],
+    { frameId: "quad", workspaces: { quad: { completedModules: ["m1"] } } }
+  );
+  const m1 = s.byFrame.quad.modules.find((m) => m.id === "m1");
+  assert.equal(m1.completed, true);
+  assert.equal(m1.tasksDone, 11);
+});
+
+await check("a module genuinely part-done still shows how far along it is", () => {
+  const s = shapeProgress(
+    [{ frame_id: "quad", module_id: "m2", completed: false, tasks_done: 5, tasks_total: 12 }],
+    []
+  );
+  const m2 = s.byFrame.quad.modules.find((m) => m.id === "m2");
+  assert.equal(m2.completed, false);
+  assert.equal(m2.tasksDone, 5, "an unfinished module was rounded up to finished");
 });
 
 /* Cleanup: never leave a stub inside the source tree. */

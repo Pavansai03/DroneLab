@@ -245,7 +245,11 @@ export default function App() {
     setBenchEpoch((n) => n + 1);
   }, []);
 
-  const { status: syncStatus, error: syncError } = useBuildSync({
+  const {
+    status: syncStatus,
+    error: syncError,
+    hydrated: benchHydrated,
+  } = useBuildSync({
     user: auth.user,
     build: bs,
     earned,
@@ -470,6 +474,11 @@ export default function App() {
     frameId,
     moduleId,
     progress,
+    /* What this aircraft's bench says is finished. Two jobs: it holds the
+       recorded rows up to the bench after a placeholder overwrote one, and it
+       is the reason nothing is written before the bench has loaded. */
+    completedModules,
+    hydrated: benchHydrated,
     resetKey: progressResetKey,
   });
 
