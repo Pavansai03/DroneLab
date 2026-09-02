@@ -154,16 +154,21 @@ export function studentReportCsv({ student, modules, activity, build, school, by
         when(last),
       ]);
     }
-    if ((unattributed?.flights ?? 0) > 0 || (unattributed?.crashes ?? 0) > 0) {
+    if (
+      (unattributed?.flights ?? 0) > 0 ||
+      (unattributed?.crashes ?? 0) > 0 ||
+      (unattributed?.modules ?? 0) > 0
+    ) {
       /* Named, not hidden and not attributed to a copter that may never have
          flown them. See supabase/per-airframe-progress.sql. */
       rows.push([
         "Not recorded", "",
-        "", "",
+        (unattributed.modules ?? 0) > 0 ? `${unattributed.modules} finished` : "",
+        "",
         unattributed.flights ?? 0,
         unattributed.crashes ?? 0,
         Math.round((unattributed.seconds ?? 0) / 60),
-        "logged before flights were recorded per copter",
+        "recorded before progress was kept per copter",
       ]);
     }
     rows.push([]);

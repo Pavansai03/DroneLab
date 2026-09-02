@@ -48,8 +48,16 @@ export function shapeProgress(progressRows, activityRows) {
   const activity = activityRows ?? [];
 
   const modulesFor = (frameId) => {
+    /* A row that names no airframe is not a quadcopter's.
+       It used to be read as one, which is a guess dressed as a fact: before
+       per-airframe-progress.sql runs, module_progress has no frame_id at all,
+       and everything the student has ever done on any of the three copters
+       comes back unlabelled. Filing that under the quadcopter puts ticks in a
+       teacher's report against an aircraft that may never have been built.
+       Counted in the totals below, named as unattributed, attributed to
+       nothing. Exactly how the flights are handled. */
     const byId = new Map(
-      rows.filter((r) => (r.frame_id ?? "quad") === frameId).map((r) => [r.module_id, r])
+      rows.filter((r) => r.frame_id === frameId).map((r) => [r.module_id, r])
     );
     /* Every module appears, whether or not the student has touched it.
        Returning only started modules would make an untouched course look like
@@ -106,6 +114,13 @@ export function shapeProgress(progressRows, activityRows) {
     activity.filter((a) => !FRAME_IDS.includes(a.frame_id ?? UNATTRIBUTED))
   );
 
+  /* And the same for modules. On an instance still waiting for the migration
+     this is every row there is, which is the honest shape of the answer: the
+     work happened, and the database cannot yet say on what. */
+  const unattributedModules = rows.filter(
+    (r) => r.completed && !FRAME_IDS.includes(r.frame_id)
+  ).length;
+
   const allDays = mergeDays(activity);
   const completedAll = rows.filter((r) => r.completed).length;
   const totalAll = MODULES.length * FRAMES.length;
@@ -115,12 +130,15 @@ export function shapeProgress(progressRows, activityRows) {
     byFrame,
     unattributed: {
       activity: unattributed,
+      modules: unattributedModules,
       ...totalsOf(unattributed),
     },
     overall: {
       modulesCompleted: completedAll,
       modulesTotal: totalAll,
       percent: totalAll ? Math.round((completedAll / totalAll) * 100) : 0,
+      /* Counted in the total either way — the student did the work. */
+      modulesUnattributed: unattributedModules,
       coptersFinished: FRAMES.filter(
         (f) => byFrame[f.id].summary.modulesCompleted === MODULES.length
       ).length,

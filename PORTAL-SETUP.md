@@ -58,6 +58,26 @@ loads and there is no error".
 
 All four are idempotent; running them twice is harmless.
 
+**Check that the fourth one actually ran.** It is the only step whose absence is
+invisible from the outside — the panels keep rendering, the simulator keeps
+working, and the school's record quietly stops splitting by aircraft:
+
+```sql
+select count(*) as rows_without_an_airframe
+from public.module_progress where frame_id is null;
+```
+
+That statement failing with *column "frame_id" does not exist* is the answer:
+step 4 has not run. A `0` means it has.
+
+The simulator survives either way. The module rail reads the per-airframe
+benches in `builds`, never this table, so a hexacopter cannot inherit a
+quadcopter's ticks even on a database that is one migration behind — and a
+write that Postgres rejects is retried without the column rather than dropped,
+with a console error naming the file to run. What you lose until it runs is the
+split itself: finished modules come back unlabelled, and the panels and reports
+show them as **Not recorded** rather than guessing at an aircraft.
+
 Then confirm RLS is actually on. **Database → Tables**, and check every table
 shows *RLS enabled*: `profiles`, `user_roles`, `module_progress`, `builds`,
 `schools`, `activity_log`. Self-hosted Supabase creates tables with RLS **off**,
@@ -177,6 +197,39 @@ code is shown at the top of the teacher panel.
 The server refuses to boot if any of its three keys is missing, and says which.
 That is deliberate — an API that starts happily and then 500s on the first admin
 request is much harder to diagnose.
+
+---
+
+## 5.1 When everything stops at once
+
+Two symptoms that look unrelated have one cause, and it is worth recognising
+before anyone starts reading the portal's code:
+
+- **Continue with Google disappears.** The button is only ever shown once the
+  server has confirmed the provider, so a server that cannot be asked shows
+  nothing. It is not a lost build or a missing environment variable.
+- **Every sign-in fails**, on every account, with a network error.
+
+Both mean the **Supabase host is not answering**. The login page now says so
+outright and names the host, rather than leaving the two to be diagnosed
+separately. To confirm from a terminal:
+
+```bash
+curl -sS -m 10 -o /dev/null -w '%{http_code}\n' https://YOUR-SUPABASE-DOMAIN/auth/v1/health
+```
+
+`000` is not an HTTP status — it means the connection never completed. Then
+check the API the same way, at `/health`. If both are dead they are almost
+certainly on the same machine, and the machine is the thing to look at.
+
+**One trap specific to this deployment.** A self-hosted Supabase behind Dokploy
+is often reached at an `sslip.io` hostname, and that hostname *contains* the
+server's IP address — `…-203-0-113-9.sslip.io` resolves to `203.0.113.9` and
+nothing else. If the VPS is ever rebuilt or moved and its address changes, that
+name points at a stranger's machine for ever. So does any `A` record still
+holding the old address. And because `NEXT_PUBLIC_SUPABASE_URL` is compiled into
+the portal at build time, fixing it means updating the variable **and
+redeploying** — restarting changes nothing.
 
 ---
 

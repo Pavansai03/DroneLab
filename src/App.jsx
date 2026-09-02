@@ -21,12 +21,13 @@ import {
   clearWorkspace,
   migrateLegacySave,
 } from "./sim/workspaces.js";
+import { ticksFor, mergeTicks, benchAfterLoad } from "./sim/benchTicks.js";
 import { DEFAULT_FIELD, FLIGHT_FIELDS } from "./three/environments.js";
 import {
   useAuthSession,
   useBuildSync,
   useProgressSync,
-  fetchCompletedModules,
+  fetchProgressByFrame,
   clearRemoteProgress,
 } from "./lib/useCloudSync.js";
 
@@ -215,12 +216,33 @@ export default function App() {
      immediately instead of leaving it in a debounce the student walks out on. */
   const [progressResetKey, setProgressResetKey] = useState(0);
 
+  /* What the account has recorded, keyed by aircraft, and the one airframe a
+     pre-benches account is allowed to attribute its unlabelled rows to. Both
+     are written by the callback just below and read by the effect that puts
+     ticks on the rail — see the long note there, and sim/benchTicks.js. */
+  const [cloudTicks, setCloudTicks] = useState(null);
+  const [legacyFrame, setLegacyFrame] = useState(null);
+  /* Bumped whenever the saved benches land, so those recorded ticks are
+     re-applied to whatever aircraft the account turned out to be on. Without it
+     the two loads only agree when the restored airframe differs from the
+     default one this app opens with. */
+  const [benchEpoch, setBenchEpoch] = useState(0);
+
   const applyCloudWorkspaces = useCallback((payload) => {
     setWorkspaces(payload.workspaces || {});
-    if (payload.completedModules) {
-      setCompletedModules(new Set(payload.completedModules));
-    }
+    /* AUTHORITATIVE FOR THE BENCH, INCLUDING WHEN IT IS EMPTY.
+       "No modules finished on this hexacopter" is a fact about the hexacopter,
+       as much as three of them would be. Treating an empty list as no opinion
+       is what let a merge made against the default quadcopter — moments earlier,
+       before this row had arrived — survive the load and show up as ticks on an
+       aircraft with nothing bolted to it. */
+    setCompletedModules(benchAfterLoad(payload));
     if (payload.moduleId) setModuleId(payload.moduleId);
+    /* Accounts saved before the per-airframe benches existed have one pooled
+       set of ticks and exactly one aircraft. That aircraft is the only honest
+       place to file them. */
+    setLegacyFrame(payload.legacy ? (payload.frameId ?? null) : null);
+    setBenchEpoch((n) => n + 1);
   }, []);
 
   const { status: syncStatus, error: syncError } = useBuildSync({
@@ -443,7 +465,7 @@ export default function App() {
 
   /* Mirror progress into Supabase, and restore it on sign-in so the module rail
      reflects work done on another machine. Both are no-ops when offline. */
-  useProgressSync({
+  const { error: progressError } = useProgressSync({
     user: auth.user,
     frameId,
     moduleId,
@@ -452,42 +474,47 @@ export default function App() {
   });
 
   /**
-   * Restore module ticks recorded on another machine — FOR THIS AIRCRAFT ONLY.
+   * MODULE TICKS RECORDED ON ANOTHER MACHINE.
    *
-   * This is the bug a classroom reported. `module_progress` had no airframe
-   * column, so it was one pooled course: a student who finished all three
-   * modules on a quadcopter, switched to a hexacopter (which correctly started
-   * locked at Module 1), stepped out to the portal and came back found Modules
-   * 2 and 3 unlocked and ticked on an aircraft with nothing bolted to it.
+   * This is the bug a classroom reported, twice. A student finishes all three
+   * modules on a quadcopter, switches to a hexacopter — which correctly starts
+   * locked at Module 1 — steps out to the portal, comes back, and finds Modules
+   * 2 and 3 ticked on an aircraft with nothing bolted to it.
    *
-   * The old guard tried to avoid it by only running for pre-benches accounts,
-   * but that was a race between two independent requests — this one and the
-   * build row that told it to stand down. Whichever answered first won, which
-   * is why it came and went. The airframe is part of the key now, so
-   * there is nothing to race: what comes back belongs to the copter on the
-   * bench and to no other.
+   * The cause was never the database schema on its own. Two independent
+   * requests populate the bench on sign-in: the saved benches in `builds`, and
+   * the school's record in `module_progress`. They can land in either order,
+   * and the second one used to arrive as a bare list of module ids with nothing
+   * saying which aircraft they belonged to. On a cold load the bench is the
+   * default quadcopter until the first request answers, so a list that landed
+   * first was merged into the wrong copter. Guarding the merge could not fix
+   * that, because the guard was racing the same two requests.
+   *
+   * So the record arrives keyed by airframe and is applied per airframe, from
+   * state rather than from inside a callback. Whichever order the two loads
+   * land in, and however many times the student changes aircraft afterwards,
+   * every tick goes to the copter it was earned on. There is nothing left to
+   * race.
    */
   useEffect(() => {
-    if (!auth.user || !frameId) return;
+    if (!auth.user) {
+      setCloudTicks(null);
+      return;
+    }
     let cancelled = false;
-    fetchCompletedModules(auth.user.id, frameId).then((set) => {
-      if (cancelled || set.size === 0) return;
-      setCompletedModules((prev) => {
-        const merged = new Set(prev);
-        let novel = false;
-        for (const id of set) {
-          if (!merged.has(id)) {
-            merged.add(id);
-            novel = true;
-          }
-        }
-        return novel ? merged : prev;
-      });
+    fetchProgressByFrame(auth.user.id).then((ticks) => {
+      if (!cancelled) setCloudTicks(ticks);
     });
     return () => {
       cancelled = true;
     };
-  }, [auth.user?.id, frameId]);
+  }, [auth.user?.id]);
+
+  useEffect(() => {
+    const mine = ticksFor(cloudTicks, frameId, legacyFrame);
+    if (!mine.size) return;
+    setCompletedModules((prev) => mergeTicks(prev, mine));
+  }, [cloudTicks, legacyFrame, frameId, benchEpoch]);
 
   /* -------------------------------------------------- the active part */
   const filledSlots = useMemo(() => {
@@ -867,6 +894,20 @@ export default function App() {
     setWorkspaces(remaining);
     resetHistory(makeInitialBuild(frameId));
     setCompletedModules(new Set());
+    /* Forget what the school's record said about THIS aircraft too. Left
+       standing, it is re-applied the next time the student switches away and
+       back — the ticks they just deliberately scrapped, quietly restored from a
+       copy of a table row that no longer exists. */
+    setCloudTicks((prev) =>
+      prev
+        ? {
+            byFrame: Object.fromEntries(
+              Object.entries(prev.byFrame).filter(([id]) => id !== frameId)
+            ),
+            unkeyed: legacyFrame === frameId ? [] : prev.unkeyed,
+          }
+        : prev
+    );
     setEarned(new Set());
     clearEarned(auth.user?.id, frameId);
 
@@ -892,7 +933,7 @@ export default function App() {
     setNotice(
       `${frame.label} stripped and its module progress cleared. Start again at Module 1.`
     );
-  }, [resetHistory, frameId, frame.label, workspaces, auth.user?.id]);
+  }, [resetHistory, frameId, frame.label, workspaces, auth.user?.id, legacyFrame]);
 
   /** The motor test from the task chain: spin each motor and verify direction. */
   const runMotorTest = useCallback(() => {
@@ -1666,7 +1707,7 @@ export default function App() {
             <AccountPanel
               auth={auth}
               syncStatus={syncStatus}
-              syncError={syncError}
+              syncError={syncError || progressError}
               onSignedIn={() => setNotice("Signed in. Your build and progress will now be saved.")}
             />
           )}

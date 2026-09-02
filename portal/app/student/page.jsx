@@ -228,6 +228,19 @@ function Panel({ me }) {
           any one aircraft.
         </div>
       )}
+
+      {/* Modules finished before the record could say on which aircraft. Same
+          principle as the flights above, and the same fix: run
+          supabase/per-airframe-progress.sql. */}
+      {frame === "all" && (data.unattributed?.modules ?? 0) > 0 && (
+        <div className="note" style={{ marginTop: 16 }}>
+          {data.unattributed.modules} finished module
+          {data.unattributed.modules === 1 ? " is" : "s are"} not filed against a copter,
+          because {data.unattributed.modules === 1 ? "it was" : "they were"} recorded before
+          progress was kept per aircraft. {data.unattributed.modules === 1 ? "It counts" : "They count"}{" "}
+          in your total above.
+        </div>
+      )}
     </>
   );
 }

@@ -47,7 +47,14 @@ function describeAuthError(err, action = "Sign-in") {
     return "The database rejected the new account. The setup SQL may not have been run on this instance.";
   }
   if (/failed to fetch|networkerror|load failed/i.test(text)) {
-    return "Could not reach the server. Check your connection and try again.";
+    /* Named for what it is. "Check your connection" sent people to restart
+       their router while the authentication host was the thing that was down,
+       and it is the same failure that quietly removes the Google button. */
+    return (
+      "The authentication server is not answering, so nothing can be signed in " +
+      "right now. This is the server, not your password — if the page loaded, " +
+      "your connection is fine."
+    );
   }
   if (/already registered|already exists/i.test(text)) {
     return "An account already exists with that email. Sign in instead.";
@@ -136,7 +143,7 @@ function LoginForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(params.get("error"));
   const [notice, setNotice] = useState(null);
-  const providers = useAuthProviders();
+  const { providers, reachable: authUp, host: authHost } = useAuthProviders();
 
   const isSchoolSignup = role === "school" && mode === "signup";
   /* A third mode alongside signin and signup. Deliberately part of this form
@@ -394,6 +401,27 @@ function LoginForm() {
             {role === "admin" && mode === "signup" && (
               <div className="note" style={{ marginBottom: 16 }}>
                 Administrator accounts are not self-serve. An existing administrator grants the role.
+              </div>
+            )}
+
+            {/* WHY THE PAGE LOOKS DIFFERENT TODAY.
+                The authentication host is down, which removes Continue with
+                Google — it is only ever shown when the server has confirmed the
+                provider — and fails every password sign-in with a network
+                error. Two symptoms, one cause, and without this line they look
+                like two unrelated bugs in the portal. */}
+            {authUp === false && (
+              <div className="note bad" style={{ marginBottom: 16 }}>
+                <strong>The authentication server is not answering.</strong> Sign-in will fail
+                until it is back, and social sign-in is hidden because the server cannot be
+                asked which providers it has.
+                {authHost ? (
+                  <>
+                    {" "}
+                    Nothing is wrong with this page or your account — the host to check is{" "}
+                    <code>{authHost}</code>.
+                  </>
+                ) : null}
               </div>
             )}
 

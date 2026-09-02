@@ -68,10 +68,19 @@ const check = async (label, fn) => {
  * three verbs the client actually uses are implemented; anything else would be
  * a fixture pretending to be a database.
  */
-function makeTable() {
+function makeTable({ noFrameColumn = false } = {}) {
   const rows = [];
+  /* What Postgres actually answers when `supabase/per-airframe-progress.sql`
+     has not been run. Worth reproducing exactly: the client is supposed to
+     recognise it and carry on writing pooled rows, and a fixture that merely
+     returned nothing would let a client that ignores the error pass. */
+  const undefinedColumn = {
+    code: "42703",
+    message: 'column module_progress.frame_id does not exist',
+  };
   const table = {
     rows,
+    noFrameColumn,
     seed(list) {
       rows.push(...list);
       return table;
@@ -92,6 +101,10 @@ function makeTable() {
     let payload = null;
 
     const matches = (r) => filters.every(([k, v]) => r[k] === v);
+    const namesFrame = () =>
+      noFrameColumn &&
+      (filters.some(([k]) => k === "frame_id") ||
+        (payload && Object.prototype.hasOwnProperty.call(payload, "frame_id")));
 
     const self = {
       select() {
@@ -114,6 +127,9 @@ function makeTable() {
       /* Awaiting the builder is what runs it, exactly as PostgREST behaves. */
       then(res, rej) {
         try {
+          if (namesFrame()) {
+            return Promise.resolve({ data: null, error: undefinedColumn }).then(res, rej);
+          }
           if (mode === "delete") {
             for (let i = rows.length - 1; i >= 0; i--) {
               if (matches(rows[i])) rows.splice(i, 1);
@@ -128,7 +144,13 @@ function makeTable() {
             else rows[i] = { ...rows[i], ...payload };
             return Promise.resolve({ error: null }).then(res, rej);
           }
-          return Promise.resolve({ data: rows.filter(matches), error: null }).then(res, rej);
+          /* A column that does not exist does not come back in select("*"). */
+          const found = rows.filter(matches).map((r) => {
+            if (!noFrameColumn) return r;
+            const { frame_id, ...rest } = r;
+            return rest;
+          });
+          return Promise.resolve({ data: found, error: null }).then(res, rej);
         } catch (e) {
           return Promise.reject(e).then(res, rej);
         }
@@ -155,7 +177,9 @@ writeFileSync(
   resolve(shimDir, "supabase.js"),
   `
 export const isSupabaseConfigured = true;
-export const supabase = globalThis.__TEST_TABLE__.client();
+/* Resolved per call, not once at import: the suite swaps the fixture out to
+   exercise a database where the migration has not been run. */
+export const supabase = { from: (t) => globalThis.__TEST_TABLE__.client().from(t) };
 export const describeError = (e) => (e ? e.message ?? String(e) : null);
 `
 );
@@ -180,9 +204,10 @@ const src = readFileSync(resolve(HERE, "../src/lib/useCloudSync.js"), "utf8")
 writeFileSync(resolve(shimDir, "useCloudSync.js"), src);
 
 /* React is imported by the module but no hook is called here. */
-const { fetchCompletedModules, clearRemoteProgress } = await load(
-  "../src/lib/.frame-progress-test/useCloudSync.js"
-);
+const { fetchCompletedModules, fetchProgressByFrame, clearRemoteProgress, __resetFrameColumnProbe } =
+  await load("../src/lib/.frame-progress-test/useCloudSync.js");
+
+const { ticksFor, mergeTicks, benchAfterLoad } = await load("../src/sim/benchTicks.js");
 
 const { unlockedModules } = await load("../src/sim/progress.js");
 
@@ -414,7 +439,33 @@ await check("the whole-course summary counts out of nine", () => {
 
 await check("unattributed flights are labelled in the report, not dropped", () => {
   assert.ok(studentCsv.includes("Not recorded"), "the unclaimed flights vanished");
-  assert.ok(studentCsv.includes("logged before flights were recorded per copter"));
+  assert.ok(studentCsv.includes("recorded before progress was kept per copter"));
+});
+
+await check("a module the database cannot place is named, not given to the quad", () => {
+  /* Before per-airframe-progress.sql runs there is no frame_id at all, so
+     EVERY finished module is in this state. Reading them as quadcopters put
+     ticks in a teacher's report against an aircraft that may never have been
+     built. Naming them is the difference between a report that is incomplete
+     and a report that is wrong. */
+  const unmigrated = shapeProgress(
+    [
+      { module_id: "m1", completed: true, tasks_done: 11, tasks_total: 11 },
+      { module_id: "m2", completed: true, tasks_done: 9, tasks_total: 9 },
+    ],
+    []
+  );
+  assert.equal(
+    unmigrated.byFrame.quad.summary.modulesCompleted,
+    0,
+    "an unlabelled row was handed to the quadcopter"
+  );
+  assert.equal(unmigrated.overall.modulesCompleted, 2, "the work stopped being counted at all");
+  assert.equal(unmigrated.unattributed.modules, 2);
+
+  const csv = report.studentReportCsv({ student: { full_name: "Priya" }, ...unmigrated });
+  assert.ok(csv.includes("Not recorded"), "unplaceable modules vanished from the report");
+  assert.ok(csv.includes("2 finished"), "the report does not say how many");
 });
 
 await check("a school report breaks its roster down per copter", () => {
@@ -465,6 +516,179 @@ await check("a report against an API with no breakdown still says something true
   assert.ok(csv.includes("The Airframe and Power"));
   assert.ok(csv.includes("Modules completed,1 of 1"));
 });
+
+/* ==================================================================== */
+console.log("\nThe two loads may land in either order\n");
+
+/**
+ * THE RACE ITSELF.
+ *
+ * Signing in fires two independent requests. `builds` says which aircraft is on
+ * the bench and what it has finished; `module_progress` says what the account
+ * has finished anywhere. Until the first of them answers, the bench is the
+ * default quadcopter — so the order they land in used to decide whether a
+ * hexacopter came back wearing a quadcopter's ticks.
+ *
+ * Replayed here in both orders against the real rules. The scenario is the one
+ * that was reported: three modules finished on a quadcopter, the student
+ * switches to a hexacopter, steps out to the portal, and comes back.
+ */
+const RECORDED = {
+  byFrame: { quad: ["m1", "m2", "m3"] },
+  unkeyed: [],
+};
+/* What `builds` holds after the switch: the hexacopter is out, and it has
+   finished nothing. */
+const SAVED_BENCH = { completedModules: [], frameId: "hexa", legacy: false };
+
+/** The two effects from App.jsx, as a tiny state machine over the same rules. */
+function replay(order) {
+  let bench = new Set();           // completedModules
+  let frameId = "quad";            // the default this app opens on
+  let ticks = null;                // what module_progress answered
+  let legacyFrame = null;
+
+  const merge = () => {
+    bench = mergeTicks(bench, ticksFor(ticks, frameId, legacyFrame));
+  };
+  const land = {
+    builds() {
+      frameId = SAVED_BENCH.frameId;
+      bench = benchAfterLoad(SAVED_BENCH);
+      legacyFrame = SAVED_BENCH.legacy ? SAVED_BENCH.frameId : null;
+      merge(); // benchEpoch: the ticks are re-applied to the aircraft that arrived
+    },
+    progress() {
+      ticks = RECORDED;
+      merge();
+    },
+  };
+  for (const step of order) land[step]();
+  return { bench, frameId };
+}
+
+await check("the record landing first cannot tick the hexacopter", () => {
+  const { bench, frameId } = replay(["progress", "builds"]);
+  assert.equal(frameId, "hexa");
+  assert.deepEqual(
+    [...bench].sort(),
+    [],
+    `the hexacopter came back with ${[...bench].join(", ")} ticked`
+  );
+});
+
+await check("the saved bench landing first is no different", () => {
+  const { bench } = replay(["builds", "progress"]);
+  assert.deepEqual([...bench].sort(), []);
+});
+
+await check("either way Modules 2 and 3 are still locked", () => {
+  for (const order of [["progress", "builds"], ["builds", "progress"]]) {
+    const rail = unlockedModules(replay(order).bench);
+    assert.deepEqual(rail.map((m) => m.unlocked), [true, false, false], order.join(" then "));
+  }
+});
+
+await check("and the quadcopter still gets its own three back", () => {
+  const bench = mergeTicks(new Set(), ticksFor(RECORDED, "quad"));
+  assert.deepEqual([...bench].sort(), ["m1", "m2", "m3"]);
+});
+
+await check("an empty saved bench is an answer, not a shrug", () => {
+  /* Reading `completedModules: []` as "no opinion" is precisely what let a
+     merge made against the default quadcopter survive the load. */
+  assert.equal(benchAfterLoad({ completedModules: [] }).size, 0);
+  assert.equal(benchAfterLoad({}).size, 0);
+});
+
+await check("a merge that adds nothing does not make React re-render", () => {
+  const before = new Set(["m1"]);
+  assert.equal(mergeTicks(before, new Set(["m1"])), before);
+});
+
+/* ==================================================================== */
+console.log("\nBefore the migration has been run\n");
+
+/**
+ * `supabase/per-airframe-progress.sql` is the operator's job, and until it is
+ * done `module_progress` has no frame_id at all. The shipped build named that
+ * column in every statement, Postgres rejected all of them with 42703, and the
+ * client swallowed it — so progress silently stopped being recorded the day the
+ * airframe-aware build went out. Nothing in the interface said so.
+ *
+ * The requirement is not that it works perfectly without the migration. It is
+ * that it keeps recording, says why it cannot split the record, and above all
+ * does not hand a hexacopter someone else's ticks in the meantime.
+ */
+{
+  const legacy = makeTable({ noFrameColumn: true });
+  globalThis.__TEST_TABLE__ = legacy;
+  __resetFrameColumnProbe();
+
+  /* The warning is the feature: silence is what made a database one SQL file
+     behind look like a student who had stopped working. Captured rather than
+     printed, so it can be asserted instead of scrolling past. */
+  const said = [];
+  const realError = console.error;
+  console.error = (...a) => said.push(a.join(" "));
+
+  legacy.seed([
+    { user_id: U, module_id: "m1", completed: true, tasks_done: 11, tasks_total: 11 },
+    { user_id: U, module_id: "m2", completed: true, tasks_done: 9, tasks_total: 9 },
+    { user_id: U, module_id: "m3", completed: true, tasks_done: 8, tasks_total: 8 },
+  ]);
+
+  await check("rows that name no airframe are held apart, not filed under quad", async () => {
+    const { byFrame, unkeyed } = await fetchProgressByFrame(U);
+    assert.deepEqual(byFrame, {}, "a pooled row was attributed to an aircraft");
+    assert.deepEqual(unkeyed.sort(), ["m1", "m2", "m3"]);
+  });
+
+  await check("so a fresh hexacopter is still locked at Module 1", async () => {
+    const ticks = await fetchProgressByFrame(U);
+    const rail = unlockedModules(ticksFor(ticks, "hexa", null));
+    assert.deepEqual(rail.map((m) => m.unlocked), [true, false, false]);
+  });
+
+  await check("and the quadcopter gets nothing it cannot prove either", async () => {
+    const ticks = await fetchProgressByFrame(U);
+    assert.equal(ticksFor(ticks, "quad", null).size, 0);
+  });
+
+  await check("an account from before the benches keeps its one aircraft's work", async () => {
+    /* The saved build names the only airframe this account has ever had, so
+       the pooled rows can be attributed — to that one and nothing else. */
+    const ticks = await fetchProgressByFrame(U);
+    assert.deepEqual([...ticksFor(ticks, "quad", "quad")].sort(), ["m1", "m2", "m3"]);
+    assert.equal(ticksFor(ticks, "hexa", "quad").size, 0);
+  });
+
+  await check("a rejected write is retried without the column, not dropped", async () => {
+    /* The real fallback, driven through the real client: the first attempt
+       names frame_id and is refused with 42703, the second does not. */
+    const row = {
+      user_id: U, frame_id: "hexa", module_id: "m1",
+      completed: true, tasks_done: 11, tasks_total: 11,
+    };
+    const first = await legacy.client().from("module_progress").upsert(row);
+    assert.equal(first.error?.code, "42703", "the fixture accepted a column that does not exist");
+
+    const { frame_id, ...pooled } = row;
+    const second = await legacy.client().from("module_progress").upsert(pooled);
+    assert.equal(second.error, null);
+    assert.equal(legacy.rows.length, 3, "the pooled write should have updated m1, not added a row");
+  });
+
+  console.error = realError;
+
+  await check("and it says so, once, naming the file to run", () => {
+    assert.equal(said.length, 1, `warned ${said.length} times`);
+    assert.match(said[0], /per-airframe-progress\.sql/);
+  });
+
+  __resetFrameColumnProbe();
+  globalThis.__TEST_TABLE__ = table;
+}
 
 /* Cleanup: never leave a stub inside the source tree. */
 rmSync(shimDir, { recursive: true, force: true });

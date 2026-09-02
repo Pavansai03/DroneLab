@@ -19,6 +19,57 @@ import {
  * is converted on the way in and out rather than silently serialising to `{}`.
  */
 
+/* ------------------------------------------- is the airframe column there? */
+/**
+ * `supabase/per-airframe-progress.sql` adds `module_progress.frame_id`. Until
+ * it has been run, every statement that names that column is rejected by
+ * Postgres with 42703 — and the first version of this code swallowed the error,
+ * so the moment the airframe-aware build shipped a student's progress silently
+ * stopped being recorded at all. Nothing said so. The panels kept showing
+ * whatever was written before the deploy, which looks exactly like a student
+ * who has stopped working.
+ *
+ * So the column is discovered rather than assumed. The first rejection — or the
+ * first row that comes back without the key — switches this off, and from then
+ * on statements leave the column out. Progress keeps being written, pooled
+ * across the three copters exactly as it was before the split, and running the
+ * migration turns the split on with no further change here.
+ *
+ * The module rail does not depend on any of this either way. Which modules an
+ * aircraft has finished comes from its bench in `builds`, which has been keyed
+ * by airframe since the benches existed. This table is the school's record.
+ */
+let hasFrameColumn = true;
+
+function missingFrameColumn(error) {
+  if (!error) return false;
+  const text = `${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`;
+  return error.code === "42703" || /column .*frame_id.* does not exist/i.test(text);
+}
+
+function noteMissingFrameColumn() {
+  if (!hasFrameColumn) return;
+  hasFrameColumn = false;
+  console.error(
+    "[DroneLab] module_progress has no frame_id column, so the school's record " +
+      "cannot be kept per airframe. Run supabase/per-airframe-progress.sql. " +
+      "Progress is still being saved — pooled across all three copters, as it " +
+      "was before — and the module rail is unaffected either way."
+  );
+}
+
+/** Rows answer the question directly: select("*") returns the key or it does not. */
+function probeFrameColumn(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  if (!("frame_id" in rows[0])) noteMissingFrameColumn();
+}
+
+/** Test seam. The probe is module state, and a suite that exercises both a
+    migrated and an un-migrated database has to be able to put it back. */
+export function __resetFrameColumnProbe() {
+  hasFrameColumn = true;
+}
+
 /* ------------------------------------------------------- serialisation */
 
 export function serialiseBuild(build, earned, extra = {}) {
@@ -181,6 +232,20 @@ export function useBuildSync({
   /* The write the debounce is currently sitting on, so something other than the
      timer can send it — see the page-hide listener below. */
   const pending = useRef(null);
+  /**
+   * THE LOAD WINS, ALWAYS.
+   *
+   * This app starts on a default quadcopter with an empty bench, because it has
+   * to render something before it knows who is looking at it. That opening
+   * state is not a draft of the student's work — it is a placeholder — and it
+   * must never reach the database. It used to: the save effect ran the moment a
+   * user appeared, parked the placeholder in `pending`, and the very next state
+   * change flushed it. The state change that came next was the load landing.
+   *
+   * So writing does not begin until the row has been read. Set to the user id
+   * rather than a boolean so signing in as somebody else cannot inherit it.
+   */
+  const hydrated = useRef(null);
   const seenResetKey = useRef(resetKey);
   /* Every write goes through here, one after another.
      A reset produces two writes in quick succession — the flush of whatever was
@@ -207,14 +272,30 @@ export function useBuildSync({
     setStatus("loading");
 
     (async () => {
-      const { data, error: err } = await supabase
-        .from("builds")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      /* RETRIED, BECAUSE A FAILED READ NOW COSTS THE WHOLE SESSION.
+         Saving is held back until this answers, so one cold-start blip would
+         mean a lesson's work never leaves the tab rather than one request being
+         lost. Three attempts; after that the error stands and the account panel
+         says so. */
+      let data = null;
+      let err = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt) await new Promise((r) => setTimeout(r, attempt * 1200));
+        if (cancelled) return;
+        ({ data, error: err } = await supabase
+          .from("builds")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle());
+        if (!err) break;
+      }
 
       if (cancelled) return;
       if (err) {
+        /* Deliberately left un-hydrated. We do not know what that row holds,
+           and overwriting it with whatever happens to be on screen is worse
+           than not saving. Cleared so a later render can try again. */
+        loadedFor.current = null;
         setError(describeError(err));
         setStatus("error");
         return;
@@ -237,24 +318,30 @@ export function useBuildSync({
         if (data.state?.workspaces) {
           applyWorkspaces?.({
             workspaces: deserialiseWorkspaces(data.state.workspaces),
-            completedModules: data.state.completedModules ?? null,
+            completedModules: data.state.completedModules ?? [],
             moduleId: data.state.moduleId ?? null,
+            frameId: loadedBuild.frameId,
             legacy: false,
           });
         } else {
           applyWorkspaces?.({
             workspaces: migrateLegacySave({
               build: loadedBuild,
-              completedModules: [],
+              completedModules: data.state?.completedModules ?? [],
               earned: data.state?.earned ?? [],
             }),
-            completedModules: null,
-            moduleId: null,
+            completedModules: data.state?.completedModules ?? [],
+            moduleId: data.state?.moduleId ?? null,
+            frameId: loadedBuild.frameId,
             legacy: true,
           });
         }
         lastSaved.current = JSON.stringify(data.state);
       }
+      /* Anything composed before this instant describes the placeholder bench,
+         not the student's. Dropped rather than flushed. */
+      pending.current = null;
+      hydrated.current = user.id;
       setStatus("idle");
     })();
 
@@ -267,7 +354,10 @@ export function useBuildSync({
   /* Save, debounced. Building a drone fires dozens of state changes a minute;
      writing on every one would hammer the database for no benefit. */
   useEffect(() => {
-    if (!isSupabaseConfigured || !user || status === "loading") return;
+    /* `status` was checked here once, and could not work: an effect sees the
+       status from the render it was scheduled in, and the load sets "loading"
+       from inside that same render. It was always reading "idle". */
+    if (!isSupabaseConfigured || !user || hydrated.current !== user.id) return;
 
     const payload = serialiseBuild(build, earned, { workspaces, completedModules, moduleId });
     const json = JSON.stringify(payload);
@@ -333,7 +423,7 @@ export function useBuildSync({
       void send();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [build, earned, workspaces, completedModules, moduleId, user?.id, resetKey]);
+  }, [build, earned, workspaces, completedModules, moduleId, user?.id, resetKey, status]);
 
   /* LEAVING THE PAGE IS NOT AN UNMOUNT.
      Clicking "Portal" navigates to a different application, and a browser does
@@ -369,6 +459,10 @@ export function useBuildSync({
 /* -------------------------------------------------------- progress sync */
 
 export function useProgressSync({ user, frameId, moduleId, progress, resetKey }) {
+  /* Surfaced rather than swallowed. A write that is being rejected every time
+     — the airframe column missing is the case that actually happened — used to
+     look identical to a student who had simply stopped working. */
+  const [error, setError] = useState(null);
   const lastKey = useRef(null);
   /* The most recent snapshot, kept in a ref so the cleanup can flush it without
      re-subscribing the effect on every keystroke of progress. */
@@ -399,11 +493,16 @@ export function useProgressSync({ user, frameId, moduleId, progress, resetKey })
 
     let cancelled = false;
     (async () => {
+      /* select("*") rather than naming the columns: on an instance where the
+         migration has not been run, naming frame_id makes the whole statement
+         fail and no high-water mark is seeded at all. The row shape is also the
+         cheapest possible answer to whether that column exists. */
       const { data } = await supabase
         .from("module_progress")
-        .select("frame_id, module_id, tasks_done, completed")
+        .select("*")
         .eq("user_id", user.id);
       if (cancelled) return;
+      probeFrameColumn(data);
       for (const r of data ?? []) {
         best.current.set(markKey(r.frame_id, r.module_id), {
           done: r.tasks_done ?? 0,
@@ -434,9 +533,32 @@ export function useProgressSync({ user, frameId, moduleId, progress, resetKey })
     }
     best.current.set(key, { done: row.tasks_done, complete: row.completed });
 
-    await supabase
-      .from("module_progress")
-      .upsert(row, { onConflict: "user_id,frame_id,module_id" });
+    const send = (withFrame) => {
+      const { frame_id, ...pooled } = row;
+      return supabase.from("module_progress").upsert(withFrame ? row : pooled, {
+        onConflict: withFrame ? "user_id,frame_id,module_id" : "user_id,module_id",
+      });
+    };
+
+    let { error: err } = await send(hasFrameColumn);
+    /* The migration has not been run here. Say so once, then carry on recording
+       pooled, exactly as this did before the airframe split. Refusing to write
+       at all would punish the student for a database that is one SQL file
+       behind, and silence is what made that look like an idle account. */
+    if (err && hasFrameColumn && missingFrameColumn(err)) {
+      noteMissingFrameColumn();
+      ({ error: err } = await send(false));
+    }
+
+    if (err) {
+      /* Put the mark back. Left raised, it suppresses every retry of the very
+         write that just failed. */
+      if (prior) best.current.set(key, prior);
+      else best.current.delete(key);
+      setError(describeError(err));
+      return;
+    }
+    setError(null);
   }, []);
 
   useEffect(() => {
@@ -484,31 +606,73 @@ export function useProgressSync({ user, frameId, moduleId, progress, resetKey })
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, frameId, moduleId, progress?.doneCount, progress?.complete, progress?.total]);
+
+  return { error };
 }
 
-/** The high-water mark is per aircraft, so two copters cannot hold each other back. */
+/** The high-water mark is per aircraft, so two copters cannot hold each other
+    back. Where the column does not exist there is only one pooled course to
+    hold a mark for, and the key says so rather than filing everything under a
+    quadcopter that may not be what the student is flying. */
 function markKey(frameId, moduleId) {
+  if (!hasFrameColumn) return `*:${moduleId}`;
   return `${frameId ?? "quad"}:${moduleId}`;
 }
 
 /**
- * Which modules this student has already finished ON THIS AIRCRAFT, to restore
- * the rail state on another machine.
+ * Everything this account has finished, FILED UNDER THE AIRCRAFT IT WAS
+ * FINISHED ON.
  *
- * The airframe filter is the whole point. Unfiltered, this returned every
- * module the student had ever completed on anything and the caller merged it
- * into whichever copter happened to be open — which is how a fresh octocopter
- * arrived with Modules 1 to 3 ticked.
+ * Returned as a map rather than a list, and that is the whole point. Two
+ * independent requests populate the bench when a student signs in — this one
+ * and the saved build — and they can land in either order. A bare list has to
+ * be merged into whichever copter happens to be on the bench at that instant,
+ * which on a cold load is the default quadcopter and not the hexacopter the
+ * student actually left out. That is how a fresh hexacopter arrived wearing a
+ * finished quadcopter's ticks, and guarding the merge never fixed it, because
+ * the guard was racing the same two requests. A map keyed by airframe cannot be
+ * misfiled however the race falls.
+ *
+ * `unkeyed` holds rows that name no airframe — an instance where the migration
+ * has not been run, or a row written before it was. They are handed back
+ * separately rather than guessed at: the only account they can honestly be
+ * attributed to is one that has ever had a single aircraft, and only the caller
+ * knows whether that is the case.
  */
-export async function fetchCompletedModules(userId, frameId) {
-  if (!isSupabaseConfigured || !userId || !frameId) return new Set();
-  const { data } = await supabase
+export async function fetchProgressByFrame(userId) {
+  const empty = { byFrame: {}, unkeyed: [] };
+  if (!isSupabaseConfigured || !userId) return empty;
+
+  /* select("*"), so this behaves identically before and after the migration. */
+  const { data, error } = await supabase
     .from("module_progress")
-    .select("module_id")
+    .select("*")
     .eq("user_id", userId)
-    .eq("frame_id", frameId)
     .eq("completed", true);
-  return new Set((data ?? []).map((r) => r.module_id));
+  if (error || !data) return empty;
+  probeFrameColumn(data);
+
+  const byFrame = {};
+  const unkeyed = [];
+  for (const r of data) {
+    const frame = typeof r.frame_id === "string" ? r.frame_id : null;
+    /* An airframe this build cannot make is not an airframe. The migration's
+       '~legacy' sentinel lands here too, which is exactly right. */
+    if (!frame || !AIRFRAMES[frame]) {
+      unkeyed.push(r.module_id);
+      continue;
+    }
+    (byFrame[frame] ??= []).push(r.module_id);
+  }
+  return { byFrame, unkeyed };
+}
+
+/** One aircraft's finished modules. Kept as a name of its own because that is
+    what most callers want, and because it reads at the call site. */
+export async function fetchCompletedModules(userId, frameId) {
+  if (!frameId) return new Set();
+  const { byFrame } = await fetchProgressByFrame(userId);
+  return new Set(byFrame[frameId] ?? []);
 }
 
 /**
@@ -521,9 +685,21 @@ export async function fetchCompletedModules(userId, frameId) {
  */
 export async function clearRemoteProgress(userId, frameId) {
   if (!isSupabaseConfigured || !userId) return null;
+
+  const scoped = frameId && hasFrameColumn;
   let q = supabase.from("module_progress").delete().eq("user_id", userId);
-  if (frameId) q = q.eq("frame_id", frameId);
-  const { error } = await q;
+  if (scoped) q = q.eq("frame_id", frameId);
+  let { error } = await q;
+
+  /* Without the column there is nothing to scope by, so this falls back to what
+     the code did before the split: clear the lot. That is the truthful reading
+     of a pooled table — one course, and the student has just scrapped it — and
+     it is only the school's record either way. The other aircraft keep their
+     benches regardless, because those live in `builds`. */
+  if (error && missingFrameColumn(error)) {
+    noteMissingFrameColumn();
+    ({ error } = await supabase.from("module_progress").delete().eq("user_id", userId));
+  }
   return error ? describeError(error) : null;
 }
 
